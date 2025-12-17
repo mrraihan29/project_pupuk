@@ -1,0 +1,96 @@
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Django / Python
+*.log
+*.pot
+*.pyc
+*.pyo
+*.pyd
+*.sqlite3
+db.sqlite3
+media/
+staticfiles/
+static_root/
+local_settings.py
+
+# Virtual environments
+.env
+.venv
+env/
+venv/
+ENV/
+env.bak/
+venv.bak/
+
+# Migrations (keep if you want them in VCS; otherwise uncomment below)
+# */migrations/
+# */migrations/*.py
+# */migrations/*.pyc
+
+# Tooling
+.coverage
+htmlcov/
+dist/
+build/
+*.egg-info/
+.eggs/
+pip-wheel-metadata/
+*.manifest
+*.spec
+
+# IDE / Editors
+.vscode/
+.vscode/*.*
+!.vscode/extensions.json
+!.vscode/settings.json
+!.vscode/launch.json
+!.vscode/tasks.json
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Frontend (Node / bundlers)
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+.pnp/
+.pnp.js
+.pnp.cjs
+.pnpm-debug.log
+.babel.cache
+.next/
+.out/
+coverage/
+.cache/
+.eslintcache
+stylelintcache
+.sass-cache/
+parcel-cache/
+dist/
+build/
+*.tsbuildinfo
+
+# Env / secrets
+*.env
+*.env.*
+.env.local
+.env.development
+.env.production
+.env.test
+.env.example
+
+# Docker
+*.pid
+*.seed
+*.pid.lock
+docker-data/
+docker-volumes/
