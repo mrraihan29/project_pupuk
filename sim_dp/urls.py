@@ -16,7 +16,9 @@ Including another URLconf
 """
 from django.contrib import admin
 from django.urls import include, path
-from core.views import dashboard # Import view dashboard
+from core.views import dashboard
+from django.conf import settings
+from django.conf.urls.static import static
 
 urlpatterns = [
     path('admin/', admin.site.urls),
@@ -24,3 +26,7 @@ urlpatterns = [
     path('', include('core.urls')),
     path('', include('gudang.urls')),
 ]
+
+# Media files serving during development
+if settings.DEBUG:
+    urlpatterns += static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)
