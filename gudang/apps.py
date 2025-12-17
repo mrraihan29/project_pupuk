@@ -1,6 +1,8 @@
 from django.apps import AppConfig
 
-
 class GudangConfig(AppConfig):
     default_auto_field = 'django.db.models.BigAutoField'
     name = 'gudang'
+
+    def ready(self):
+        import gudang.signals # <-- Baris ini yang mengaktifkan sensor
