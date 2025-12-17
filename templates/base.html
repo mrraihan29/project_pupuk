@@ -1,0 +1,320 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SIM-DP | {% block title %}Dashboard{% endblock %}</title>
+    
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.0/font/bootstrap-icons.css">
+
+    <style>
+        :root {
+            /* --- WARNA HIJAU MUDA (SEMBADA TANI) --- */
+            --primary-green: #2ecc71;  /* Hijau cerah */
+            --dark-green: #27ae60;     /* Hijau gelap untuk hover */
+            --bg-body: #f0f2f5;        /* Background abu sangat muda */
+            --sidebar-width: 260px;
+            --sidebar-width-collapsed: 80px;
+            --float-gap: 20px;         /* Jarak "Melayang" */
+        }
+
+        body {
+            font-family: 'Poppins', sans-serif;
+            background-color: var(--bg-body);
+            overflow-x: hidden; /* Mencegah scroll samping */
+        }
+        
+        /* --- SIDEBAR STYLE (FLOATING CARD) --- */
+        .sidebar {
+            position: fixed;
+            top: var(--float-gap);
+            left: var(--float-gap);
+            bottom: var(--float-gap); /* Melayang dari atas, kiri, bawah */
+            width: var(--sidebar-width);
+            background-color: #ffffff;
+            border-radius: 20px; /* Sudut membulat */
+            box-shadow: 0 10px 30px rgba(0,0,0,0.05); /* Bayangan halus */
+            z-index: 1000;
+            padding-top: 30px;
+            transition: all 0.4s cubic-bezier(0.25, 0.8, 0.25, 1); /* Animasi halus */
+            display: flex;
+            flex-direction: column;
+            overflow: visible; /* Biarkan tombol toggle keluar tanpa dipotong */
+        }
+        
+        /* State saat Collapsed (Mengecil) */
+        .sidebar.collapsed {
+            width: var(--sidebar-width-collapsed);
+        }
+
+        /* --- BRAND LOGO --- */
+        .sidebar-brand {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 1.4rem;
+            font-weight: 700;
+            color: var(--primary-green);
+            margin-bottom: 40px;
+            white-space: nowrap; /* Agar teks tidak turun baris */
+            transition: all 0.3s;
+        }
+        
+        .sidebar-brand i {
+            font-size: 1.8rem;
+            margin-right: 10px;
+        }
+        
+        .sidebar.collapsed .sidebar-brand span {
+            display: none; /* Sembunyikan nama saat collapsed */
+        }
+        .sidebar.collapsed .sidebar-brand i {
+            margin-right: 0;
+        }
+
+        /* --- NAVIGATION LINKS --- */
+        .nav-link {
+            color: #7f8c8d;
+            font-weight: 500;
+            padding: 15px 20px;
+            margin: 0 15px 5px 15px; /* Margin kiri kanan agar tombol melayang di dalam sidebar */
+            border-radius: 12px;
+            transition: all 0.3s;
+            display: flex;
+            align-items: center;
+            white-space: nowrap;
+        }
+
+        .nav-link:hover {
+            background-color: #eafaf1; /* Hijau sangat muda saat hover */
+            color: var(--dark-green);
+        }
+
+        .nav-link.active {
+            background-color: var(--primary-green);
+            color: white;
+            box-shadow: 0 4px 15px rgba(46, 204, 113, 0.3); /* Glow hijau */
+        }
+
+        .nav-link i {
+            font-size: 1.2rem;
+            min-width: 30px; /* Lebar tetap ikon agar sejajar */
+            display: flex;
+            justify-content: center;
+        }
+        
+        .nav-link span {
+            margin-left: 10px;
+            transition: opacity 0.3s;
+        }
+
+        /* Sembunyikan teks menu saat collapsed */
+        .sidebar.collapsed .nav-link span,
+        .sidebar.collapsed .menu-header {
+            display: none;
+            opacity: 0;
+        }
+        
+        .sidebar.collapsed .nav-link {
+            padding: 15px 0; /* Center icon */
+            justify-content: center;
+            margin: 0 10px 5px 10px;
+        }
+        
+        .sidebar.collapsed .nav-link i {
+            font-size: 1.4rem;
+        }
+
+        /* Menu Header (Kecil) */
+        .menu-header {
+            text-transform: uppercase;
+            font-size: 0.75rem;
+            font-weight: 700;
+            color: #bdc3c7;
+            padding: 0 25px;
+            margin-top: 20px;
+            margin-bottom: 10px;
+            letter-spacing: 1px;
+            white-space: nowrap;
+        }
+
+        /* --- TOGGLE BUTTON (VERTICAL PILL) --- */
+        .sidebar-toggle {
+            position: absolute;
+            top: 50%;
+            transform: translateY(-50%);
+            right: -16px; /* Di tengah garis pinggir sidebar */
+            width: 32px;
+            height: 50px;
+            background: linear-gradient(135deg, var(--primary-green), var(--dark-green));
+            border-radius: 25px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            color: white;
+            font-size: 1rem;
+            box-shadow: 0 4px 12px rgba(46, 204, 113, 0.3);
+            z-index: 9999; /* Z-index paling atas */
+            transition: all 0.3s ease;
+        }
+        
+        .sidebar-toggle:hover {
+            transform: translateY(-50%) scale(1.05);
+            box-shadow: 0 6px 16px rgba(46, 204, 113, 0.4);
+        }
+
+        .sidebar.collapsed .sidebar-toggle {
+            transform: translateY(-50%) rotate(180deg);
+        }
+
+        /* --- MAIN CONTENT AREA --- */
+        .main-content {
+            /* Margin kiri = Lebar Sidebar + Jarak Float + Jarak antar konten */
+            margin-left: calc(var(--sidebar-width) + var(--float-gap) + 20px);
+            margin-top: var(--float-gap);
+            margin-right: var(--float-gap);
+            transition: all 0.4s cubic-bezier(0.25, 0.8, 0.25, 1);
+        }
+        
+        .main-content.expanded {
+            /* Margin saat sidebar mengecil */
+            margin-left: calc(var(--sidebar-width-collapsed) + var(--float-gap) + 20px);
+        }
+
+        /* --- TOPBAR STYLE --- */
+        .topbar {
+            background-color: #ffffff;
+            padding: 15px 30px;
+            border-radius: 20px; /* Rounded */
+            box-shadow: 0 5px 20px rgba(0,0,0,0.02);
+            margin-bottom: 25px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .user-avatar {
+            width: 42px;
+            height: 42px;
+            background: linear-gradient(135deg, var(--primary-green), #27ae60);
+            border-radius: 12px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: white;
+            font-weight: bold;
+            box-shadow: 0 4px 10px rgba(46, 204, 113, 0.3);
+        }
+        
+        /* Card Style */
+        .card {
+            border: none;
+            border-radius: 20px;
+            box-shadow: 0 5px 20px rgba(0,0,0,0.03);
+            overflow: hidden;
+        }
+
+        /* Tombol Hijau */
+        .btn-success {
+            background-color: var(--primary-green);
+            border: none;
+        }
+        .btn-success:hover {
+            background-color: var(--dark-green);
+        }
+    </style>
+</head>
+<body>
+
+    <div class="sidebar" id="sidebar">
+        <div class="sidebar-toggle" onclick="toggleSidebar()">
+            <i class="bi bi-chevron-left"></i>
+        </div>
+
+        <div class="sidebar-brand">
+            <i class="bi bi-flower1"></i>
+            <span>SIM-DP</span>
+        </div>
+        
+        <nav class="nav flex-column">
+            <a class="nav-link active" href="{% url 'dashboard' %}" title="Dashboard">
+                <i class="bi bi-grid-fill"></i>
+                <span>Dashboard</span>
+            </a>
+            
+            <div class="menu-header">Gudang</div>
+            <a class="nav-link" href="#" title="Penebusan (SO)">
+                <i class="bi bi-box-seam"></i>
+                <span>Penebusan (SO)</span>
+            </a>
+            <a class="nav-link" href="#" title="Distribusi">
+                <i class="bi bi-truck"></i>
+                <span>Distribusi</span>
+            </a>
+            <a class="nav-link" href="#" title="Kartu Stok">
+                <i class="bi bi-clipboard-data"></i>
+                <span>Kartu Stok</span>
+            </a>
+
+            <div class="menu-header">Master Data</div>
+            <a class="nav-link" href="#" title="Data Kios">
+                <i class="bi bi-shop"></i>
+                <span>Data Kios</span>
+            </a>
+            <a class="nav-link" href="#" title="Armada">
+                <i class="bi bi-ev-front"></i>
+                <span>Armada</span>
+            </a>
+        </nav>
+    </div>
+
+    <div class="main-content" id="mainContent">
+        
+        <div class="topbar">
+            <div>
+                <h5 class="mb-0 fw-bold text-dark">{% block page_title %}Dashboard{% endblock %}</h5>
+                <small class="text-muted">{% now "l, j F Y" %}</small>
+            </div>
+            
+            <div class="d-flex align-items-center gap-3">
+                <button class="btn btn-light rounded-circle position-relative p-2 text-muted">
+                    <i class="bi bi-bell"></i>
+                    <span class="position-absolute top-0 start-100 translate-middle p-1 bg-danger border border-light rounded-circle">
+                        <span class="visually-hidden">New alerts</span>
+                    </span>
+                </button>
+
+                <div class="text-end d-none d-sm-block">
+                    <div class="fw-bold small mb-0">{{ user.username|default:"Guest"|title }}</div>
+                    <div class="text-muted" style="font-size: 0.7rem;">Owner / Admin</div>
+                </div>
+                <div class="user-avatar">
+                    {{ user.username|slice:":1"|upper }}
+                </div>
+            </div>
+        </div>
+
+        {% block content %}
+        {% endblock %}
+    
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+
+    <script>
+        function toggleSidebar() {
+            const sidebar = document.getElementById('sidebar');
+            const mainContent = document.getElementById('mainContent');
+            
+            // Toggle class 'collapsed' pada sidebar
+            sidebar.classList.toggle('collapsed');
+            
+            // Toggle class 'expanded' pada konten utama (untuk mengatur margin)
+            mainContent.classList.toggle('expanded');
+        }
+    </script>
+</body>
+</html>

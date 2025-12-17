@@ -1,0 +1,31 @@
+{% extends 'base.html' %}
+
+{% block page_title %}Dashboard Utama{% endblock %}
+
+{% block content %}
+<div class="row">
+    <div class="col-md-3">
+        <div class="card p-3 mb-4">
+            <div class="d-flex justify-content-between align-items-center">
+                <div>
+                    <small class="text-muted text-uppercase fw-bold">Total Stok NPK</small>
+                    <h3 class="fw-bold text-danger mb-0">120 Ton</h3>
+                </div>
+                <i class="bi bi-box-seam fs-1 text-danger opacity-25"></i>
+            </div>
+        </div>
+    </div>
+
+    <div class="col-md-3">
+        <div class="card p-3 mb-4">
+            <div class="d-flex justify-content-between align-items-center">
+                <div>
+                    <small class="text-muted text-uppercase fw-bold">Total Stok Urea</small>
+                    <h3 class="fw-bold text-info mb-0">85 Ton</h3>
+                </div>
+                <i class="bi bi-box-seam fs-1 text-info opacity-25"></i>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
