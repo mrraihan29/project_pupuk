@@ -3,6 +3,10 @@ from django.utils import timezone
 from django.core.exceptions import ValidationError
 from datetime import timedelta
 from decimal import Decimal
+from django.db import transaction
+
+# Import models from core app
+from core.models import Kios, Armada, KiosAllocation
 
 # --- 1. SALES ORDER (SO) - INBOUND ---
 class SalesOrder(models.Model):
@@ -79,3 +83,75 @@ class StockCard(models.Model):
     class Meta:
         verbose_name_plural = "Kartu Stok (Log)"
         ordering = ['-date']
+        
+# --- 3. DISTRIBUTION (PENYALURAN) - OUTBOUND ---
+class Distribution(models.Model):
+    sales_order = models.ForeignKey(SalesOrder, on_delete=models.PROTECT, related_name='distributions', verbose_name="Sumber SO")
+    kios = models.ForeignKey(Kios, on_delete=models.PROTECT, related_name='distributions')
+    armada = models.ForeignKey(Armada, on_delete=models.PROTECT, related_name='distributions')
+    
+    tonnage_sent = models.DecimalField("Tonase Dikirim", max_digits=10, decimal_places=2)
+    transaction_date = models.DateField("Tanggal Kirim", default=timezone.now)
+    
+    # Nomor Surat Jalan kita generate otomatis nanti
+    surat_jalan_no = models.CharField("No Surat Jalan", max_length=50, blank=True, unique=True)
+    
+    notes = models.TextField("Catatan", blank=True, help_text="Catatan khusus / Fluid Allocation")
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    def clean(self):
+        # VALIDASI 1: Cek Stok Gudang (Anti-Minus)
+        if self.tonnage_sent and self.sales_order:
+            if self.tonnage_sent > self.sales_order.tonnage_current:
+                raise ValidationError(f"Stok Tidak Cukup! Sisa SO ini hanya {self.sales_order.tonnage_current} Ton.")
+
+        # VALIDASI 2: Cek Kesesuaian Jenis Pupuk SO vs Alokasi?
+        # Nanti kita handle di UI agar Admin tidak salah pilih SO
+
+    def save(self, *args, **kwargs):
+        # ATOMIC TRANSACTION (Risk R-05 & NFR-01)
+        # Memastikan semua update database di bawah ini sukses bareng atau gagal bareng
+        with transaction.atomic():
+            is_new = self.pk is None
+            
+            # 1. Generate Nomor Surat Jalan (Format: SJ/Tahun/Bulan/ID)
+            if not self.surat_jalan_no:
+                last_id = Distribution.objects.order_by('-id').first()
+                new_id = (last_id.id + 1) if last_id else 1
+                self.surat_jalan_no = f"SJ/{timezone.now().strftime('%Y%m')}/{new_id:04d}"
+
+            # Simpan Data Distribusi Dulu
+            super().save(*args, **kwargs)
+
+            if is_new:
+                # 2. Kurangi Stok SO
+                self.sales_order.tonnage_current -= self.tonnage_sent
+                if self.sales_order.tonnage_current == 0:
+                    self.sales_order.is_closed = True
+                self.sales_order.save()
+
+                # 3. Potong Kuota Kios (Fluid Allocation Logic)
+                # Cari alokasi yang cocok (Tahun sama, Jenis Pupuk sama)
+                # Logic: SO Code 3101 -> NPK. SO Code 3820 -> UREA.
+                jenis_pupuk = self.sales_order.fertilizer_type
+                tahun_sekarang = self.transaction_date.year
+                
+                try:
+                    allocation = KiosAllocation.objects.get(
+                        kios=self.kios, 
+                        year=tahun_sekarang, 
+                        fertilizer_type=jenis_pupuk
+                    )
+                    allocation.quota_remaining -= self.tonnage_sent
+                    allocation.save()
+                except KiosAllocation.DoesNotExist:
+                    # Jika data alokasi belum dibuat, biarkan dulu (atau raise Error tergantung kebijakan)
+                    # Untuk sekarang kita pass, anggap admin lupa input master alokasi
+                    pass
+
+    def __str__(self):
+        return f"{self.surat_jalan_no} - {self.kios.name} ({self.tonnage_sent} Ton)"
+
+    class Meta:
+        verbose_name_plural = "Data Penyaluran (Distribusi)"
+        ordering = ['-transaction_date']

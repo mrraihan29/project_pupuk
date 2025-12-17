@@ -1,5 +1,5 @@
 from django.contrib import admin
-from .models import SalesOrder, StockCard
+from .models import SalesOrder, StockCard, Distribution
 
 class StockCardInline(admin.TabularInline):
     model = StockCard
@@ -28,3 +28,10 @@ class StockCardAdmin(admin.ModelAdmin):
         return False
     def has_delete_permission(self, request, obj=None):
         return False
+    
+@admin.register(Distribution)
+class DistributionAdmin(admin.ModelAdmin):
+    list_display = ('surat_jalan_no', 'transaction_date', 'kios', 'sales_order', 'tonnage_sent')
+    list_filter = ('transaction_date', 'kios')
+    search_fields = ('surat_jalan_no', 'kios__name')
+    autocomplete_fields = ['sales_order', 'kios', 'armada'] # Agar dropdown tidak berat jika data banyak
