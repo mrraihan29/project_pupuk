@@ -1,11 +1,12 @@
 from django.shortcuts import render, redirect
-from django.http import JsonResponse
+from django.http import JsonResponse, HttpResponse
 from django.contrib import messages
 from django.db.models import Sum
-from core.models import Kios, KiosAllocation
-from .models import SalesOrder
+from core.models import Kios, KiosAllocation, FertilizerPrice
+from .models import SalesOrder, Distribution
 from .forms import DistributionForm
-
+from django.template.loader import get_template # Baru
+from xhtml2pdf import pisa # Baru
 # --- VIEW UTAMA ---
 def distribution_create(request):
     if request.method == 'POST':
@@ -13,7 +14,7 @@ def distribution_create(request):
         if form.is_valid():
             dist = form.save()
             messages.success(request, f"Penyaluran Berhasil! Surat Jalan: {dist.surat_jalan_no}")
-            return redirect('dashboard') # Nanti kita arahkan ke list distribusi
+            return redirect('distribution_list') # Nanti kita arahkan ke list distribusi
     else:
         form = DistributionForm()
 
@@ -77,3 +78,59 @@ def get_so_info(request):
         })
     except SalesOrder.DoesNotExist:
         return JsonResponse({'error': 'SO not found'}, status=404)
+    
+# --- LIST PENYALURAN (History) ---
+def distribution_list(request):
+    dist_data = Distribution.objects.all().select_related('kios', 'sales_order', 'armada').order_by('-transaction_date')
+    return render(request, 'gudang/distribution_list.html', {'dist_data': dist_data})
+
+# --- PDF GENERATOR ---
+def print_document(request, pk, doc_type):
+    """
+    doc_type: 'sj' (Surat Jalan) atau 'inv' (Invoice)
+    """
+    dist = Distribution.objects.get(pk=pk)
+    
+    # Ambil Harga Master saat ini (Sesuai Jenis Pupuk SO)
+    # Note: Idealnya harga disimpan di tabel Invoice, tapi untuk MVP kita ambil Master Harga
+    try:
+        price_obj = FertilizerPrice.objects.get(fertilizer_type=dist.sales_order.fertilizer_type)
+        price_per_ton = price_obj.price_sell
+    except FertilizerPrice.DoesNotExist:
+        price_per_ton = 0
+
+    total_price = dist.tonnage_sent * price_per_ton
+
+    context = {
+        'dist': dist,
+        'price_per_ton': price_per_ton,
+        'total_price': total_price,
+        'doc_type': doc_type,
+        'company': {
+            'name': 'CV SEMBADA TANI',
+            'address': 'Jl. Raya Pertanian No. 1, Semarang',
+            'phone': '(024) 12345678'
+        }
+    }
+
+    # Pilih Template HTML berdasarkan tipe dokumen
+    if doc_type == 'sj':
+        template_path = 'gudang/pdf_surat_jalan.html'
+        filename = f"SJ_{dist.surat_jalan_no.replace('/', '-')}.pdf"
+    else:
+        template_path = 'gudang/pdf_invoice.html'
+        filename = f"INV_{dist.surat_jalan_no.replace('/', '-')}.pdf"
+
+    # Render HTML ke PDF
+    response = HttpResponse(content_type='application/pdf')
+    response['Content-Disposition'] = f'inline; filename="{filename}"' # 'inline' agar terbuka di browser, 'attachment' untuk auto-download
+
+    template = get_template(template_path)
+    html = template.render(context)
+    
+    # Create PDF
+    pisa_status = pisa.CreatePDF(html, dest=response)
+
+    if pisa_status.err:
+        return HttpResponse('We had some errors <pre>' + html + '</pre>')
+    return response

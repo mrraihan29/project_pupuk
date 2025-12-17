@@ -1,0 +1,74 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <style>
+        body { font-family: Helvetica, sans-serif; font-size: 12px; }
+        .header { text-align: center; margin-bottom: 20px; border-bottom: 2px solid black; padding-bottom: 10px; }
+        .title { font-size: 18px; font-weight: bold; margin-bottom: 5px; text-transform: uppercase; }
+        .info-table { width: 100%; margin-bottom: 20px; }
+        .content-table { width: 100%; border-collapse: collapse; margin-bottom: 30px; }
+        .content-table th, .content-table td { border: 1px solid black; padding: 8px; text-align: right; }
+        .content-table th { background-color: #f0f0f0; text-align: center; }
+        .content-table td.left { text-align: left; }
+        .total-row { font-weight: bold; background-color: #e0e0e0; }
+        .payment-info { border: 1px dashed black; padding: 10px; width: 60%; }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <div class="title">{{ company.name }}</div>
+        <div>{{ company.address }}</div>
+    </div>
+
+    <h2 style="text-align: center;">INVOICE / TAGIHAN</h2>
+    <p style="text-align: center;">Ref SJ: {{ dist.surat_jalan_no }}</p>
+
+    <table class="info-table">
+        <tr>
+            <td width="50%">
+                <strong>Tagihan Kepada:</strong><br>
+                {{ dist.kios.name }}<br>
+                {{ dist.kios.pic_name }}
+            </td>
+            <td width="50%" style="text-align: right;">
+                Tanggal: {{ dist.transaction_date|date:"d F Y" }}<br>
+                Jatuh Tempo: H+3 Pengiriman
+            </td>
+        </tr>
+    </table>
+
+    <table class="content-table">
+        <thead>
+            <tr>
+                <th>Deskripsi Barang</th>
+                <th>Qty (Ton)</th>
+                <th>Harga / Ton</th>
+                <th>Total (Rp)</th>
+            </tr>
+        </thead>
+        <tbody>
+            <tr>
+                <td class="left">Pupuk {{ dist.sales_order.fertilizer_type }} (Subsidi)</td>
+                <td>{{ dist.tonnage_sent }}</td>
+                <td>Rp {{ price_per_ton }}</td> <td>Rp {{ total_price }}</td>
+            </tr>
+            <tr class="total-row">
+                <td colspan="3" style="text-align: center;">TOTAL TAGIHAN</td>
+                <td>Rp {{ total_price }}</td>
+            </tr>
+        </tbody>
+    </table>
+
+    <div class="payment-info">
+        <strong>Info Pembayaran:</strong><br>
+        Bank BCA: 123-456-7890<br>
+        A.n CV SEMBADA TANI<br>
+        <em>Mohon cantumkan No SJ pada berita transfer.</em>
+    </div>
+    
+    <br><br>
+    <div style="text-align: right;">
+        Finance,<br><br><br><br>( ........................... )
+    </div>
+</body>
+</html>

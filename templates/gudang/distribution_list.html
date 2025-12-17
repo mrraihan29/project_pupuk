@@ -1,0 +1,63 @@
+{% extends 'base.html' %}
+{% block page_title %}Riwayat Penyaluran{% endblock %}
+
+{% block content %}
+<div class="card p-4">
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <h5 class="fw-bold mb-0">Log Distribusi</h5>
+        <a href="{% url 'distribution_create' %}" class="btn btn-success">
+            <i class="bi bi-plus-lg me-2"></i>Buat Surat Jalan Baru
+        </a>
+    </div>
+
+    <div class="table-responsive">
+        <table class="table table-hover align-middle">
+            <thead class="table-light">
+                <tr>
+                    <th>Tanggal</th>
+                    <th>No. Surat Jalan</th>
+                    <th>Tujuan (Kios)</th>
+                    <th>Barang</th>
+                    <th>Tonase</th>
+                    <th>Armada</th>
+                    <th class="text-end">Cetak Dokumen</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for d in dist_data %}
+                <tr>
+                    <td>{{ d.transaction_date|date:"d M Y" }}</td>
+                    <td class="fw-bold text-primary">{{ d.surat_jalan_no }}</td>
+                    <td>
+                        <div class="fw-bold">{{ d.kios.name }}</div>
+                        <div class="small text-muted">{{ d.kios.district }}</div>
+                    </td>
+                    <td>
+                        {% if d.sales_order.fertilizer_type == 'NPK' %}
+                            <span class="badge bg-danger">NPK</span>
+                        {% else %}
+                            <span class="badge bg-info">UREA</span>
+                        {% endif %}
+                    </td>
+                    <td class="fw-bold">{{ d.tonnage_sent }} Ton</td>
+                    <td>
+                        <div class="small">{{ d.armada.vehicle_type }}</div>
+                        <div class="small text-muted">{{ d.armada.plate_number }}</div>
+                    </td>
+                    <td class="text-end">
+                        <a href="{% url 'print_document' d.pk 'sj' %}" target="_blank" class="btn btn-sm btn-outline-dark me-1" title="Cetak Surat Jalan">
+                            <i class="bi bi-printer"></i> SJ
+                        </a>
+                        <a href="{% url 'print_document' d.pk 'inv' %}" target="_blank" class="btn btn-sm btn-outline-warning" title="Cetak Invoice">
+                            <i class="bi bi-receipt"></i> INV
+                        </a>
+                    </td>
+                </tr>
+                {% empty %}
+                <tr><td colspan="7" class="text-center py-5">Belum ada data penyaluran.</td></tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+{% endblock %}
