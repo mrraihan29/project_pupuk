@@ -1,0 +1,445 @@
+{% extends 'base.html' %}
+
+{% block page_title %}Data Kios & Kuota{% endblock %}
+
+{% block content %}
+<div class="card p-4">
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <h5 class="fw-bold mb-0">Daftar Mitra Kios</h5>
+        <a href="{% url 'kios_create' %}" class="btn btn-success">
+            <i class="bi bi-plus-lg me-2"></i>Tambah Kios
+        </a>
+    </div>
+
+    <div>
+        <div class="table-responsive" id="tableContainer">
+            <table class="table kios-table align-middle">
+            <thead>
+                <tr>
+                    <th><i class="bi bi-shop me-2"></i>Nama Kios</th>
+                    <th><i class="bi bi-geo-alt me-2"></i>Kecamatan</th>
+                    <th><i class="bi bi-person-badge me-2"></i>PIC / Kontak</th>
+                    <th><i class="bi bi-box-seam me-2"></i>Alokasi (Ton)</th>
+                    <th><i class="bi bi-toggle-on me-2"></i>Status</th>
+                    <th><i class="bi bi-gear me-2"></i>Aksi</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for k in kios_data %}
+                <tr>
+                    <td>
+                        <div class="kios-name">
+                            <i class="bi bi-shop-window text-success me-2"></i>
+                            <span class="fw-bold">{{ k.name }}</span>
+                        </div>
+                    </td>
+                    <td>
+                        <span class="district-badge">
+                            <i class="bi bi-pin-map-fill me-1"></i>{{ k.district }}
+                        </span>
+                    </td>
+                    <td>
+                        <div class="contact-info">
+                            <div class="pic-name">{{ k.pic_name }}</div>
+                            <div class="pic-phone">
+                                <i class="bi bi-telephone-fill me-1"></i>{{ k.phone }}
+                            </div>
+                        </div>
+                    </td>
+                    <td>
+                        <div class="allocations">
+                            {% for alloc in k.allocations.all %}
+                                <div class="allocation-item">
+                                    {% if alloc.fertilizer_type == 'NPK' %}
+                                        <span class="fertilizer-badge npk">NPK</span>
+                                    {% else %}
+                                        <span class="fertilizer-badge urea">UREA</span>
+                                    {% endif %}
+                                    <span class="quota-text">{{ alloc.quota_remaining }}<span class="text-muted"> / {{ alloc.quota_original }}</span></span>
+                                </div>
+                            {% empty %}
+                                <span class="no-quota">
+                                    <i class="bi bi-exclamation-circle me-1"></i>Belum set kuota
+                                </span>
+                            {% endfor %}
+                        </div>
+                    </td>
+                    <td>
+                        {% if k.is_active %}
+                            <span class="status-badge active">
+                                <i class="bi bi-check-circle-fill me-1"></i>Aktif
+                            </span>
+                        {% else %}
+                            <span class="status-badge inactive">
+                                <i class="bi bi-x-circle-fill me-1"></i>Nonaktif
+                            </span>
+                        {% endif %}
+                    </td>
+                    <td>
+                        <div class="action-buttons">
+                            <a href="{% url 'kios_update' k.pk %}" class="action-btn edit" title="Edit">
+                                <i class="bi bi-pencil-square"></i>
+                            </a>
+                            <a href="{% url 'kios_delete' k.pk %}" class="action-btn delete" title="Hapus">
+                                <i class="bi bi-trash3"></i>
+                            </a>
+                        </div>
+                    </td>
+                </tr>
+                {% empty %}
+                <tr>
+                    <td colspan="6" class="empty-state">
+                        <i class="bi bi-inbox fs-1 text-muted mb-2"></i>
+                        <div>Belum ada data kios.</div>
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+        </div>
+        <div class="scroll-indicator" id="scrollIndicator">
+            ← Geser untuk melihat lebih banyak →
+        </div>
+    </div>
+    
+    <style>
+        .kios-table {
+            border: none;
+            margin-bottom: 0;
+        }
+        
+        .kios-table thead {
+            background: linear-gradient(135deg, #2ecc71, #27ae60) !important;
+        }
+        
+        .kios-table thead tr {
+            background: transparent !important;
+        }
+        
+        .kios-table thead th {
+            color: white !important;
+            font-weight: 600 !important;
+            font-size: 0.85rem;
+            padding: 18px 16px !important;
+            border: none !important;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            white-space: nowrap;
+            background: transparent !important;
+        }
+        
+        .kios-table thead th:first-child {
+            border-radius: 12px 0 0 0;
+        }
+        
+        .kios-table thead th:last-child {
+            border-radius: 0 12px 0 0;
+        }
+        
+        .kios-table tbody tr {
+            background: white;
+            transition: all 0.3s ease;
+            border-bottom: 1px solid #f0f2f5;
+        }
+        
+        .kios-table tbody tr:hover {
+            background: #f8fcf9;
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(46, 204, 113, 0.15);
+        }
+        
+        .kios-table tbody td {
+            padding: 16px;
+            vertical-align: middle;
+            border: none;
+            color: #2d3436;
+        }
+        
+        .kios-name {
+            display: flex;
+            align-items: center;
+            font-size: 1rem;
+        }
+        
+        .district-badge {
+            display: inline-flex;
+            align-items: center;
+            background: linear-gradient(135deg, #e8f8f0, #d4f3e6);
+            color: #27ae60;
+            padding: 8px 16px;
+            border-radius: 20px;
+            font-weight: 600;
+            font-size: 0.85rem;
+            border: 1px solid #c3ead6;
+        }
+        
+        .contact-info {
+            line-height: 1.5;
+        }
+        
+        .pic-name {
+            font-weight: 600;
+            color: #2d3436;
+            font-size: 0.95rem;
+            margin-bottom: 4px;
+        }
+        
+        .pic-phone {
+            font-size: 0.85rem;
+            color: #636e72;
+        }
+        
+        .allocations {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+        }
+        
+        .allocation-item {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        
+        .fertilizer-badge {
+            display: inline-block;
+            padding: 5px 12px;
+            border-radius: 8px;
+            font-weight: 700;
+            font-size: 0.75rem;
+            letter-spacing: 0.5px;
+            min-width: 55px;
+            text-align: center;
+        }
+        
+        .fertilizer-badge.npk {
+            background: linear-gradient(135deg, #ff6b6b, #ee5a6f);
+            color: white;
+            box-shadow: 0 2px 8px rgba(255, 107, 107, 0.3);
+        }
+        
+        .fertilizer-badge.urea {
+            background: linear-gradient(135deg, #3498db, #69b3e4);
+            color: white;
+            box-shadow: 0 2px 8px rgba(78, 205, 196, 0.3);
+        }
+        
+        .quota-text {
+            font-weight: 600;
+            font-size: 0.9rem;
+            color: #2d3436;
+        }
+        
+        .no-quota {
+            font-size: 0.85rem;
+            color: #95a5a6;
+            font-style: italic;
+        }
+        
+        .status-badge {
+            display: inline-flex;
+            align-items: center;
+            padding: 8px 16px;
+            border-radius: 20px;
+            font-weight: 600;
+            font-size: 0.85rem;
+        }
+        
+        .status-badge.active {
+            background: #d4f3e6;
+            color: #27ae60;
+            border: 2px solid #b8e6cf;
+        }
+        
+        .status-badge.inactive {
+            background: #fde8e8;
+            color: #e74c3c;
+            border: 2px solid #f5c9c9;
+        }
+        
+        .action-buttons {
+            display: flex;
+            gap: 8px;
+        }
+        
+        .action-btn {
+            width: 36px;
+            height: 36px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            border-radius: 10px;
+            transition: all 0.2s ease;
+            text-decoration: none;
+            font-size: 1rem;
+        }
+        
+        .action-btn.edit {
+            background: #e3f4ff;
+            color: #3498db;
+            border: 1px solid #c6e5ff;
+        }
+        
+        .action-btn.edit:hover {
+            background: #3498db;
+            color: white;
+            transform: scale(1.1);
+            box-shadow: 0 4px 12px rgba(52, 152, 219, 0.3);
+        }
+        
+        .action-btn.delete {
+            background: #ffe8e8;
+            color: #e74c3c;
+            border: 1px solid #ffc9c9;
+        }
+        
+        .action-btn.delete:hover {
+            background: #e74c3c;
+            color: white;
+            transform: scale(1.1);
+            box-shadow: 0 4px 12px rgba(231, 76, 60, 0.3);
+        }
+        
+        .empty-state {
+            text-align: center;
+            padding: 60px 20px !important;
+            color: #95a5a6;
+            font-size: 1rem;
+        }
+        
+        .table-responsive {
+            border-radius: 12px;
+            overflow-x: auto;
+            overflow-y: visible;
+            box-shadow: 0 2px 12px rgba(0, 0, 0, 0.04);
+            -webkit-overflow-scrolling: touch; /* Smooth scrolling di iOS */
+            position: relative;
+        }
+        
+        /* Scrollbar styling untuk tampilan lebih baik */
+        .table-responsive::-webkit-scrollbar {
+            height: 8px;
+        }
+        
+        .table-responsive::-webkit-scrollbar-track {
+            background: #f0f2f5;
+            border-radius: 4px;
+        }
+        
+        .table-responsive::-webkit-scrollbar-thumb {
+            background: #2ecc71;
+            border-radius: 4px;
+        }
+        
+        .table-responsive::-webkit-scrollbar-thumb:hover {
+            background: #27ae60;
+        }
+        
+        /* Media query untuk mobile */
+        @media (max-width: 768px) {
+            .kios-table {
+                min-width: 800px; /* Minimum width agar tabel tidak terlalu kecil */
+            }
+            
+            .kios-table thead th {
+                font-size: 0.75rem;
+                padding: 14px 10px;
+                white-space: nowrap;
+            }
+            
+            .kios-table tbody td {
+                padding: 12px 10px;
+                font-size: 0.85rem;
+                white-space: nowrap;
+            }
+            
+            .kios-name {
+                min-width: 120px;
+            }
+            
+            .district-badge {
+                font-size: 0.75rem;
+                padding: 6px 12px;
+            }
+            
+            .contact-info {
+                min-width: 100px;
+            }
+            
+            .pic-name {
+                font-size: 0.85rem;
+            }
+            
+            .pic-phone {
+                font-size: 0.75rem;
+            }
+            
+            .allocations {
+                min-width: 150px;
+            }
+            
+            .fertilizer-badge {
+                font-size: 0.7rem;
+                padding: 4px 10px;
+            }
+            
+            .quota-text {
+                font-size: 0.8rem;
+            }
+            
+            .status-badge {
+                font-size: 0.75rem;
+                padding: 6px 12px;
+            }
+            
+            .action-btn {
+                width: 32px;
+                height: 32px;
+                font-size: 0.9rem;
+            }
+            
+            /* Wrapper untuk indikator scroll */
+            .scroll-indicator {
+                display: none;
+                text-align: center;
+                padding: 12px;
+                background: linear-gradient(to right, rgba(46, 204, 113, 0.1), rgba(39, 174, 96, 0.1));
+                color: #27ae60;
+                font-size: 0.75rem;
+                font-weight: 600;
+                border-radius: 0 0 12px 12px;
+                margin-top: -1px;
+            }
+            
+            /* Tampilkan indikator di mobile */
+            @media (max-width: 768px) {
+                .scroll-indicator {
+                    display: block;
+                }
+                
+                .scroll-indicator.hidden {
+                    display: none;
+                }
+            }
+        }
+    </style>
+    
+    <script>
+        // Script untuk mendeteksi scroll dan menyembunyikan indikator
+        document.addEventListener('DOMContentLoaded', function() {
+            const tableContainer = document.getElementById('tableContainer');
+            const scrollIndicator = document.getElementById('scrollIndicator');
+            
+            if (tableContainer && scrollIndicator && window.innerWidth <= 768) {
+                tableContainer.addEventListener('scroll', function() {
+                    if (this.scrollLeft > 10) {
+                        scrollIndicator.classList.add('hidden');
+                    } else {
+                        scrollIndicator.classList.remove('hidden');
+                    }
+                });
+            }
+        });
+    </script>
+</div>
+{% endblock %}

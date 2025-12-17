@@ -225,10 +225,105 @@
         .btn-success:hover {
             background-color: var(--dark-green);
         }
+        
+        /* Overlay backdrop untuk mobile */
+        .sidebar-overlay {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(0, 0, 0, 0.5);
+            z-index: 999;
+            opacity: 0;
+            transition: opacity 0.3s ease;
+        }
+        
+        .sidebar-overlay.active {
+            display: block;
+            opacity: 1;
+        }
+        
+        /* --- RESPONSIVE UNTUK TABLET & MOBILE --- */
+        @media (max-width: 992px) {
+            /* Auto-collapse sidebar di tablet/mobile */
+            .sidebar {
+                left: calc(-1 * var(--sidebar-width) - var(--float-gap));
+                width: var(--sidebar-width);
+                top: 0;
+                bottom: 0;
+                border-radius: 0 20px 20px 0;
+                z-index: 2000;
+            }
+            
+            /* Sidebar muncul overlay saat di-expand */
+            .sidebar.mobile-expanded {
+                left: 0;
+                box-shadow: 0 0 50px rgba(0,0,0,0.3);
+            }
+            
+            /* Main content full width di mobile */
+            .main-content {
+                margin-left: var(--float-gap);
+                margin-right: var(--float-gap);
+            }
+            
+            .main-content.expanded {
+                margin-left: var(--float-gap);
+            }
+            
+            /* Toggle button selalu visible di mobile */
+            .sidebar-toggle {
+                right: -45px;
+                width: 40px;
+                height: 40px;
+                border-radius: 0 10px 10px 0;
+            }
+            
+            .sidebar.mobile-expanded .sidebar-toggle {
+                right: -16px;
+                border-radius: 25px;
+            }
+            
+            /* Topbar adjustment */
+            .topbar {
+                padding: 12px 20px;
+            }
+            
+            .topbar h5 {
+                font-size: 1.1rem;
+            }
+        }
+        
+        @media (max-width: 576px) {
+            /* Extra adjustments untuk smartphone */
+            .sidebar {
+                width: calc(100vw - 40px);
+                max-width: 280px;
+            }
+            
+            .topbar {
+                padding: 10px 15px;
+            }
+            
+            .topbar h5 {
+                font-size: 1rem;
+            }
+            
+            .main-content {
+                margin-left: 10px;
+                margin-right: 10px;
+                margin-top: 10px;
+            }
+        }
     </style>
 </head>
 <body>
 
+    <!-- Overlay backdrop untuk mobile -->
+    <div class="sidebar-overlay" id="sidebarOverlay" onclick="closeMobileSidebar()"></div>
+    
     <div class="sidebar" id="sidebar">
         <div class="sidebar-toggle" onclick="toggleSidebar()">
             <i class="bi bi-chevron-left"></i>
@@ -250,7 +345,7 @@
                 <i class="bi bi-box-seam"></i>
                 <span>Penebusan (SO)</span>
             </a>
-            <a class="nav-link" href="#" title="Distribusi">
+            <a class="nav-link" href="{% url 'distribution_create' %}" title="Distribusi">
                 <i class="bi bi-truck"></i>
                 <span>Distribusi</span>
             </a>
@@ -260,7 +355,7 @@
             </a>
 
             <div class="menu-header">Master Data</div>
-            <a class="nav-link" href="#" title="Data Kios">
+            <a class="nav-link" href="{% url 'kios_list' %}" title="Data Kios">
                 <i class="bi bi-shop"></i>
                 <span>Data Kios</span>
             </a>
@@ -308,13 +403,47 @@
         function toggleSidebar() {
             const sidebar = document.getElementById('sidebar');
             const mainContent = document.getElementById('mainContent');
+            const overlay = document.getElementById('sidebarOverlay');
+            const isMobile = window.innerWidth <= 992;
             
-            // Toggle class 'collapsed' pada sidebar
-            sidebar.classList.toggle('collapsed');
-            
-            // Toggle class 'expanded' pada konten utama (untuk mengatur margin)
-            mainContent.classList.toggle('expanded');
+            if (isMobile) {
+                // Mode mobile: toggle overlay sidebar
+                sidebar.classList.toggle('mobile-expanded');
+                overlay.classList.toggle('active');
+            } else {
+                // Mode desktop: collapse/expand biasa
+                sidebar.classList.toggle('collapsed');
+                mainContent.classList.toggle('expanded');
+            }
         }
+        
+        function closeMobileSidebar() {
+            const sidebar = document.getElementById('sidebar');
+            const overlay = document.getElementById('sidebarOverlay');
+            sidebar.classList.remove('mobile-expanded');
+            overlay.classList.remove('active');
+        }
+        
+        // Handle window resize
+        window.addEventListener('resize', function() {
+            const sidebar = document.getElementById('sidebar');
+            const mainContent = document.getElementById('mainContent');
+            const overlay = document.getElementById('sidebarOverlay');
+            const isMobile = window.innerWidth <= 992;
+            
+            if (isMobile) {
+                // Reset ke mode mobile
+                sidebar.classList.remove('collapsed');
+                mainContent.classList.remove('expanded');
+                if (!sidebar.classList.contains('mobile-expanded')) {
+                    overlay.classList.remove('active');
+                }
+            } else {
+                // Reset ke mode desktop
+                sidebar.classList.remove('mobile-expanded');
+                overlay.classList.remove('active');
+            }
+        });
     </script>
 </body>
 </html>

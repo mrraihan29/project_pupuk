@@ -1,0 +1,658 @@
+{% extends 'base.html' %}
+
+{% block page_title %}Input Penyaluran (Distribusi){% endblock %}
+
+{% block content %}
+<div class="row g-4">
+    <!-- Form Column -->
+    <div class="col-lg-7">
+        <div class="card distribution-card">
+            <div class="card-header">
+                <div class="d-flex align-items-center gap-3">
+                    <div class="icon-wrapper">
+                        <i class="bi bi-truck"></i>
+                    </div>
+                    <div>
+                        <h5 class="mb-0 fw-bold">Form Surat Jalan</h5>
+                        <p class="text-muted small mb-0">Input data distribusi pupuk ke kios</p>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="card-body">
+                <form method="post" id="distForm">
+                    {% csrf_token %}
+                    
+                    <!-- Section 1: Info Dasar -->
+                    <div class="form-section">
+                        <h6 class="section-title">
+                            <i class="bi bi-calendar-check me-2"></i>Informasi Dasar
+                        </h6>
+                        <div class="row g-3">
+                            <div class="col-md-6">
+                                <label class="form-label">
+                                    <i class="bi bi-calendar3 me-1"></i>Tanggal Transaksi
+                                </label>
+                                {{ form.transaction_date }}
+                            </div>
+                            <div class="col-md-6">
+                                <label class="form-label">
+                                    <i class="bi bi-shop me-1"></i>Kios Tujuan
+                                </label>
+                                {{ form.kios }}
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Kios Info Box -->
+                    <div class="col-12 d-none" id="kiosInfoBox">
+                        <div class="kios-info-card">
+                            <div class="d-flex gap-3 align-items-start">
+                                <div class="info-icon">
+                                    <i class="bi bi-shop-window"></i>
+                                </div>
+                                <div class="flex-grow-1">
+                                    <h6 class="mb-1" id="infoKiosName">-</h6>
+                                    <p class="text-muted small mb-0" id="infoKiosAddress">-</p>
+                                </div>
+                                <div class="quota-badges">
+                                    <span class="quota-badge npk" id="badgeNPK">NPK: -</span>
+                                    <span class="quota-badge urea" id="badgeUREA">UREA: -</span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Section 2: Sumber & Distribusi -->
+                    <div class="form-section">
+                        <h6 class="section-title">
+                            <i class="bi bi-box-seam me-2"></i>Sumber & Distribusi
+                        </h6>
+                        <div class="row g-3">
+                            <div class="col-12">
+                                <label class="form-label">
+                                    <i class="bi bi-inbox me-1"></i>Sumber Stok (Sales Order)
+                                </label>
+                                {{ form.sales_order }}
+                                <div class="so-info-text" id="soInfoText">
+                                    <i class="bi bi-info-circle me-1"></i>Pilih SO untuk melihat stok tersedia
+                                </div>
+                            </div>
+
+                            <div class="col-md-6">
+                                <label class="form-label">
+                                    <i class="bi bi-truck-front me-1"></i>Armada / Supir
+                                </label>
+                                {{ form.armada }}
+                            </div>
+                            <div class="col-md-6">
+                                <label class="form-label">
+                                    <i class="bi bi-calculator me-1"></i>Tonase Kirim (Ton)
+                                </label>
+                                {{ form.tonnage_sent }}
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Traffic Light Alert -->
+                    <div class="col-12">
+                        <div id="trafficLight" class="traffic-alert d-none" role="alert"></div>
+                    </div>
+                    
+                    <!-- Section 3: Catatan -->
+                    <div class="form-section">
+                        <h6 class="section-title">
+                            <i class="bi bi-chat-square-text me-2"></i>Catatan Tambahan
+                        </h6>
+                        <div class="row g-3">
+                            <div class="col-12">
+                                <label class="form-label">
+                                    <i class="bi bi-pencil me-1"></i>Catatan (Opsional)
+                                </label>
+                                {{ form.notes }}
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Submit Button -->
+                    <div class="col-12 text-center mt-4">
+                        <button type="submit" class="btn-submit" id="btnSubmit">
+                            <i class="bi bi-send-fill me-2"></i>Terbitkan Surat Jalan
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <!-- Guide Column -->
+    <div class="col-lg-5">
+        <div class="card guide-card">
+            <div class="card-header">
+                <div class="d-flex align-items-center gap-2">
+                    <i class="bi bi-lightbulb-fill text-warning"></i>
+                    <h6 class="mb-0 fw-bold">Panduan Traffic Light</h6>
+                </div>
+            </div>
+            <div class="card-body">
+                <div class="guide-list">
+                    <div class="guide-item green">
+                        <div class="guide-icon">
+                            <i class="bi bi-check-circle-fill"></i>
+                        </div>
+                        <div class="guide-content">
+                            <h6 class="mb-1">Aman (Hijau)</h6>
+                            <p class="mb-0">Stok SO cukup & Kuota Kios masih tersedia. Transaksi dapat dilanjutkan.</p>
+                        </div>
+                    </div>
+                    
+                    <div class="guide-item yellow">
+                        <div class="guide-icon">
+                            <i class="bi bi-exclamation-triangle-fill"></i>
+                        </div>
+                        <div class="guide-content">
+                            <h6 class="mb-1">Fluid Allocation (Kuning)</h6>
+                            <p class="mb-0">Kuota Kios habis. Sistem otomatis menggunakan sisa kuota Kecamatan.</p>
+                        </div>
+                    </div>
+                    
+                    <div class="guide-item red">
+                        <div class="guide-icon">
+                            <i class="bi bi-x-circle-fill"></i>
+                        </div>
+                        <div class="guide-content">
+                            <h6 class="mb-1">Blokir (Merah)</h6>
+                            <p class="mb-0">Stok SO habis ATAU Kuota Kecamatan nol. Transaksi tidak dapat dilakukan.</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Tips Card -->
+        <div class="card tips-card mt-4">
+            <div class="card-body">
+                <div class="tips-icon">
+                    <i class="bi bi-info-circle-fill"></i>
+                </div>
+                <h6 class="mb-2 fw-bold">Tips</h6>
+                <ul class="tips-list mb-0">
+                    <li>Pastikan data kios dan SO sudah benar sebelum input tonase</li>
+                    <li>Perhatikan alert warna untuk status alokasi</li>
+                    <li>Catat nomor surat jalan untuk tracking</li>
+                </ul>
+            </div>
+        </div>
+    </div>
+</div>
+
+<style>
+    /* Card Styling */
+    .distribution-card, .guide-card, .tips-card {
+        border: none;
+        border-radius: 16px;
+        overflow: hidden;
+        box-shadow: 0 2px 12px rgba(0, 0, 0, 0.04);
+    }
+    
+    .distribution-card .card-header {
+        background: linear-gradient(135deg, #2ecc71, #27ae60);
+        padding: 24px;
+        border: none;
+        color: white;
+    }
+    
+    .guide-card .card-header {
+        background: linear-gradient(135deg, #f8f9fa, #e9ecef);
+        padding: 20px;
+        border: none;
+    }
+    
+    .icon-wrapper {
+        width: 46px;
+        height: 46px;
+        background: rgba(255, 255, 255, 0.18);
+        border-radius: 12px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 1.35rem;
+    }
+    
+    .card-body {
+        padding: 24px;
+    }
+    
+    /* Form Sections */
+    .form-section {
+        margin-bottom: 24px;
+        padding-bottom: 18px;
+        border-bottom: 1px solid #eef2f3;
+    }
+    
+    .form-section:last-of-type {
+        border-bottom: none;
+        margin-bottom: 0;
+    }
+    
+    .section-title {
+        color: #2d3436;
+        font-weight: 700;
+        font-size: 0.95rem;
+        margin-bottom: 16px;
+        text-transform: uppercase;
+        letter-spacing: 0.3px;
+        display: flex;
+        align-items: center;
+    }
+    
+    .section-title i {
+        color: #2ecc71;
+    }
+    
+    /* Form Labels & Inputs */
+    .form-label {
+        font-weight: 600;
+        color: #2d3436;
+        font-size: 0.9rem;
+        margin-bottom: 6px;
+        display: flex;
+        align-items: center;
+    }
+    
+    .form-label i {
+        color: #95a5a6;
+        font-size: 0.9rem;
+    }
+    
+    .form-control, .form-select {
+        border: 2px solid #e9ecef;
+        border-radius: 10px;
+        padding: 12px 16px;
+        min-height: 48px;
+        line-height: 1.4;
+        font-size: 0.95rem;
+        transition: all 0.3s;
+    }
+    
+    .form-control:focus, .form-select:focus {
+        border-color: #2ecc71;
+        box-shadow: 0 0 0 4px rgba(46, 204, 113, 0.1);
+    }
+    
+    textarea.form-control {
+        min-height: 100px;
+        resize: vertical;
+    }
+    
+    /* Kios Info Card */
+    .kios-info-card {
+        background: linear-gradient(135deg, #e8f8f0, #d4f3e6);
+        border: 2px solid #b8e6cf;
+        border-radius: 14px;
+        padding: 16px 18px;
+        margin-top: 12px;
+        margin-bottom: 14px;
+        animation: slideDown 0.3s ease;
+    }
+    
+    @keyframes slideDown {
+        from {
+            opacity: 0;
+            transform: translateY(-10px);
+        }
+        to {
+            opacity: 1;
+            transform: translateY(0);
+        }
+    }
+    
+    .info-icon {
+        width: 48px;
+        height: 48px;
+        background: linear-gradient(135deg, #2ecc71, #27ae60);
+        border-radius: 12px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        color: white;
+        font-size: 1.4rem;
+        flex-shrink: 0;
+    }
+    
+    .quota-badges {
+        display: flex;
+        flex-direction: row;
+        gap: 8px;
+        align-items: center;
+    }
+    
+    .quota-badge {
+        padding: 6px 14px;
+        border-radius: 8px;
+        font-weight: 700;
+        font-size: 0.8rem;
+        letter-spacing: 0.3px;
+        white-space: nowrap;
+    }
+    
+    .quota-badge.npk {
+        background: linear-gradient(135deg, #ff6b6b, #ee5a6f);
+        color: white;
+        box-shadow: 0 2px 8px rgba(255, 107, 107, 0.3);
+    }
+    
+    .quota-badge.urea {
+        background: linear-gradient(135deg, #4ecdc4, #44a8a5);
+        color: white;
+        box-shadow: 0 2px 8px rgba(78, 205, 196, 0.3);
+    }
+    
+    /* SO Info Text */
+    .so-info-text {
+        margin-top: 8px;
+        padding: 10px 14px;
+        background: #f8f9fa;
+        border-left: 3px solid #2ecc71;
+        border-radius: 6px;
+        font-size: 0.85rem;
+        color: #636e72;
+    }
+    
+    /* Traffic Light Alert */
+    .traffic-alert {
+        padding: 14px 16px;
+        border-radius: 12px;
+        font-weight: 600;
+        font-size: 0.95rem;
+        margin-top: 14px;
+        margin-bottom: 14px;
+        border: none;
+        animation: slideDown 0.3s ease;
+    }
+    
+    .traffic-alert.alert-success {
+        background: linear-gradient(135deg, #d4f3e6, #b8e6cf);
+        color: #27ae60;
+        border-left: 4px solid #27ae60;
+    }
+    
+    .traffic-alert.alert-warning {
+        background: linear-gradient(135deg, #fff4e0, #ffe9b8);
+        color: #f39c12;
+        border-left: 4px solid #f39c12;
+    }
+    
+    .traffic-alert.alert-danger {
+        background: linear-gradient(135deg, #fde8e8, #f5c9c9);
+        color: #e74c3c;
+        border-left: 4px solid #e74c3c;
+    }
+    
+    /* Submit Button */
+    .btn-submit {
+        background: linear-gradient(135deg, #2ecc71, #27ae60);
+        color: white;
+        border: none;
+        padding: 14px 40px;
+        border-radius: 12px;
+        font-weight: 700;
+        font-size: 1rem;
+        transition: all 0.3s;
+        box-shadow: 0 4px 15px rgba(46, 204, 113, 0.3);
+    }
+    
+    .btn-submit:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 6px 20px rgba(46, 204, 113, 0.4);
+    }
+    
+    .btn-submit:disabled {
+        background: #95a5a6;
+        cursor: not-allowed;
+        transform: none;
+        box-shadow: none;
+    }
+    
+    /* Guide Card */
+    .guide-list {
+        display: flex;
+        flex-direction: column;
+        gap: 20px;
+    }
+    
+    .guide-item {
+        display: flex;
+        gap: 16px;
+        padding: 18px;
+        border-radius: 12px;
+        transition: all 0.3s;
+    }
+    
+    .guide-item:hover {
+        transform: translateX(4px);
+    }
+    
+    .guide-item.green {
+        background: linear-gradient(135deg, #e8f8f0, #d4f3e6);
+        border-left: 4px solid #27ae60;
+    }
+    
+    .guide-item.yellow {
+        background: linear-gradient(135deg, #fff4e0, #ffe9b8);
+        border-left: 4px solid #f39c12;
+    }
+    
+    .guide-item.red {
+        background: linear-gradient(135deg, #fde8e8, #f5c9c9);
+        border-left: 4px solid #e74c3c;
+    }
+    
+    .guide-icon {
+        width: 40px;
+        height: 40px;
+        border-radius: 10px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 1.3rem;
+        flex-shrink: 0;
+    }
+    
+    .guide-item.green .guide-icon {
+        background: #27ae60;
+        color: white;
+    }
+    
+    .guide-item.yellow .guide-icon {
+        background: #f39c12;
+        color: white;
+    }
+    
+    .guide-item.red .guide-icon {
+        background: #e74c3c;
+        color: white;
+    }
+    
+    .guide-content h6 {
+        font-weight: 700;
+        font-size: 0.95rem;
+        color: #2d3436;
+    }
+    
+    .guide-content p {
+        font-size: 0.85rem;
+        color: #636e72;
+        line-height: 1.5;
+    }
+    
+    /* Tips Card */
+    .tips-card {
+        background: linear-gradient(135deg, #e3f4ff, #c6e5ff);
+        border: 2px solid #a9d5ff;
+    }
+    
+    .tips-card .card-body {
+        padding: 24px;
+    }
+    
+    .tips-icon {
+        width: 48px;
+        height: 48px;
+        background: #3498db;
+        border-radius: 12px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        color: white;
+        font-size: 1.5rem;
+        margin-bottom: 12px;
+    }
+    
+    .tips-list {
+        list-style: none;
+        padding: 0;
+    }
+    
+    .tips-list li {
+        padding: 8px 0;
+        padding-left: 24px;
+        position: relative;
+        font-size: 0.9rem;
+        color: #2d3436;
+        line-height: 1.6;
+    }
+    
+    .tips-list li::before {
+        content: "✓";
+        position: absolute;
+        left: 0;
+        color: #3498db;
+        font-weight: bold;
+    }
+    
+    /* Responsive */
+    @media (max-width: 992px) {
+        .card-body {
+            padding: 20px;
+        }
+        
+        .form-section {
+            margin-bottom: 20px;
+            padding-bottom: 14px;
+        }
+        
+        .kios-info-card {
+            padding: 14px 16px;
+        }
+    }
+</style>
+
+<script>
+    // Variable Global untuk menyimpan data saat ini
+    let currentKiosData = null;
+    let currentSOType = null;
+    let currentSOStock = 0;
+
+    const kiosSelect = document.getElementById('id_kios');
+    const soSelect = document.getElementById('id_sales_order');
+    const tonnageInput = document.getElementById('id_tonnage');
+    const submitBtn = document.getElementById('btnSubmit');
+    const trafficLight = document.getElementById('trafficLight');
+
+    // 1. EVENT: SAAT KIOS DIPILIH
+    kiosSelect.addEventListener('change', function() {
+        const kiosId = this.value;
+        if(kiosId) {
+            fetch(`{% url 'api_get_kios_info' %}?kios_id=${kiosId}`)
+                .then(response => response.json())
+                .then(data => {
+                    currentKiosData = data;
+                    
+                    // Tampilkan Info Box
+                    document.getElementById('kiosInfoBox').classList.remove('d-none');
+                    document.getElementById('infoKiosName').innerText = kiosSelect.options[kiosSelect.selectedIndex].text;
+                    document.getElementById('infoKiosAddress').innerText = `${data.address} (Kec. ${data.district})`;
+                    
+                    // Update Badge Sisa Kuota
+                    document.getElementById('badgeNPK').innerText = `NPK: ${data.allocations.NPK.kios_remaining}`;
+                    document.getElementById('badgeUREA').innerText = `UREA: ${data.allocations.UREA.kios_remaining}`;
+                    
+                    runTrafficLightCheck(); // Cek ulang lampu
+                });
+        }
+    });
+
+    // 2. EVENT: SAAT SO DIPILIH
+    soSelect.addEventListener('change', function() {
+        const soId = this.value;
+        if(soId) {
+            fetch(`{% url 'api_get_so_info' %}?so_id=${soId}`)
+                .then(response => response.json())
+                .then(data => {
+                    currentSOType = data.fertilizer_type; // 'NPK' atau 'UREA'
+                    currentSOStock = data.current_stock;
+                    
+                    document.getElementById('soInfoText').innerHTML = 
+                        `Jenis: <strong>${currentSOType}</strong> | Stok Tersedia: <strong>${currentSOStock} Ton</strong>`;
+                    
+                    runTrafficLightCheck();
+                });
+        }
+    });
+
+    // 3. EVENT: SAAT INPUT TONASE
+    tonnageInput.addEventListener('input', runTrafficLightCheck);
+
+    // --- FUNGSI UTAMA TRAFFIC LIGHT ---
+    function runTrafficLightCheck() {
+        const inputVal = parseFloat(tonnageInput.value) || 0;
+        
+        // Reset State
+        trafficLight.classList.add('d-none');
+        trafficLight.className = 'alert mt-3'; // Reset warna
+        submitBtn.disabled = false;
+
+        if (inputVal <= 0 || !currentKiosData || !currentSOType) return;
+
+        // CEK 1: STOK SO CUKUP?
+        if (inputVal > currentSOStock) {
+            showAlert('danger', '🛑 STOK GUDANG KURANG! Permintaan melebihi sisa stok SO.');
+            submitBtn.disabled = true;
+            return;
+        }
+
+        // Ambil Data Kuota yang relevan (NPK/UREA)
+        const relevantQuota = currentKiosData.allocations[currentSOType];
+        
+        // CEK 2: KUOTA KECAMATAN HABIS? (RED LIGHT)
+        if (inputVal > relevantQuota.district_remaining) {
+            showAlert('danger', `🛑 GAGAL SALUR! Kuota Kecamatan ${currentKiosData.district} untuk ${currentSOType} tidak mencukupi. Sisa Kec: ${relevantQuota.district_remaining}`);
+            submitBtn.disabled = true;
+            return;
+        }
+
+        // CEK 3: KUOTA KIOS KURANG? (YELLOW LIGHT / FLUID ALLOCATION)
+        if (inputVal > relevantQuota.kios_remaining) {
+            showAlert('warning', `⚠️ FLUID ALLOCATION: Kuota Kios habis. Menggunakan sisa kuota Kecamatan (${currentKiosData.district}).`);
+            return; // Masih boleh submit
+        }
+
+        // JIKA LOLOS SEMUA -> HIJAU
+        showAlert('success', '✅ ALOKASI AMAN. Stok & Kuota tersedia.');
+    }
+
+    function showAlert(type, message) {
+        trafficLight.classList.remove('d-none');
+        trafficLight.className = 'traffic-alert'; // Reset classes
+        trafficLight.classList.add(`alert-${type}`);
+        
+        let icon = '';
+        if (type === 'success') icon = '<i class="bi bi-check-circle-fill me-2"></i>';
+        else if (type === 'warning') icon = '<i class="bi bi-exclamation-triangle-fill me-2"></i>';
+        else if (type === 'danger') icon = '<i class="bi bi-x-circle-fill me-2"></i>';
+        
+        trafficLight.innerHTML = icon + message;
+    }
+</script>
+{% endblock %}

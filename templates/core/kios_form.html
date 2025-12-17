@@ -1,0 +1,80 @@
+{% extends 'base.html' %}
+
+{% block page_title %}{{ title }}{% endblock %}
+
+{% block content %}
+<div class="row justify-content-center">
+    <div class="col-md-8">
+        <div class="card p-4">
+            <form method="post">
+                {% csrf_token %}
+                
+                <h6 class="text-uppercase text-muted fw-bold mb-3">1. Profil Kios</h6>
+                <div class="row g-3 mb-4">
+                    <div class="col-md-6">
+                        <label class="form-label">Nama Kios</label>
+                        {{ form.name }}
+                    </div>
+                    <div class="col-md-6">
+                        <label class="form-label">Kecamatan</label>
+                        {{ form.district }}
+                    </div>
+                    <div class="col-md-6">
+                        <label class="form-label">Nama PIC</label>
+                        {{ form.pic_name }}
+                    </div>
+                    <div class="col-md-6">
+                        <label class="form-label">No HP</label>
+                        {{ form.phone }}
+                    </div>
+                    <div class="col-12">
+                        <label class="form-label">Alamat Lengkap</label>
+                        {{ form.address }}
+                    </div>
+                    <div class="col-12">
+                        <div class="form-check">
+                            {{ form.is_active }}
+                            <label class="form-check-label">Status Kios Aktif</label>
+                        </div>
+                    </div>
+                </div>
+
+                <hr class="my-4">
+
+                <h6 class="text-uppercase text-muted fw-bold mb-3">2. Alokasi Kuota (NPK & UREA)</h6>
+                <div class="alert alert-info py-2 small">
+                    <i class="bi bi-info-circle me-1"></i> Masukkan kuota tahunan. Jika salah satu jenis tidak diambil, biarkan kosong/0.
+                </div>
+                
+                {{ formset.management_form }}
+                <div class="table-responsive">
+                    <table class="table table-bordered">
+                        <thead class="table-light">
+                            <tr>
+                                <th>Jenis Pupuk</th>
+                                <th>Tahun</th>
+                                <th>Jatah Kuota (Ton)</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for f in formset %}
+                                <tr>
+                                    <td>{{ f.fertilizer_type }}</td>
+                                    <td>{{ f.year }}</td>
+                                    <td>{{ f.quota_original }}</td>
+                                    {{ f.id }} 
+                                </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+
+                <div class="d-flex justify-content-end gap-2 mt-4">
+                    <a href="{% url 'kios_list' %}" class="btn btn-light border">Batal</a>
+                    <button type="submit" class="btn btn-success px-4">Simpan Data</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+{% endblock %}
