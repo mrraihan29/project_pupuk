@@ -1,7 +1,7 @@
 from django import forms
 from django.db.models import Sum
 from core.models import KiosAllocation
-from .models import Distribution, SalesOrder
+from .models import Distribution, SalesOrder, StockAdjustment
 
 class DistributionForm(forms.ModelForm):
     class Meta:
@@ -51,3 +51,19 @@ class DistributionForm(forms.ModelForm):
                 f"GAGAL SALUR (RED LIGHT): Kuota Kecamatan {kios.district} untuk {jenis_pupuk} sudah habis! "
                 f"Sisa Kecamatan: {total_district_quota} Ton."
             )
+            
+class StockAdjustmentForm(forms.ModelForm):
+    class Meta:
+        model = StockAdjustment
+        fields = ['sales_order', 'actual_stock', 'reason']
+        widgets = {
+            'sales_order': forms.Select(attrs={'class': 'form-select'}),
+            'actual_stock': forms.NumberInput(attrs={'class': 'form-control', 'step': '0.01', 'placeholder': 'Masukkan angka hasil hitung fisik...'}),
+            'reason': forms.Textarea(attrs={'class': 'form-control', 'rows': 3, 'placeholder': 'Jelaskan kenapa stok berubah...'}),
+        }
+    
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        # Hanya tampilkan SO yang belum closed atau masih relevan
+        self.fields['sales_order'].queryset = SalesOrder.objects.filter(is_closed=False)
+        self.fields['sales_order'].label = "Pilih Batch / Kode SO"

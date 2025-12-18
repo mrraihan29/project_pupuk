@@ -3,10 +3,12 @@ from django.http import JsonResponse, HttpResponse
 from django.contrib import messages
 from django.db.models import Sum
 from core.models import Kios, KiosAllocation, FertilizerPrice
-from .models import SalesOrder, Distribution
-from .forms import DistributionForm
-from django.template.loader import get_template # Baru
-from xhtml2pdf import pisa # Baru
+from .models import SalesOrder, Distribution, StockAdjustment
+from .forms import DistributionForm, StockAdjustmentForm
+from django.template.loader import get_template
+from xhtml2pdf import pisa
+from core.decorators import owner_required
+
 # --- VIEW UTAMA ---
 def distribution_create(request):
     if request.method == 'POST':
@@ -134,3 +136,22 @@ def print_document(request, pk, doc_type):
     if pisa_status.err:
         return HttpResponse('We had some errors <pre>' + html + '</pre>')
     return response
+
+@owner_required # Security Layer: Hanya Owner/Superuser
+def stock_opname(request):
+    if request.method == 'POST':
+        form = StockAdjustmentForm(request.POST)
+        if form.is_valid():
+            adjustment = form.save(commit=False)
+            adjustment.executor = request.user # Auto-detect siapa yang login
+            
+            try:
+                adjustment.save() # Trigger logic atomic transaction di models.py
+                messages.success(request, f"✅ Stock Opname Berhasil. Stok SO {adjustment.sales_order.so_code} kini menjadi {adjustment.actual_stock} Ton.")
+                return redirect('dashboard') # Atau redirect ke log list
+            except Exception as e:
+                messages.error(request, f"Terjadi Kesalahan Sistem: {e}")
+    else:
+        form = StockAdjustmentForm()
+
+    return render(request, 'gudang/stock_opname.html', {'form': form})

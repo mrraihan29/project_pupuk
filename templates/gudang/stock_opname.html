@@ -1,0 +1,61 @@
+{% extends 'base.html' %}
+{% block page_title %}Stock Opname (Penyesuaian Fisik){% endblock %}
+
+{% block content %}
+<div class="row justify-content-center">
+    <div class="col-md-7">
+        
+        <div class="card border-warning mb-4">
+            <div class="card-header bg-warning text-dark fw-bold">
+                <i class="bi bi-exclamation-triangle-fill me-2"></i> PERHATIAN: AREA AUDIT
+            </div>
+            <div class="card-body bg-light">
+                <p class="mb-0 small text-muted">
+                    Fitur ini digunakan untuk <strong>mereset stok sistem</strong> agar sesuai dengan hasil hitung fisik di gudang (Stock Opname Bulanan).
+                    Setiap perubahan akan tercatat di Kartu Stok sebagai transaksi <em>Adjustment</em>.
+                </p>
+            </div>
+        </div>
+
+        <div class="card shadow-sm">
+            <div class="card-body p-4">
+                <h5 class="card-title fw-bold mb-4">Input Hasil Opname</h5>
+                
+                <form method="post">
+                    {% csrf_token %}
+                    
+                    <div class="mb-3">
+                        <label class="form-label fw-bold">1. Pilih Batch / Kode SO</label>
+                        {{ form.sales_order }}
+                        <div class="form-text">Pilih batch pupuk yang sedang dihitung.</div>
+                    </div>
+
+                    <div class="mb-3">
+                        <label class="form-label fw-bold">2. Stok Fisik (Actual)</label>
+                        <div class="input-group">
+                            {{ form.actual_stock }}
+                            <span class="input-group-text fw-bold">Ton</span>
+                        </div>
+                        <div class="form-text text-danger">Masukkan angka riil yang ada di gudang saat ini.</div>
+                    </div>
+
+                    <div class="mb-3">
+                        <label class="form-label fw-bold">3. Keterangan / Berita Acara</label>
+                        {{ form.reason }}
+                    </div>
+
+                    <hr class="my-4">
+
+                    <div class="d-flex justify-content-end gap-2">
+                        <a href="{% url 'dashboard' %}" class="btn btn-light border">Batal</a>
+                        <button type="submit" class="btn btn-warning fw-bold px-4" onclick="return confirm('Apakah Anda yakin data fisik sudah benar? Stok sistem akan di-overwrite.');">
+                            <i class="bi bi-save me-2"></i>Simpan Hasil Opname
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+
+    </div>
+</div>
+{% endblock %}

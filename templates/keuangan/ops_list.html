@@ -50,16 +50,19 @@
                     </td>
                     <td>
                         {% if user.is_superuser or "Owner" in user_groups %} 
+                            
                             {% if not ops.is_approved %}
                                 <a href="{% url 'ops_approve' ops.pk %}" class="btn btn-sm btn-success" title="Setujui">
                                     <i class="bi bi-check-lg"></i>
                                 </a>
                             {% endif %}
+                            
                             <a href="{% url 'ops_delete' ops.pk %}" class="btn btn-sm btn-danger" title="Tolak/Hapus" onclick="return confirm('Yakin tolak biaya ini?');">
                                 <i class="bi bi-x-lg"></i>
                             </a>
+
                         {% else %}
-                            <small class="text-muted">Menunggu Owner</small>
+                            <small class="text-muted fst-italic">Menunggu Owner</small>
                         {% endif %}
                     </td>
                     </tr>

@@ -4,7 +4,7 @@ from django.core.exceptions import ValidationError
 from datetime import timedelta
 from decimal import Decimal
 from django.db import transaction
-
+from django.conf import settings # Untuk referensi User model
 # Import models from core app
 from core.models import Kios, Armada, KiosAllocation
 
@@ -155,3 +155,67 @@ class Distribution(models.Model):
     class Meta:
         verbose_name_plural = "Data Penyaluran (Distribusi)"
         ordering = ['-transaction_date']
+
+class StockAdjustment(models.Model):
+    """
+    Model untuk mencatat segala bentuk koreksi stok (Stock Opname).
+    Menggunakan pendekatan 'Audit Log' dimana setiap perubahan tercatat history-nya.
+    """
+    sales_order = models.ForeignKey(SalesOrder, on_delete=models.CASCADE, related_name='adjustments')
+    
+    # Snapshot data sebelum diedit (Untuk bukti audit)
+    previous_stock = models.DecimalField("Stok Sistem (Sebelum)", max_digits=10, decimal_places=2, editable=False)
+    
+    # Inputan User (Fisik Nyata)
+    actual_stock = models.DecimalField("Stok Fisik (Actual)", max_digits=10, decimal_places=2)
+    
+    # Hasil kalkulasi (Selisih)
+    adjustment_qty = models.DecimalField("Selisih (Adjustment)", max_digits=10, decimal_places=2, editable=False)
+    
+    reason = models.TextField("Alasan Koreksi", help_text="Wajib diisi detail. Contoh: Stock Opname Bulan November 2025")
+    executor = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT, verbose_name="Eksekutor")
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    def save(self, *args, **kwargs):
+        # ATOMIC TRANSACTION: Pastikan semua proses db di bawah ini sukses bareng atau gagal bareng
+        with transaction.atomic():
+            # 1. Ambil Stok Lama dari Database (Real-time)
+            # Kita refresh dari db untuk menghindari race condition
+            self.sales_order.refresh_from_db()
+            self.previous_stock = self.sales_order.tonnage_current
+            
+            # 2. Hitung Selisih
+            # Rumus: Stok Fisik - Stok Sistem
+            # Contoh: Fisik 90 - Sistem 100 = -10 (Kurang/Hilang)
+            # Contoh: Fisik 110 - Sistem 100 = +10 (Kelebihan/Retur tak tercatat)
+            self.adjustment_qty = self.actual_stock - self.previous_stock
+            
+            # 3. Update Master Stok (Sales Order)
+            self.sales_order.tonnage_current = self.actual_stock
+            self.sales_order.save()
+            
+            # 4. Simpan Record Adjustment Ini
+            super().save(*args, **kwargs)
+            
+            # 5. Catat ke KARTU STOK (StockCard)
+            # Ini wajib agar "Running Balance" di kartu stok tetap nyambung matematikanya.
+            from .models import StockCard # Import di dalam untuk hindari circular import
+            
+            # Tentukan tipe transaksi berdasarkan plus/minus
+            trx_type = 'IN' if self.adjustment_qty > 0 else 'OUT'
+            ref_note = f"STOCK OPNAME #{self.pk} ({self.reason})"
+            
+            StockCard.objects.create(
+                sales_order=self.sales_order,
+                trx_type=trx_type,
+                reference_number=ref_note,
+                qty_change=abs(self.adjustment_qty), # Selalu positif di log
+                balance_after=self.actual_stock
+            )
+
+    def __str__(self):
+        return f"Adj #{self.pk} - {self.sales_order.so_code}"
+
+    class Meta:
+        verbose_name = "Stock Opname / Adjustment"
+        ordering = ['-created_at']

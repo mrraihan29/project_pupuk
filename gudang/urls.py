@@ -11,4 +11,7 @@ urlpatterns = [
     # API Endpoints (Dipanggil JS)
     path('api/get-kios-info/', views.get_kios_info, name='api_get_kios_info'),
     path('api/get-so-info/', views.get_so_info, name='api_get_so_info'),
+    
+    # Stock Opname
+    path('stock-opname/', views.stock_opname, name='stock_opname'),
 ]
