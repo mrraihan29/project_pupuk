@@ -3,8 +3,8 @@ from django.http import JsonResponse, HttpResponse
 from django.contrib import messages
 from django.db.models import Sum
 from core.models import Kios, KiosAllocation, FertilizerPrice
-from .models import SalesOrder, Distribution, StockAdjustment
-from .forms import DistributionForm, StockAdjustmentForm
+from .models import SalesOrder, Distribution, StockAdjustment, StockCard
+from .forms import DistributionForm, StockAdjustmentForm, SalesOrderForm
 from django.template.loader import get_template
 from xhtml2pdf import pisa
 from core.decorators import owner_required
@@ -155,3 +155,25 @@ def stock_opname(request):
         form = StockAdjustmentForm()
 
     return render(request, 'gudang/stock_opname.html', {'form': form})
+
+def so_list(request):
+    # Tampilkan SO yang belum closed (masih ada stok)
+    so_data = SalesOrder.objects.all().order_by('-entry_date')
+    return render(request, 'gudang/so_list.html', {'so_data': so_data})
+
+def so_create(request):
+    if request.method == 'POST':
+        form = SalesOrderForm(request.POST)
+        if form.is_valid():
+            form.save() # Logic auto-detect NPK/Urea ada di models.py
+            messages.success(request, "Penebusan berhasil dicatat!")
+            return redirect('so_list')
+    else:
+        form = SalesOrderForm()
+    return render(request, 'gudang/so_form.html', {'form': form})
+
+# --- KARTU STOK ---
+def stock_card_list(request):
+    # Ambil semua log, urutkan dari yang terbaru
+    logs = StockCard.objects.all().select_related('sales_order').order_by('-date')
+    return render(request, 'gudang/stock_card_list.html', {'logs': logs})

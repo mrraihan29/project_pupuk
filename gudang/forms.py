@@ -67,3 +67,20 @@ class StockAdjustmentForm(forms.ModelForm):
         # Hanya tampilkan SO yang belum closed atau masih relevan
         self.fields['sales_order'].queryset = SalesOrder.objects.filter(is_closed=False)
         self.fields['sales_order'].label = "Pilih Batch / Kode SO"
+        
+class SalesOrderForm(forms.ModelForm):
+    class Meta:
+        model = SalesOrder
+        fields = ['so_code', 'tonnage_initial', 'entry_date']
+        widgets = {
+            'so_code': forms.TextInput(attrs={'class': 'form-control', 'placeholder': '3101-xxxx (NPK) atau 3820-xxxx (UREA)'}),
+            'tonnage_initial': forms.NumberInput(attrs={'class': 'form-control', 'step': '0.01'}),
+            'entry_date': forms.DateInput(attrs={'type': 'date', 'class': 'form-control'}),
+        }
+    
+    def clean_so_code(self):
+        # Validasi Kode SO agar sesuai aturan Client
+        code = self.cleaned_data.get('so_code')
+        if not (code.startswith('3101') or code.startswith('3820')):
+            raise forms.ValidationError("Kode SO harus diawali 3101 (NPK) atau 3820 (UREA)")
+        return code

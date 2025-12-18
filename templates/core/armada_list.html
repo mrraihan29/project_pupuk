@@ -1,0 +1,56 @@
+{% extends 'base.html' %}
+{% block page_title %}Master Data Armada{% endblock %}
+
+{% block content %}
+<div class="card p-4">
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <div>
+            <h5 class="fw-bold mb-0">Daftar Armada & Supir</h5>
+            <small class="text-muted">Database kendaraan untuk operasional distribusi.</small>
+        </div>
+        <a href="{% url 'armada_create' %}" class="btn btn-success">
+            <i class="bi bi-plus-lg me-2"></i>Tambah Armada
+        </a>
+    </div>
+
+    <div class="table-responsive">
+        <table class="table table-hover align-middle">
+            <thead class="table-light">
+                <tr>
+                    <th>Plat Nomor</th>
+                    <th>Jenis Kendaraan</th>
+                    <th>Nama Supir</th>
+                    <th>Status</th>
+                    </tr>
+            </thead>
+            <tbody>
+                {% for a in armada %}
+                <tr>
+                    <td>
+                        <div class="fw-bold text-primary">{{ a.plate_number }}</div>
+                    </td>
+                    <td>{{ a.vehicle_type }}</td>
+                    <td class="fw-bold">{{ a.driver_name }}</td>
+                    <td>
+                        {% if a.is_active %}
+                            <span class="badge bg-success bg-opacity-10 text-success">
+                                <i class="bi bi-check-circle me-1"></i> Aktif
+                            </span>
+                        {% else %}
+                            <span class="badge bg-danger bg-opacity-10 text-danger">Nonaktif</span>
+                        {% endif %}
+                    </td>
+                </tr>
+                {% empty %}
+                <tr>
+                    <td colspan="4" class="text-center py-5 text-muted">
+                        <i class="bi bi-truck fs-1 d-block mb-2 opacity-25"></i>
+                        Belum ada data armada.
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+{% endblock %}

@@ -341,7 +341,7 @@
             </a>
             
             <div class="menu-header">Gudang</div>
-            <a class="nav-link" href="#" title="Penebusan (SO)">
+            <a class="nav-link" href="{% url 'so_list' %}" title="Penebusan (SO)">
                 <i class="bi bi-box-seam"></i>
                 <span>Penebusan (SO)</span>
             </a>
@@ -349,7 +349,7 @@
                 <i class="bi bi-truck"></i>
                 <span>Distribusi</span>
             </a>
-            <a class="nav-link" href="#" title="Kartu Stok">
+            <a class="nav-link" href="{% url 'stock_card_list' %}" title="Kartu Stok">
                 <i class="bi bi-clipboard-data"></i>
                 <span>Kartu Stok</span>
             </a>
@@ -359,7 +359,13 @@
                 <i class="bi bi-shop"></i>
                 <span>Data Kios</span>
             </a>
-            <a class="nav-link" href="#" title="Armada">
+
+            <a class="nav-link" href="{% url 'raport_kios' %}" title="Laporan Raport">
+                <i class="bi bi-shop"></i>
+                <span>Laporan Raport</span>
+            </a>
+            
+            <a class="nav-link" href="{% url 'armada_list' %}" title="Armada">
                 <i class="bi bi-ev-front"></i>
                 <span>Armada</span>
             </a>

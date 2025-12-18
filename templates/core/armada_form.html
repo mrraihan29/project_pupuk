@@ -1,0 +1,42 @@
+{% extends 'base.html' %}
+{% block page_title %}Input Armada Baru{% endblock %}
+
+{% block content %}
+<div class="row justify-content-center">
+    <div class="col-md-6">
+        <div class="card p-4 shadow-sm">
+            <h5 class="fw-bold mb-4">Form Data Kendaraan</h5>
+            
+            <form method="post">
+                {% csrf_token %}
+                
+                <div class="mb-3">
+                    <label class="form-label">Nomor Polisi (Plat)</label>
+                    {{ form.plate_number }}
+                    <div class="form-text">Contoh: H 1234 XX</div>
+                </div>
+
+                <div class="mb-3">
+                    <label class="form-label">Jenis Kendaraan</label>
+                    {{ form.vehicle_type }}
+                </div>
+
+                <div class="mb-3">
+                    <label class="form-label">Nama Supir Tetap</label>
+                    {{ form.driver_name }}
+                </div>
+
+                <div class="mb-3 form-check">
+                    {{ form.is_active }}
+                    <label class="form-check-label ms-2">Armada Aktif / Siap Jalan</label>
+                </div>
+
+                <div class="d-flex justify-content-end gap-2 mt-4">
+                    <a href="{% url 'armada_list' %}" class="btn btn-light border">Batal</a>
+                    <button type="submit" class="btn btn-success px-4">Simpan Data</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+{% endblock %}

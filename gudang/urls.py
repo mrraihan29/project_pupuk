@@ -14,4 +14,9 @@ urlpatterns = [
     
     # Stock Opname
     path('stock-opname/', views.stock_opname, name='stock_opname'),
+    
+    # Sales Order (Penebusan)
+    path('penebusan/', views.so_list, name='so_list'),
+    path('penebusan/add/', views.so_create, name='so_create'),
+    path('kartu-stok/', views.stock_card_list, name='stock_card_list'),
 ]

@@ -1,6 +1,7 @@
 from django.shortcuts import render, redirect, get_object_or_404
 from django.contrib import messages
 from django.db.models import Sum
+from django.http import JsonResponse
 from .models import Invoice, Payment, BiayaOperasional
 from .forms import PaymentForm, BiayaOperasionalForm
 from core.decorators import owner_required
@@ -76,3 +77,28 @@ def ops_delete(request, pk):
     ops.delete()
     messages.warning(request, "Pengajuan biaya dihapus/ditolak.")
     return redirect('ops_list')
+
+# --- API ANTI-FRAUD ---
+def get_armada_history(request):
+    """
+    API untuk mengambil 5 riwayat pengeluaran terakhir dari armada tertentu.
+    Dipanggil via AJAX saat dropdown armada berubah.
+    """
+    armada_id = request.GET.get('armada_id')
+    if not armada_id:
+        return JsonResponse({'error': 'No ID'}, status=400)
+
+    # Ambil 5 pengeluaran terakhir (Terutama Servis & Sparepart)
+    history = BiayaOperasional.objects.filter(armada_id=armada_id).order_by('-tanggal')[:5]
+    
+    data = []
+    for h in history:
+        data.append({
+            'tanggal': h.tanggal.strftime('%d/%m/%Y'),
+            'kategori': h.kategori,  # Use the actual value if not a choice field
+            'keterangan': h.keterangan,
+            'nominal': float(h.nominal),
+            'status': 'Approved' if h.is_approved else 'Pending'
+        })
+    
+    return JsonResponse({'history': data})

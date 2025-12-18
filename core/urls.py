@@ -7,4 +7,9 @@ urlpatterns = [
     path('kios/add/', views.kios_create, name='kios_create'),
     path('kios/edit/<int:pk>/', views.kios_update, name='kios_update'),
     path('kios/delete/<int:pk>/', views.kios_delete, name='kios_delete'),
+    
+    path('laporan/raport/', views.raport_kios, name='raport_kios'),
+    
+    path('armada/', views.armada_list, name='armada_list'),
+    path('armada/add/', views.armada_create, name='armada_create'),
 ]

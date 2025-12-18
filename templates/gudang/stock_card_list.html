@@ -1,0 +1,34 @@
+{% extends 'base.html' %}
+{% block page_title %}Kartu Stok (Log Mutasi){% endblock %}
+{% block content %}
+<div class="card p-4">
+    <h5 class="fw-bold mb-4">Riwayat Pergerakan Barang</h5>
+    <table class="table table-sm table-striped">
+        <thead>
+            <tr>
+                <th>Waktu</th>
+                <th>Kode SO</th>
+                <th>Tipe</th>
+                <th>Referensi</th>
+                <th>Mutasi</th>
+                <th>Saldo Akhir</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for log in logs %}
+            <tr>
+                <td>{{ log.date|date:"d M Y H:i" }}</td>
+                <td>{{ log.sales_order.so_code }}</td>
+                <td>
+                    {% if log.trx_type == 'IN' %}<span class="text-success fw-bold">MASUK</span>
+                    {% else %}<span class="text-danger fw-bold">KELUAR</span>{% endif %}
+                </td>
+                <td>{{ log.reference_number }}</td>
+                <td class="fw-bold">{{ log.qty_change }}</td>
+                <td>{{ log.balance_after }}</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+{% endblock %}

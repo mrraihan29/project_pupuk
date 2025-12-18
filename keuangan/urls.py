@@ -11,4 +11,6 @@ urlpatterns = [
     path('operational/add/', views.ops_create, name='ops_create'),
     path('operational/approve/<int:pk>/', views.ops_approve, name='ops_approve'),
     path('operational/delete/<int:pk>/', views.ops_delete, name='ops_delete'),  
+    
+    path('api/armada-history/', views.get_armada_history, name='api_armada_history'),
 ]

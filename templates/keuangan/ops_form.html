@@ -3,16 +3,38 @@
 
 {% block content %}
 <div class="row justify-content-center">
-    <div class="col-md-8">
+    <div class="col-md-6">
         <div class="card p-4">
             <h6 class="fw-bold mb-4 text-muted text-uppercase">Form Klaim Biaya Jalan</h6>
             <form method="post" enctype="multipart/form-data">
                 {% csrf_token %}
                 <div class="row g-3">
-                    <div class="col-md-6">
+                    <div class="col-md-12">
                         <label>Pilih Armada</label>
-                        {{ form.armada }}
+                        {{ form.armada }} </div>
+                    
+                    <div class="col-12 d-none" id="historyArea">
+                        <div class="card bg-light border-warning">
+                            <div class="card-header bg-warning text-dark small fw-bold">
+                                <i class="bi bi-clock-history me-1"></i> Riwayat 5 Transaksi Terakhir
+                            </div>
+                            <div class="table-responsive">
+                                <table class="table table-sm table-bordered mb-0 small bg-white">
+                                    <thead>
+                                        <tr>
+                                            <th>Tgl</th>
+                                            <th>Kat</th>
+                                            <th>Ket</th>
+                                            <th>Rp</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody id="historyTableBody">
+                                        </tbody>
+                                </table>
+                            </div>
+                        </div>
                     </div>
+
                     <div class="col-md-6">
                         <label>Kategori Pengeluaran</label>
                         {{ form.kategori }}
@@ -26,11 +48,11 @@
                         {{ form.tanggal }}
                     </div>
                     <div class="col-12">
-                        <label>Keterangan Detail (Nama Bengkel / Keperluan)</label>
+                        <label>Keterangan Detail</label>
                         {{ form.keterangan }}
                     </div>
                     <div class="col-12">
-                        <label>Upload Foto Nota/Struk (Wajib)</label>
+                        <label>Upload Foto Nota/Struk</label>
                         {{ form.foto_bukti }}
                     </div>
                 </div>
@@ -43,4 +65,43 @@
         </div>
     </div>
 </div>
+
+<script>
+    const armadaSelect = document.getElementById('id_armada');
+    const historyArea = document.getElementById('historyArea');
+    const historyBody = document.getElementById('historyTableBody');
+
+    armadaSelect.addEventListener('change', function() {
+        const armadaId = this.value;
+        
+        if (armadaId) {
+            // Panggil API Backend
+            fetch(`{% url 'api_armada_history' %}?armada_id=${armadaId}`)
+                .then(response => response.json())
+                .then(data => {
+                    historyBody.innerHTML = ''; // Kosongkan tabel lama
+                    
+                    if (data.history.length > 0) {
+                        historyArea.classList.remove('d-none'); // Munculkan tabel
+                        
+                        data.history.forEach(item => {
+                            const row = `
+                                <tr>
+                                    <td>${item.tanggal}</td>
+                                    <td>${item.kategori}</td>
+                                    <td class="text-truncate" style="max-width: 100px;">${item.keterangan}</td>
+                                    <td class="fw-bold">${item.nominal.toLocaleString()}</td>
+                                </tr>
+                            `;
+                            historyBody.innerHTML += row;
+                        });
+                    } else {
+                        historyArea.classList.add('d-none'); // Sembunyikan jika belum ada history
+                    }
+                });
+        } else {
+            historyArea.classList.add('d-none');
+        }
+    });
+</script>
 {% endblock %}

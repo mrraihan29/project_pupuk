@@ -1,6 +1,6 @@
 from django import forms
 from django.forms import inlineformset_factory
-from .models import Kios, KiosAllocation
+from .models import Kios, KiosAllocation, Armada
 
 class KiosForm(forms.ModelForm):
     class Meta:
@@ -28,3 +28,14 @@ KiosAllocationFormSet = inlineformset_factory(
         'quota_original': forms.NumberInput(attrs={'class': 'form-control', 'placeholder': 'Ton'}),
     }
 )
+
+class ArmadaForm(forms.ModelForm):
+    class Meta:
+        model = Armada
+        fields = ['plate_number', 'vehicle_type', 'driver_name', 'is_active']
+        widgets = {
+            'plate_number': forms.TextInput(attrs={'class': 'form-control'}),
+            'vehicle_type': forms.TextInput(attrs={'class': 'form-control', 'placeholder': 'Contoh: Truk Engkel'}),
+            'driver_name': forms.TextInput(attrs={'class': 'form-control'}),
+            'is_active': forms.CheckboxInput(attrs={'class': 'form-check-input'}),
+        }
