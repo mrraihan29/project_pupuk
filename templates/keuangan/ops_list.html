@@ -1,0 +1,73 @@
+{% extends 'base.html' %}
+{% block page_title %}Biaya Operasional (Ops){% endblock %}
+
+{% block content %}
+<div class="card p-4">
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <h5 class="fw-bold mb-0">Riwayat Pengeluaran</h5>
+        <a href="{% url 'ops_create' %}" class="btn btn-primary">
+            <i class="bi bi-plus-lg me-2"></i>Ajukan Biaya
+        </a>
+    </div>
+
+    <div class="table-responsive">
+        <table class="table table-hover align-middle">
+            <thead class="table-light">
+                <tr>
+                    <th>Tanggal</th>
+                    <th>Armada</th>
+                    <th>Kategori</th>
+                    <th>Keterangan</th>
+                    <th>Nominal</th>
+                    <th>Bukti</th>
+                    <th>Status</th>
+                    <th>Aksi</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for ops in ops_costs %}
+                <tr>
+                    <td>{{ ops.tanggal|date:"d M Y" }}</td>
+                    <td class="fw-bold">{{ ops.armada.plate_number }}</td>
+                    <td><span class="badge bg-secondary">{{ ops.get_kategori_display }}</span></td>
+                    <td class="small">{{ ops.keterangan }}</td>
+                    <td class="fw-bold">Rp {{ ops.nominal|floatformat:0 }}</td>
+                    <td>
+                        {% if ops.foto_bukti %}
+                            <a href="{{ ops.foto_bukti.url }}" target="_blank" class="text-decoration-none">
+                                <i class="bi bi-image text-primary"></i> Lihat
+                            </a>
+                        {% else %}
+                            <span class="text-muted">-</span>
+                        {% endif %}
+                    </td>
+                    <td>
+                        {% if ops.is_approved %}
+                            <span class="badge bg-success">Disetujui</span>
+                        {% else %}
+                            <span class="badge bg-warning text-dark">Pending</span>
+                        {% endif %}
+                    </td>
+                    <td>
+                        {% if user.is_superuser or "Owner" in user_groups %} 
+                            {% if not ops.is_approved %}
+                                <a href="{% url 'ops_approve' ops.pk %}" class="btn btn-sm btn-success" title="Setujui">
+                                    <i class="bi bi-check-lg"></i>
+                                </a>
+                            {% endif %}
+                            <a href="{% url 'ops_delete' ops.pk %}" class="btn btn-sm btn-danger" title="Tolak/Hapus" onclick="return confirm('Yakin tolak biaya ini?');">
+                                <i class="bi bi-x-lg"></i>
+                            </a>
+                        {% else %}
+                            <small class="text-muted">Menunggu Owner</small>
+                        {% endif %}
+                    </td>
+                    </tr>
+                {% empty %}
+                <tr><td colspan="8" class="text-center py-5">Belum ada data pengeluaran.</td></tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+{% endblock %}

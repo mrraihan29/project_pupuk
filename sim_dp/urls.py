@@ -25,6 +25,7 @@ urlpatterns = [
     path('', dashboard, name='dashboard'), # Halaman awal = dashboard
     path('', include('core.urls')),
     path('', include('gudang.urls')),
+    path('', include('keuangan.urls')),
 ]
 
 # Media files serving during development

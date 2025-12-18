@@ -1,0 +1,46 @@
+{% extends 'base.html' %}
+{% block page_title %}Ajukan Biaya Operasional{% endblock %}
+
+{% block content %}
+<div class="row justify-content-center">
+    <div class="col-md-8">
+        <div class="card p-4">
+            <h6 class="fw-bold mb-4 text-muted text-uppercase">Form Klaim Biaya Jalan</h6>
+            <form method="post" enctype="multipart/form-data">
+                {% csrf_token %}
+                <div class="row g-3">
+                    <div class="col-md-6">
+                        <label>Pilih Armada</label>
+                        {{ form.armada }}
+                    </div>
+                    <div class="col-md-6">
+                        <label>Kategori Pengeluaran</label>
+                        {{ form.kategori }}
+                    </div>
+                    <div class="col-md-6">
+                        <label>Nominal (Rp)</label>
+                        {{ form.nominal }}
+                    </div>
+                    <div class="col-md-6">
+                        <label>Tanggal Transaksi</label>
+                        {{ form.tanggal }}
+                    </div>
+                    <div class="col-12">
+                        <label>Keterangan Detail (Nama Bengkel / Keperluan)</label>
+                        {{ form.keterangan }}
+                    </div>
+                    <div class="col-12">
+                        <label>Upload Foto Nota/Struk (Wajib)</label>
+                        {{ form.foto_bukti }}
+                    </div>
+                </div>
+
+                <div class="d-flex justify-content-end gap-2 mt-4">
+                    <a href="{% url 'ops_list' %}" class="btn btn-light border">Batal</a>
+                    <button type="submit" class="btn btn-primary px-4">Ajukan Klaim</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+{% endblock %}
