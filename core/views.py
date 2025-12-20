@@ -1,11 +1,13 @@
 from django.shortcuts import render, redirect, get_object_or_404
 from django.contrib import messages
+from django.contrib.auth.decorators import login_required
+from django.db.models import Sum
+from datetime import date
+
 from .models import Kios, Armada
 from .forms import KiosForm, KiosAllocationFormSet, ArmadaForm
-from django.db.models import Sum, F
 from gudang.models import SalesOrder
 from keuangan.models import Invoice
-from datetime import date
 
 # 1. READ (Daftar Kios)
 def kios_list(request):
@@ -73,29 +75,57 @@ def kios_delete(request, pk):
     
     return render(request, 'core/kios_confirm_delete.html', {'kios': kios})
 
-# --- DASHBOARD (View Lama) ---
+# 5. DASHBOARD VIEW
+@login_required
 def dashboard(request):
-    # 1. Total Stok Gudang (Real-time)
+    today = date.today()
+    
+    # --- 1. KEY METRICS (KARTU ATAS) ---
+    
+    # A. Total Piutang (Uang di luar)
+    # Filter: Status UNPAID atau PARTIAL
+    total_piutang = Invoice.objects.filter(
+        status__in=['UNPAID', 'PARTIAL']
+    ).aggregate(Sum('remaining_balance'))['remaining_balance__sum'] or 0
+
+    # B. Permintaan Belum Ditebus (Gap Alokasi vs SO)
+    # Logika: Kita asumsikan target penebusan ideal adalah 100% Alokasi. 
+    # Karena Alokasi ada di Kios, kita perlu agregat manual atau simplifikasi stok gudang saat ini.
+    # Untuk dashboard ini, kita pakai "Total Stok Tersedia" sebagai indikator kesiapan.
     stok_npk = SalesOrder.objects.filter(fertilizer_type='NPK', is_closed=False).aggregate(Sum('tonnage_current'))['tonnage_current__sum'] or 0
     stok_urea = SalesOrder.objects.filter(fertilizer_type='UREA', is_closed=False).aggregate(Sum('tonnage_current'))['tonnage_current__sum'] or 0
+    total_stok = stok_npk + stok_urea
 
-    # 2. Keuangan (Invoice Overdue / Macet)
-    today = date.today()
-    # Cari invoice UNPAID yang tanggal jatuh temponya sudah lewat hari ini
-    tagihan_macet = Invoice.objects.filter(status='UNPAID', due_date__lt=today).count()
-    total_piutang = Invoice.objects.filter(status__in=['UNPAID', 'PARTIAL']).aggregate(Sum('remaining_balance'))['remaining_balance__sum'] or 0
+    # C. Tagihan Jatuh Tempo (Risk Warning)
+    # Invoice yang belum lunas DAN due_date <= hari ini
+    invoice_overdue_count = Invoice.objects.filter(
+        status__in=['UNPAID', 'PARTIAL'], 
+        due_date__lte=today
+    ).count()
 
-    # 3. Peringatan Stok SO Expired (Jatuh Tempo Gudang)
-    # Cari SO yang belum habis TAPI sudah lewat maturity_date
-    so_expired = SalesOrder.objects.filter(is_closed=False, maturity_date__lt=today).count()
+    # --- 2. TABEL UTAMA (Sesuai Sketsa: No Inv, Kec, Kios, Piutang, Jatuh Tempo) ---
+    # Kita ambil 10 Invoice yang belum lunas, urutkan dari yang paling tua (danger)
+    invoices_list = Invoice.objects.filter(
+        status__in=['UNPAID', 'PARTIAL']
+    ).select_related('distribution__kios').order_by('due_date')[:10]
+
+    # --- 3. SO JATUH TEMPO TERDEKAT (Sesuai Sketsa) ---
+    # Sales Order yang stoknya masih ada (is_closed=False) tapi tanggal maturity sudah dekat
+    so_expiring = SalesOrder.objects.filter(
+        is_closed=False
+    ).order_by('maturity_date')[:5] # Ambil 5 teratas
 
     context = {
+        'total_piutang': total_piutang,
+        'invoice_overdue_count': invoice_overdue_count,
         'stok_npk': stok_npk,
         'stok_urea': stok_urea,
-        'tagihan_macet': tagihan_macet,
-        'total_piutang': total_piutang,
-        'so_expired': so_expired,
+        'total_stok': total_stok,
+        'invoices_list': invoices_list,
+        'so_expiring': so_expiring,
+        'today': today,
     }
+
     return render(request, 'dashboard.html', context)
 
 

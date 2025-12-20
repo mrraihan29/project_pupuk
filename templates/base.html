@@ -20,7 +20,7 @@
             --float-gap: 20px;         /* Jarak "Melayang" */
         }
 
-        body {
+        html, body {
             font-family: 'Poppins', sans-serif;
             background-color: var(--bg-body);
             overflow-x: hidden; /* Mencegah scroll samping */
@@ -36,12 +36,21 @@
             background-color: #ffffff;
             border-radius: 20px; /* Sudut membulat */
             box-shadow: 0 10px 30px rgba(0,0,0,0.05); /* Bayangan halus */
-            z-index: 1000;
+            z-index: 3000;
             padding-top: 30px;
             transition: all 0.4s cubic-bezier(0.25, 0.8, 0.25, 1); /* Animasi halus */
             display: flex;
             flex-direction: column;
             overflow: visible; /* Biarkan tombol toggle keluar tanpa dipotong */
+            max-width: calc(100vw - (2 * var(--float-gap))); /* Cegah overflow horizontal */
+        }
+
+        .sidebar-content {
+            flex: 1;
+            overflow-y: auto; /* Scroll halus saat menu banyak */
+            overflow-x: hidden;
+            padding-bottom: 24px;
+            padding-right: 6px; /* ruang kecil agar scrollbar tidak menutupi konten */
         }
         
         /* State saat Collapsed (Mengecil) */
@@ -112,7 +121,8 @@
 
         /* Sembunyikan teks menu saat collapsed */
         .sidebar.collapsed .nav-link span,
-        .sidebar.collapsed .menu-header {
+        .sidebar.collapsed .nav-section-toggle span,
+        .sidebar.collapsed .nav-section-toggle .chevron {
             display: none;
             opacity: 0;
         }
@@ -127,17 +137,64 @@
             font-size: 1.4rem;
         }
 
-        /* Menu Header (Kecil) */
-        .menu-header {
-            text-transform: uppercase;
-            font-size: 0.75rem;
+        .sidebar.collapsed .submenu {
+            display: none !important; /* Sembunyikan dropdown saat diperkecil */
+        }
+
+        /* Header tombol section (dropdown) */
+        .nav-section {
+            margin: 0 10px 8px 10px;
+        }
+
+        .nav-section-toggle {
+            width: 100%;
+            border: none;
+            background: transparent;
+            color: #95a5a6;
             font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.6px;
+            padding: 12px 14px;
+            border-radius: 12px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+        }
+
+        .nav-section-toggle:hover {
+            background-color: #f6fdf9;
+            color: var(--dark-green);
+        }
+
+        .nav-section-toggle .chevron {
+            margin-left: auto;
+            transition: transform 0.25s ease;
             color: #bdc3c7;
-            padding: 0 25px;
-            margin-top: 20px;
-            margin-bottom: 10px;
-            letter-spacing: 1px;
-            white-space: nowrap;
+        }
+
+        .nav-section-toggle[aria-expanded="true"] {
+            color: var(--dark-green);
+            background-color: #ecfdf4;
+        }
+
+        .nav-section-toggle[aria-expanded="true"] .chevron {
+            transform: rotate(90deg);
+            color: var(--primary-green);
+        }
+
+        .submenu {
+            display: none;
+            padding-left: 4px;
+        }
+
+        .submenu.show {
+            display: block;
+        }
+
+        .submenu .nav-link {
+            margin: 0 10px 5px 20px;
         }
 
         /* --- TOGGLE BUTTON (VERTICAL PILL) --- */
@@ -157,7 +214,7 @@
             color: white;
             font-size: 1rem;
             box-shadow: 0 4px 12px rgba(46, 204, 113, 0.3);
-            z-index: 9999; /* Z-index paling atas */
+            z-index: 3100; /* Lebih tinggi dari sidebar dan konten lain */
             transition: all 0.3s ease;
         }
         
@@ -324,7 +381,7 @@
     <!-- Overlay backdrop untuk mobile -->
     <div class="sidebar-overlay" id="sidebarOverlay" onclick="closeMobileSidebar()"></div>
     
-    <div class="sidebar" id="sidebar">
+        <div class="sidebar" id="sidebar">
         <div class="sidebar-toggle" onclick="toggleSidebar()">
             <i class="bi bi-chevron-left"></i>
         </div>
@@ -333,53 +390,75 @@
             <i class="bi bi-flower1"></i>
             <span>SIM-DP</span>
         </div>
-        
-        <nav class="nav flex-column">
-            <a class="nav-link active" href="{% url 'dashboard' %}" title="Dashboard">
-                <i class="bi bi-grid-fill"></i>
-                <span>Dashboard</span>
-            </a>
-            
-            <div class="menu-header">Gudang</div>
-            <a class="nav-link" href="{% url 'so_list' %}" title="Penebusan (SO)">
-                <i class="bi bi-box-seam"></i>
-                <span>Penebusan (SO)</span>
-            </a>
-            <a class="nav-link" href="{% url 'distribution_list' %}" title="Distribusi">
-                <i class="bi bi-truck"></i>
-                <span>Distribusi</span>
-            </a>
-            <a class="nav-link" href="{% url 'stock_card_list' %}" title="Kartu Stok">
-                <i class="bi bi-clipboard-data"></i>
-                <span>Kartu Stok</span>
-            </a>
+        {% with current_url=request.resolver_match.url_name %}
+        <div class="sidebar-content">
+            <nav class="nav flex-column" id="sidebarNav">
+                <a class="nav-link{% if current_url == 'dashboard' %} active{% endif %}" href="{% url 'dashboard' %}" title="Dashboard">
+                    <i class="bi bi-grid-fill"></i>
+                    <span>Dashboard</span>
+                </a>
 
-            <div class="menu-header">Master Data</div>
-            <a class="nav-link" href="{% url 'kios_list' %}" title="Data Kios">
-                <i class="bi bi-shop"></i>
-                <span>Data Kios</span>
-            </a>
+                <div class="nav-section">
+                    <button class="nav-section-toggle" type="button" data-target="section-gudang" aria-expanded="false">
+                        <span>Gudang</span>
+                        <i class="bi bi-chevron-right chevron"></i>
+                    </button>
+                    <div class="submenu" id="section-gudang">
+                        <a class="nav-link{% if current_url == 'so_list' %} active{% endif %}" href="{% url 'so_list' %}" title="Penebusan (SO)">
+                            <i class="bi bi-box-seam"></i>
+                            <span>Penebusan (SO)</span>
+                        </a>
+                        <a class="nav-link{% if current_url == 'distribution_list' %} active{% endif %}" href="{% url 'distribution_list' %}" title="Distribusi">
+                            <i class="bi bi-truck"></i>
+                            <span>Distribusi</span>
+                        </a>
+                        <a class="nav-link{% if current_url == 'stock_card_list' %} active{% endif %}" href="{% url 'stock_card_list' %}" title="Kartu Stok">
+                            <i class="bi bi-clipboard-data"></i>
+                            <span>Kartu Stok</span>
+                        </a>
+                    </div>
+                </div>
 
-            <a class="nav-link" href="{% url 'raport_kios' %}" title="Laporan Raport">
-                <i class="bi bi-shop"></i>
-                <span>Laporan Raport</span>
-            </a>
-            
-            <a class="nav-link" href="{% url 'armada_list' %}" title="Armada">
-                <i class="bi bi-ev-front"></i>
-                <span>Armada</span>
-            </a>
+                <div class="nav-section">
+                    <button class="nav-section-toggle" type="button" data-target="section-master" aria-expanded="false">
+                        <span>Master Data</span>
+                        <i class="bi bi-chevron-right chevron"></i>
+                    </button>
+                    <div class="submenu" id="section-master">
+                        <a class="nav-link{% if current_url == 'kios_list' %} active{% endif %}" href="{% url 'kios_list' %}" title="Data Kios">
+                            <i class="bi bi-shop"></i>
+                            <span>Data Kios</span>
+                        </a>
+                        <a class="nav-link{% if current_url == 'raport_kios' %} active{% endif %}" href="{% url 'raport_kios' %}" title="Laporan Raport">
+                            <i class="bi bi-graph-up"></i>
+                            <span>Laporan Raport</span>
+                        </a>
+                        <a class="nav-link{% if current_url == 'armada_list' %} active{% endif %}" href="{% url 'armada_list' %}" title="Armada">
+                            <i class="bi bi-ev-front"></i>
+                            <span>Armada</span>
+                        </a>
+                    </div>
+                </div>
 
-            <div class="menu-header">Keuangan & Ops</div>
-            <a class="nav-link" href="{% url 'invoice_list' %}" title="Monitoring Tagihan">
-                <i class="bi bi-wallet2"></i>
-                <span>Tagihan (AR)</span>
-            </a>
-            <a class="nav-link" href="{% url 'ops_list' %}" title="Biaya Operasional">
-                <i class="bi bi-tools"></i>
-                <span>Biaya Ops</span>
-            </a>
-        </nav>
+                <div class="nav-section">
+                    <button class="nav-section-toggle" type="button" data-target="section-keuangan" aria-expanded="false">
+                        <span>Keuangan & Ops</span>
+                        <i class="bi bi-chevron-right chevron"></i>
+                    </button>
+                    <div class="submenu" id="section-keuangan">
+                        <a class="nav-link{% if current_url == 'invoice_list' %} active{% endif %}" href="{% url 'invoice_list' %}" title="Monitoring Tagihan">
+                            <i class="bi bi-wallet2"></i>
+                            <span>Tagihan (AR)</span>
+                        </a>
+                        <a class="nav-link{% if current_url == 'ops_list' %} active{% endif %}" href="{% url 'ops_list' %}" title="Biaya Operasional">
+                            <i class="bi bi-tools"></i>
+                            <span>Biaya Ops</span>
+                        </a>
+                    </div>
+                </div>
+            </nav>
+        </div>
+        {% endwith %}
     </div>
 
     <div class="main-content" id="mainContent">
@@ -416,6 +495,45 @@
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
 
     <script>
+        // Inisialisasi dropdown sidebar untuk menghemat ruang menu
+        function initSidebarDropdowns() {
+            const toggles = document.querySelectorAll('.nav-section-toggle');
+            const submenus = document.querySelectorAll('.submenu');
+
+            const openSection = (target) => {
+                submenus.forEach((menu) => {
+                    const btn = document.querySelector(`.nav-section-toggle[data-target="${menu.id}"]`);
+                    const shouldOpen = target && menu === target;
+                    menu.classList.toggle('show', shouldOpen);
+                    if (btn) {
+                        btn.setAttribute('aria-expanded', shouldOpen);
+                    }
+                });
+            };
+
+            toggles.forEach((btn) => {
+                btn.addEventListener('click', () => {
+                    const target = document.getElementById(btn.dataset.target);
+                    if (!target) return;
+                    const isOpen = target.classList.contains('show');
+
+                    if (isOpen) {
+                        target.classList.remove('show');
+                        btn.setAttribute('aria-expanded', 'false');
+                    } else {
+                        openSection(target);
+                    }
+                });
+            });
+
+            // Buka section yang mengandung link aktif; jika tidak ada biarkan tertutup
+            const activeLink = document.querySelector('.submenu .nav-link.active');
+            const defaultOpen = activeLink ? activeLink.closest('.submenu') : null;
+            if (defaultOpen) {
+                openSection(defaultOpen);
+            }
+        }
+
         function toggleSidebar() {
             const sidebar = document.getElementById('sidebar');
             const mainContent = document.getElementById('mainContent');
@@ -460,6 +578,8 @@
                 overlay.classList.remove('active');
             }
         });
+
+        document.addEventListener('DOMContentLoaded', initSidebarDropdowns);
     </script>
 </body>
 </html>
