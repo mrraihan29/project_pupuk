@@ -33,7 +33,7 @@
             </td>
             <td width="50%" style="text-align: right;">
                 <strong>Detail Pengiriman:</strong><br>
-                Tanggal: {{ dist.transaction_date|date:"d F Y" }}<br>
+                Tanggal: {{ tanggal_dokumen|date:"d F Y" }}
                 Armada: {{ dist.armada.vehicle_type }}<br>
                 Plat No: {{ dist.armada.plate_number }}<br>
                 Supir: {{ dist.armada.driver_name }}

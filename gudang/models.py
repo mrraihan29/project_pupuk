@@ -1,64 +1,50 @@
-from django.db import models
+from django.conf import settings
+from django.db import models, transaction
 from django.utils import timezone
-from django.core.exceptions import ValidationError
-from datetime import timedelta
-from decimal import Decimal
-from django.db import transaction
-from django.conf import settings # Untuk referensi User model
-# Import models from core app
 from core.models import Kios, Armada, KiosAllocation
 
 # --- 1. SALES ORDER (SO) - INBOUND ---
 class SalesOrder(models.Model):
-    FERTILIZER_TYPES = [
-        ('NPK', 'NPK (Merah)'),
-        ('UREA', 'UREA (Biru)'),
+    # Opsi Kecamatan (Sesuaikan dengan wilayah kerja Client)
+    DISTRICT_CHOICES = [
+        ('Bancak', 'Bancak'),
+        ('Pabelan', 'Pabelan'),
+        ('Suruh', 'Suruh'),
+        ('Getasan', 'Getasan'),
+        ('Tuntang', 'Tuntang'),
+        # Tambahkan kecamatan lain sesuai Video 1
     ]
 
-    # URD Part G: Kode SO menentukan jenis pupuk
-    so_code = models.CharField("Kode SO", max_length=50, unique=True, help_text="Awal 3101=NPK, 3820=UREA")
-    fertilizer_type = models.CharField("Jenis Pupuk", max_length=10, choices=FERTILIZER_TYPES, editable=False) # Readonly karena auto-detect
+    so_code = models.CharField("Kode SO (Batch)", max_length=50, unique=True)
+    fertilizer_type = models.CharField(max_length=10, choices=[('NPK', 'NPK'), ('UREA', 'UREA')])
+    
+    # REVISI IMAGE 2: Stok terikat Kecamatan
+    district = models.CharField("Alokasi Kecamatan", max_length=50, choices=DISTRICT_CHOICES, default='Bancak') 
     
     tonnage_initial = models.DecimalField("Tonase Awal", max_digits=10, decimal_places=2)
     tonnage_current = models.DecimalField("Sisa Stok", max_digits=10, decimal_places=2)
-    
-    entry_date = models.DateField("Tanggal Penebusan", default=timezone.now)
-    # URD Part G: Jatuh Tempo Gudang (21 Hari)
-    maturity_date = models.DateField("Jatuh Tempo Gudang", editable=False) # Readonly karena auto-calc
-    
-    is_closed = models.BooleanField("Sudah Habis?", default=False)
-    created_at = models.DateTimeField(auto_now_add=True)
-
-    def clean(self):
-        # Validasi Manual (Safety Net)
-        if self.so_code:
-            prefix = self.so_code[:4]
-            if prefix not in ['3101', '3820']:
-                raise ValidationError("Kode SO tidak valid! Harus diawali 3101 (NPK) atau 3820 (UREA).")
+    entry_date = models.DateField("Tanggal Ngisi")
+    maturity_date = models.DateField("Jatuh Tempo Gudang", blank=True)
+    is_closed = models.BooleanField(default=False)
 
     def save(self, *args, **kwargs):
-        # 1. AUTO DETECT JENIS PUPUK (URD Part G Point 1)
-        if self.so_code.startswith('3101'):
-            self.fertilizer_type = 'NPK'
-        elif self.so_code.startswith('3820'):
-            self.fertilizer_type = 'UREA'
+        # Auto-detect Type
+        if self.so_code.startswith('3101'): self.fertilizer_type = 'NPK'
+        elif self.so_code.startswith('3820'): self.fertilizer_type = 'UREA'
         
-        # 2. AUTO SET STOK SAAT PERTAMA KALI DIBUAT
-        if not self.pk: # Jika ini data baru
+        # Auto-calc Jatuh Tempo (21 Hari)
+        if not self.maturity_date:
+            from datetime import timedelta
+            self.maturity_date = self.entry_date + timedelta(days=21)
+            
+        # Set initial current
+        if not self.pk:
             self.tonnage_current = self.tonnage_initial
             
-        # 3. AUTO CALC JATUH TEMPO (URD Part G Point 2)
-        if self.entry_date:
-            self.maturity_date = self.entry_date + timedelta(days=21)
-
         super().save(*args, **kwargs)
 
     def __str__(self):
-        return f"{self.so_code} ({self.fertilizer_type}) - Sisa: {self.tonnage_current} Ton"
-
-    class Meta:
-        verbose_name_plural = "Data Penebusan (SO)"
-        ordering = ['-entry_date'] # Yang terbaru muncul paling atas
+        return f"{self.so_code} ({self.district})"
 
 
 # --- 2. KARTU STOK (LOG MUTASI) ---
@@ -86,27 +72,18 @@ class StockCard(models.Model):
         
 # --- 3. DISTRIBUTION (PENYALURAN) - OUTBOUND ---
 class Distribution(models.Model):
-    sales_order = models.ForeignKey(SalesOrder, on_delete=models.PROTECT, related_name='distributions', verbose_name="Sumber SO")
-    kios = models.ForeignKey(Kios, on_delete=models.PROTECT, related_name='distributions')
-    armada = models.ForeignKey(Armada, on_delete=models.PROTECT, related_name='distributions')
+    sales_order = models.ForeignKey(SalesOrder, on_delete=models.CASCADE)
+    kios = models.ForeignKey(Kios, on_delete=models.CASCADE)
+    armada = models.ForeignKey(Armada, on_delete=models.SET_NULL, null=True)
     
-    tonnage_sent = models.DecimalField("Tonase Dikirim", max_digits=10, decimal_places=2)
-    transaction_date = models.DateField("Tanggal Kirim", default=timezone.now)
+    tonnage_sent = models.DecimalField("Tonase Kirim", max_digits=10, decimal_places=2)
+    transaction_date = models.DateField("Tanggal Ngirim (Fisik)")
     
-    # Nomor Surat Jalan kita generate otomatis nanti
-    surat_jalan_no = models.CharField("No Surat Jalan", max_length=50, blank=True, unique=True)
+    pkp_date = models.DateField("Tanggal PKP (Admin)", help_text="Tanggal yang tercetak di Surat Jalan & Invoice") 
     
-    notes = models.TextField("Catatan", blank=True, help_text="Catatan khusus / Fluid Allocation")
+    surat_jalan_no = models.CharField(max_length=50, blank=True)
+    notes = models.TextField(blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
-
-    def clean(self):
-        # VALIDASI 1: Cek Stok Gudang (Anti-Minus)
-        if self.tonnage_sent and self.sales_order:
-            if self.tonnage_sent > self.sales_order.tonnage_current:
-                raise ValidationError(f"Stok Tidak Cukup! Sisa SO ini hanya {self.sales_order.tonnage_current} Ton.")
-
-        # VALIDASI 2: Cek Kesesuaian Jenis Pupuk SO vs Alokasi?
-        # Nanti kita handle di UI agar Admin tidak salah pilih SO
 
     def save(self, *args, **kwargs):
         # ATOMIC TRANSACTION (Risk R-05 & NFR-01)

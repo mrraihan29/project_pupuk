@@ -1,53 +1,44 @@
 {% extends 'base.html' %}
-{% block page_title %}Input Penebusan (SO){% endblock %}
+{% block page_title %}Penebusan (Stok Masuk){% endblock %}
 
 {% block content %}
 <div class="row justify-content-center">
-    <div class="col-md-6">
-        <div class="card p-4 shadow-sm">
-            <h5 class="fw-bold mb-4">Input Stok Masuk (Penebusan)</h5>
-            
-            <div class="alert alert-info d-flex align-items-center mb-4">
-                <i class="bi bi-info-circle-fill fs-4 me-3"></i>
-                <div>
-                    <strong>Aturan Kode SO:</strong><br>
-                    <small>
-                        Gunakan awalan <strong>3101</strong> untuk Pupuk NPK.<br>
-                        Gunakan awalan <strong>3820</strong> untuk Pupuk UREA.
-                    </small>
-                </div>
-            </div>
-
+    <div class="col-md-5">
+        <div class="card p-4 shadow-sm border-primary">
+            <h5 class="fw-bold mb-3 text-primary">Form Penebusan</h5>
             <form method="post">
                 {% csrf_token %}
                 
                 <div class="mb-3">
-                    <label class="form-label">Kode SO (Batch)</label>
+                    <label class="fw-bold">Input Kode SO</label>
                     {{ form.so_code }}
                 </div>
 
                 <div class="mb-3">
-                    <label class="form-label">Jumlah Tonase (Ton)</label>
+                    <label class="fw-bold">Tgl Ngisi (Entry)</label>
+                    {{ form.entry_date }}
+                </div>
+
+                <div class="mb-3">
+                    <label class="fw-bold">Alokasi Kecamatan</label>
+                    {{ form.district }}
+                    <div class="form-text">Stok ini ditebus khusus untuk kecamatan mana?</div>
+                </div>
+
+                <div class="mb-3">
+                    <label class="fw-bold">Tonase</label>
                     <div class="input-group">
                         {{ form.tonnage_initial }}
                         <span class="input-group-text">Ton</span>
                     </div>
                 </div>
 
-                <div class="mb-3">
-                    <label class="form-label">Tanggal Penebusan</label>
-                    {{ form.entry_date }}
-                    <div class="form-text text-muted">
-                        Jatuh tempo gudang akan otomatis dihitung +21 hari dari tanggal ini.
-                    </div>
+                <div class="alert alert-info py-2 small">
+                    <i class="bi bi-info-circle me-1"></i>
+                    Jatuh Tempo Gudang: <strong>Otomatis +21 Hari</strong> dari Tgl Ngisi.
                 </div>
 
-                <div class="d-flex justify-content-end gap-2 mt-4">
-                    <a href="{% url 'so_list' %}" class="btn btn-light border">Batal</a>
-                    <button type="submit" class="btn btn-primary px-4">
-                        <i class="bi bi-save me-2"></i>Simpan Stok
-                    </button>
-                </div>
+                <button type="submit" class="btn btn-primary w-100 mt-2">Simpan Stok</button>
             </form>
         </div>
     </div>

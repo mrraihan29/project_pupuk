@@ -1,6 +1,6 @@
 {% extends 'base.html' %}
 
-{% block page_title %}Input Penyaluran (Distribusi){% endblock %}
+{% block page_title %}Penyaluran (Stok Keluar){% endblock %}
 
 {% block content %}
 <div class="row g-4">
@@ -13,7 +13,7 @@
                         <i class="bi bi-truck"></i>
                     </div>
                     <div>
-                        <h5 class="mb-0 fw-bold">Form Surat Jalan</h5>
+                        <h5 class="mb-0 fw-bold">Form Penyaluran Barang</h5>
                         <p class="text-muted small mb-0">Input data distribusi pupuk ke kios</p>
                     </div>
                 </div>
@@ -31,11 +31,22 @@
                         <div class="row g-3">
                             <div class="col-md-6">
                                 <label class="form-label">
-                                    <i class="bi bi-calendar3 me-1"></i>Tanggal Transaksi
+                                    <i class="bi bi-calendar3 me-1"></i>Tanggal Kirim
                                 </label>
                                 {{ form.transaction_date }}
                             </div>
                             <div class="col-md-6">
+                                <label class="form-label">
+                                    <i class="bi bi-calendar2-event me-1"></i>Tanggal PKP
+                                </label>
+                                {{ form.pkp_date }}
+                                <div class="form-text small" style="font-size: 0.75rem;">
+                                    *Tanggal ini yang masuk Surat Jalan
+                                </div>
+                            </div>
+                        </div>
+                        <div class="row g-3 mt-1">
+                            <div class="col-md-12">
                                 <label class="form-label">
                                     <i class="bi bi-shop me-1"></i>Kios Tujuan
                                 </label>
@@ -77,6 +88,16 @@
                                 <div class="so-info-text" id="soInfoText">
                                     <i class="bi bi-info-circle me-1"></i>Pilih SO untuk melihat stok tersedia
                                 </div>
+                                <div class="row g-2 mt-2 bg-light p-2 rounded border">
+                                    <div class="col-md-6">
+                                        <label class="small text-muted">Kecamatan Asal (SO)</label>
+                                        <input type="text" id="auto_district" class="form-control fw-bold bg-white" readonly disabled placeholder="-">
+                                    </div>
+                                    <div class="col-md-6">
+                                        <label class="small text-muted">Sisa Stok (Ton)</label>
+                                        <input type="text" id="auto_stock" class="form-control fw-bold bg-white" readonly disabled placeholder="0">
+                                    </div>
+                                </div>
                             </div>
 
                             <div class="col-md-6">
@@ -117,7 +138,7 @@
                     <!-- Submit Button -->
                     <div class="col-12 text-center mt-4">
                         <button type="submit" class="btn-submit" id="btnSubmit">
-                            <i class="bi bi-send-fill me-2"></i>Terbitkan Surat Jalan
+                            <i class="bi bi-send-fill me-2"></i>SUBMIT (Cetak SJ &amp; INV)
                         </button>
                     </div>
                 </form>
@@ -282,7 +303,10 @@
     
     textarea.form-control {
         min-height: 100px;
+        height: auto;
         resize: vertical;
+        display: block; /* Pastikan display block */
+        width: 100%;    /* Pastikan lebar penuh */
     }
     
     /* Kios Info Card */
@@ -549,93 +573,136 @@
 </style>
 
 <script>
-    // Variable Global untuk menyimpan data saat ini
+    // --- VARIABLE GLOBAL ---
     let currentKiosData = null;
     let currentSOType = null;
     let currentSOStock = 0;
 
+    // --- ELEMENTS ---
     const kiosSelect = document.getElementById('id_kios');
     const soSelect = document.getElementById('id_sales_order');
-    const tonnageInput = document.getElementById('id_tonnage');
+    const tonnageInput = document.getElementById('id_tonnage_kirim'); // Pastikan ID ini sesuai form (id_tonnage atau id_tonnage_kirim)
     const submitBtn = document.getElementById('btnSubmit');
     const trafficLight = document.getElementById('trafficLight');
+    
+    // Element Baru (Auto Fill)
+    const autoDistrict = document.getElementById('auto_district');
+    const autoStock = document.getElementById('auto_stock');
+    const soInfoText = document.getElementById('soInfoText'); // Element text lama
 
-    // 1. EVENT: SAAT KIOS DIPILIH
+    // 1. EVENT: SAAT KIOS DIPILIH (Logic Lama - Tetap Dipertahankan)
     kiosSelect.addEventListener('change', function() {
         const kiosId = this.value;
         if(kiosId) {
+            // Pastikan URL ini sesuai dengan yang ada di urls.py Anda (api_get_kios_info)
             fetch(`{% url 'api_get_kios_info' %}?kios_id=${kiosId}`)
                 .then(response => response.json())
                 .then(data => {
                     currentKiosData = data;
                     
-                    // Tampilkan Info Box
-                    document.getElementById('kiosInfoBox').classList.remove('d-none');
-                    document.getElementById('infoKiosName').innerText = kiosSelect.options[kiosSelect.selectedIndex].text;
-                    document.getElementById('infoKiosAddress').innerText = `${data.address} (Kec. ${data.district})`;
-                    
-                    // Update Badge Sisa Kuota
-                    document.getElementById('badgeNPK').innerText = `NPK: ${data.allocations.NPK.kios_remaining}`;
-                    document.getElementById('badgeUREA').innerText = `UREA: ${data.allocations.UREA.kios_remaining}`;
+                    // Tampilkan Info Box Kios (Fitur Lama)
+                    const infoBox = document.getElementById('kiosInfoBox');
+                    if(infoBox) {
+                        infoBox.classList.remove('d-none');
+                        document.getElementById('infoKiosName').innerText = kiosSelect.options[kiosSelect.selectedIndex].text;
+                        
+                        // Handle district jika ada di data response
+                        const dist = data.district || '-';
+                        document.getElementById('infoKiosAddress').innerText = `${data.address} (Kec. ${dist})`;
+                        
+                        // Update Badges
+                        if(document.getElementById('badgeNPK') && data.allocations.NPK) 
+                            document.getElementById('badgeNPK').innerText = `NPK: ${data.allocations.NPK.kios_remaining}`;
+                        if(document.getElementById('badgeUREA') && data.allocations.UREA) 
+                            document.getElementById('badgeUREA').innerText = `UREA: ${data.allocations.UREA.kios_remaining}`;
+                    }
                     
                     runTrafficLightCheck(); // Cek ulang lampu
                 });
         }
     });
 
-    // 2. EVENT: SAAT SO DIPILIH
+    // 2. EVENT: SAAT SO DIPILIH (LOGIC GABUNGAN: AutoFill + Traffic Light)
     soSelect.addEventListener('change', function() {
         const soId = this.value;
         if(soId) {
-            fetch(`{% url 'api_get_so_info' %}?so_id=${soId}`)
+            // PENTING: Gunakan API 'get_so_details' yang baru kita buat agar dapat data KECAMATAN
+            fetch(`{% url 'get_so_details' %}?so_id=${soId}`)
                 .then(response => response.json())
                 .then(data => {
-                    currentSOType = data.fertilizer_type; // 'NPK' atau 'UREA'
-                    currentSOStock = data.current_stock;
+                    // Update Global Vars untuk Traffic Light logic lama
+                    currentSOType = data.type;       
+                    currentSOStock = data.remaining; 
                     
-                    document.getElementById('soInfoText').innerHTML = 
-                        `Jenis: <strong>${currentSOType}</strong> | Stok Tersedia: <strong>${currentSOStock} Ton</strong>`;
+                    // A. UPDATE FORM BARU (KOTAK PUTIH - Fitur Baru)
+                    if(autoDistrict) autoDistrict.value = data.district;
+                    if(autoStock) autoStock.value = data.remaining;
+
+                    // B. UPDATE TEXT LAMA (Fitur Lama Anda)
+                    if(soInfoText) {
+                         soInfoText.innerHTML = 
+                            `Jenis: <strong>${data.type}</strong> | Stok Tersedia: <strong>${data.remaining} Ton</strong>`;
+                         soInfoText.style.display = 'block';
+                    }
                     
                     runTrafficLightCheck();
-                });
+                })
+                .catch(err => console.error("Error fetching SO:", err));
+        } else {
+            // Reset form jika kosong
+            if(autoDistrict) autoDistrict.value = '';
+            if(autoStock) autoStock.value = '';
+            currentSOType = null;
+            currentSOStock = 0;
+            if(soInfoText) soInfoText.innerHTML = '<i class="bi bi-info-circle me-1"></i>Pilih SO untuk melihat stok';
         }
     });
 
-    // 3. EVENT: SAAT INPUT TONASE
-    tonnageInput.addEventListener('input', runTrafficLightCheck);
+    // 3. EVENT: SAAT INPUT TONASE (Logic Lama - Tetap)
+    if(tonnageInput) {
+        tonnageInput.addEventListener('input', runTrafficLightCheck);
+    }
 
-    // --- FUNGSI UTAMA TRAFFIC LIGHT ---
+    // --- FUNGSI UTAMA TRAFFIC LIGHT (Logic Lama - Tetap) ---
     function runTrafficLightCheck() {
-        const inputVal = parseFloat(tonnageInput.value) || 0;
+        // Cek input value, jika input tidak ada pakai 0
+        const inputVal = tonnageInput ? (parseFloat(tonnageInput.value) || 0) : 0;
         
         // Reset State
-        trafficLight.classList.add('d-none');
-        trafficLight.className = 'alert mt-3'; // Reset warna
-        submitBtn.disabled = false;
+        if(trafficLight) {
+            trafficLight.classList.add('d-none');
+            // Hapus class alert spesifik agar tidak menumpuk
+            trafficLight.classList.remove('traffic-alert', 'alert-success', 'alert-warning', 'alert-danger');
+            trafficLight.classList.add('traffic-alert'); // Pasang base class
+        }
+        if(submitBtn) submitBtn.disabled = false;
 
+        // Validasi Dasar
         if (inputVal <= 0 || !currentKiosData || !currentSOType) return;
 
         // CEK 1: STOK SO CUKUP?
         if (inputVal > currentSOStock) {
             showAlert('danger', '🛑 STOK GUDANG KURANG! Permintaan melebihi sisa stok SO.');
-            submitBtn.disabled = true;
+            if(submitBtn) submitBtn.disabled = true;
             return;
         }
 
         // Ambil Data Kuota yang relevan (NPK/UREA)
-        const relevantQuota = currentKiosData.allocations[currentSOType];
-        
-        // CEK 2: KUOTA KECAMATAN HABIS? (RED LIGHT)
-        if (inputVal > relevantQuota.district_remaining) {
-            showAlert('danger', `🛑 GAGAL SALUR! Kuota Kecamatan ${currentKiosData.district} untuk ${currentSOType} tidak mencukupi. Sisa Kec: ${relevantQuota.district_remaining}`);
-            submitBtn.disabled = true;
-            return;
-        }
+        if(currentKiosData.allocations && currentKiosData.allocations[currentSOType]) {
+            const relevantQuota = currentKiosData.allocations[currentSOType];
+            
+            // CEK 2: KUOTA KECAMATAN HABIS? (RED LIGHT)
+            if (inputVal > relevantQuota.district_remaining) {
+                showAlert('danger', `🛑 GAGAL SALUR! Kuota Kecamatan ${currentKiosData.district} untuk ${currentSOType} tidak mencukupi. Sisa Kec: ${relevantQuota.district_remaining}`);
+                if(submitBtn) submitBtn.disabled = true;
+                return;
+            }
 
-        // CEK 3: KUOTA KIOS KURANG? (YELLOW LIGHT / FLUID ALLOCATION)
-        if (inputVal > relevantQuota.kios_remaining) {
-            showAlert('warning', `⚠️ FLUID ALLOCATION: Kuota Kios habis. Menggunakan sisa kuota Kecamatan (${currentKiosData.district}).`);
-            return; // Masih boleh submit
+            // CEK 3: KUOTA KIOS KURANG? (YELLOW LIGHT / FLUID ALLOCATION)
+            if (inputVal > relevantQuota.kios_remaining) {
+                showAlert('warning', `⚠️ FLUID ALLOCATION: Kuota Kios habis. Menggunakan sisa kuota Kecamatan (${currentKiosData.district}).`);
+                return; // Masih boleh submit
+            }
         }
 
         // JIKA LOLOS SEMUA -> HIJAU
@@ -643,8 +710,10 @@
     }
 
     function showAlert(type, message) {
+        if(!trafficLight) return;
+        
         trafficLight.classList.remove('d-none');
-        trafficLight.className = 'traffic-alert'; // Reset classes
+        // Pastikan styling class ditambahkan
         trafficLight.classList.add(`alert-${type}`);
         
         let icon = '';

@@ -105,6 +105,7 @@ def print_document(request, pk, doc_type):
 
     context = {
         'dist': dist,
+        'tanggal_dokumen': dist.pkp_date,
         'price_per_ton': price_per_ton,
         'total_price': total_price,
         'doc_type': doc_type,
@@ -177,3 +178,15 @@ def stock_card_list(request):
     # Ambil semua log, urutkan dari yang terbaru
     logs = StockCard.objects.all().select_related('sales_order').order_by('-date')
     return render(request, 'gudang/stock_card_list.html', {'logs': logs})
+
+def get_so_details(request):
+    so_id = request.GET.get('so_id')
+    try:
+        so = SalesOrder.objects.get(pk=so_id)
+        return JsonResponse({
+            'district': so.district,          # WAJIB ADA
+            'remaining': float(so.tonnage_current),
+            'type': so.fertilizer_type
+        })
+    except SalesOrder.DoesNotExist:
+        return JsonResponse({'error': 'Not found'}, status=404)
