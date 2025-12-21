@@ -21,9 +21,10 @@ load_dotenv()
 BASE_DIR = Path(__file__).resolve().parent.parent
 
 # --- SECURITY CONFIGURATION (Risk R-01 & R-04) ---
-SECRET_KEY = os.getenv('SECRET_KEY')
+SECRET_KEY = os.getenv('SECRET_KEY') or 'dev-secret-key-change-me'
 DEBUG = os.getenv('DEBUG') == 'True'
-ALLOWED_HOSTS = os.getenv('ALLOWED_HOSTS', '').split(',')
+_hosts = [h for h in os.getenv('ALLOWED_HOSTS', '').split(',') if h]
+ALLOWED_HOSTS = _hosts if _hosts else (['*'] if DEBUG else [])
 
 # Application definition
 INSTALLED_APPS = [

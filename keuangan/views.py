@@ -47,6 +47,9 @@ def payment_create(request, invoice_id):
                 messages.error(request, f"Gagal! Nominal Rp {payment.amount:,.0f} melebihi sisa hutang Rp {invoice.remaining_balance:,.0f}")
             else:
                 payment.save()
+                # Rehitung total bayar dan status invoice
+                invoice.amount_paid = invoice.payments.aggregate(total=Sum('amount'))['total'] or 0
+                invoice.save()
                 messages.success(request, "Pembayaran berhasil dicatat.")
                 return redirect('invoice_list')
     else:

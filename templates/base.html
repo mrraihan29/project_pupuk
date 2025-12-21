@@ -1,4 +1,5 @@
 <!DOCTYPE html>
+{% load static %}
 <html lang="id">
 <head>
     <meta charset="UTF-8">
@@ -8,373 +9,7 @@
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
     <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.0/font/bootstrap-icons.css">
-
-    <style>
-        :root {
-            /* --- WARNA HIJAU MUDA (SEMBADA TANI) --- */
-            --primary-green: #2ecc71;  /* Hijau cerah */
-            --dark-green: #27ae60;     /* Hijau gelap untuk hover */
-            --bg-body: #f0f2f5;        /* Background abu sangat muda */
-            --sidebar-width: 260px;
-            --sidebar-width-collapsed: 80px;
-            --float-gap: 20px;         /* Jarak "Melayang" */
-        }
-
-        html, body {
-            font-family: 'Poppins', sans-serif;
-            background-color: var(--bg-body);
-            overflow-x: hidden; /* Mencegah scroll samping */
-        }
-        
-        /* --- SIDEBAR STYLE (FLOATING CARD) --- */
-        .sidebar {
-            position: fixed;
-            top: var(--float-gap);
-            left: var(--float-gap);
-            bottom: var(--float-gap); /* Melayang dari atas, kiri, bawah */
-            width: var(--sidebar-width);
-            background-color: #ffffff;
-            border-radius: 20px; /* Sudut membulat */
-            box-shadow: 0 10px 30px rgba(0,0,0,0.05); /* Bayangan halus */
-            z-index: 3000;
-            padding-top: 30px;
-            transition: all 0.4s cubic-bezier(0.25, 0.8, 0.25, 1); /* Animasi halus */
-            display: flex;
-            flex-direction: column;
-            overflow: visible; /* Biarkan tombol toggle keluar tanpa dipotong */
-            max-width: calc(100vw - (2 * var(--float-gap))); /* Cegah overflow horizontal */
-        }
-
-        .sidebar-content {
-            flex: 1;
-            overflow-y: auto; /* Scroll halus saat menu banyak */
-            overflow-x: hidden;
-            padding-bottom: 24px;
-            padding-right: 6px; /* ruang kecil agar scrollbar tidak menutupi konten */
-        }
-        
-        /* State saat Collapsed (Mengecil) */
-        .sidebar.collapsed {
-            width: var(--sidebar-width-collapsed);
-        }
-
-        /* --- BRAND LOGO --- */
-        .sidebar-brand {
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            font-size: 1.4rem;
-            font-weight: 700;
-            color: var(--primary-green);
-            margin-bottom: 40px;
-            white-space: nowrap; /* Agar teks tidak turun baris */
-            transition: all 0.3s;
-        }
-        
-        .sidebar-brand i {
-            font-size: 1.8rem;
-            margin-right: 10px;
-        }
-        
-        .sidebar.collapsed .sidebar-brand span {
-            display: none; /* Sembunyikan nama saat collapsed */
-        }
-        .sidebar.collapsed .sidebar-brand i {
-            margin-right: 0;
-        }
-
-        /* --- NAVIGATION LINKS --- */
-        .nav-link {
-            color: #7f8c8d;
-            font-weight: 500;
-            padding: 15px 20px;
-            margin: 0 15px 5px 15px; /* Margin kiri kanan agar tombol melayang di dalam sidebar */
-            border-radius: 12px;
-            transition: all 0.3s;
-            display: flex;
-            align-items: center;
-            white-space: nowrap;
-        }
-
-        .nav-link:hover {
-            background-color: #eafaf1; /* Hijau sangat muda saat hover */
-            color: var(--dark-green);
-        }
-
-        .nav-link.active {
-            background-color: var(--primary-green);
-            color: white;
-            box-shadow: 0 4px 15px rgba(46, 204, 113, 0.3); /* Glow hijau */
-        }
-
-        .nav-link i {
-            font-size: 1.2rem;
-            min-width: 30px; /* Lebar tetap ikon agar sejajar */
-            display: flex;
-            justify-content: center;
-        }
-        
-        .nav-link span {
-            margin-left: 10px;
-            transition: opacity 0.3s;
-        }
-
-        /* Sembunyikan teks menu saat collapsed */
-        .sidebar.collapsed .nav-link span,
-        .sidebar.collapsed .nav-section-toggle span,
-        .sidebar.collapsed .nav-section-toggle .chevron {
-            display: none;
-            opacity: 0;
-        }
-        
-        .sidebar.collapsed .nav-link {
-            padding: 15px 0; /* Center icon */
-            justify-content: center;
-            margin: 0 10px 5px 10px;
-        }
-        
-        .sidebar.collapsed .nav-link i {
-            font-size: 1.4rem;
-        }
-
-        .sidebar.collapsed .submenu {
-            display: none !important; /* Sembunyikan dropdown saat diperkecil */
-        }
-
-        /* Header tombol section (dropdown) */
-        .nav-section {
-            margin: 0 10px 8px 10px;
-        }
-
-        .nav-section-toggle {
-            width: 100%;
-            border: none;
-            background: transparent;
-            color: #95a5a6;
-            font-weight: 700;
-            text-transform: uppercase;
-            letter-spacing: 0.6px;
-            padding: 12px 14px;
-            border-radius: 12px;
-            display: flex;
-            align-items: center;
-            gap: 8px;
-            cursor: pointer;
-            transition: all 0.3s ease;
-        }
-
-        .nav-section-toggle:hover {
-            background-color: #f6fdf9;
-            color: var(--dark-green);
-        }
-
-        .nav-section-toggle .chevron {
-            margin-left: auto;
-            transition: transform 0.25s ease;
-            color: #bdc3c7;
-        }
-
-        .nav-section-toggle[aria-expanded="true"] {
-            color: var(--dark-green);
-            background-color: #ecfdf4;
-        }
-
-        .nav-section-toggle[aria-expanded="true"] .chevron {
-            transform: rotate(90deg);
-            color: var(--primary-green);
-        }
-
-        .submenu {
-            display: none;
-            padding-left: 4px;
-        }
-
-        .submenu.show {
-            display: block;
-        }
-
-        .submenu .nav-link {
-            margin: 0 10px 5px 20px;
-        }
-
-        /* --- TOGGLE BUTTON (VERTICAL PILL) --- */
-        .sidebar-toggle {
-            position: absolute;
-            top: 50%;
-            transform: translateY(-50%);
-            right: -16px; /* Di tengah garis pinggir sidebar */
-            width: 32px;
-            height: 50px;
-            background: linear-gradient(135deg, var(--primary-green), var(--dark-green));
-            border-radius: 25px;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            cursor: pointer;
-            color: white;
-            font-size: 1rem;
-            box-shadow: 0 4px 12px rgba(46, 204, 113, 0.3);
-            z-index: 3100; /* Lebih tinggi dari sidebar dan konten lain */
-            transition: all 0.3s ease;
-        }
-        
-        .sidebar-toggle:hover {
-            transform: translateY(-50%) scale(1.05);
-            box-shadow: 0 6px 16px rgba(46, 204, 113, 0.4);
-        }
-
-        .sidebar.collapsed .sidebar-toggle {
-            transform: translateY(-50%) rotate(180deg);
-        }
-
-        /* --- MAIN CONTENT AREA --- */
-        .main-content {
-            /* Margin kiri = Lebar Sidebar + Jarak Float + Jarak antar konten */
-            margin-left: calc(var(--sidebar-width) + var(--float-gap) + 20px);
-            margin-top: var(--float-gap);
-            margin-right: var(--float-gap);
-            transition: all 0.4s cubic-bezier(0.25, 0.8, 0.25, 1);
-        }
-        
-        .main-content.expanded {
-            /* Margin saat sidebar mengecil */
-            margin-left: calc(var(--sidebar-width-collapsed) + var(--float-gap) + 20px);
-        }
-
-        /* --- TOPBAR STYLE --- */
-        .topbar {
-            background-color: #ffffff;
-            padding: 15px 30px;
-            border-radius: 20px; /* Rounded */
-            box-shadow: 0 5px 20px rgba(0,0,0,0.02);
-            margin-bottom: 25px;
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-        }
-
-        .user-avatar {
-            width: 42px;
-            height: 42px;
-            background: linear-gradient(135deg, var(--primary-green), #27ae60);
-            border-radius: 12px;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            color: white;
-            font-weight: bold;
-            box-shadow: 0 4px 10px rgba(46, 204, 113, 0.3);
-        }
-        
-        /* Card Style */
-        .card {
-            border: none;
-            border-radius: 20px;
-            box-shadow: 0 5px 20px rgba(0,0,0,0.03);
-            overflow: hidden;
-        }
-
-        /* Tombol Hijau */
-        .btn-success {
-            background-color: var(--primary-green);
-            border: none;
-        }
-        .btn-success:hover {
-            background-color: var(--dark-green);
-        }
-        
-        /* Overlay backdrop untuk mobile */
-        .sidebar-overlay {
-            display: none;
-            position: fixed;
-            top: 0;
-            left: 0;
-            right: 0;
-            bottom: 0;
-            background: rgba(0, 0, 0, 0.5);
-            z-index: 999;
-            opacity: 0;
-            transition: opacity 0.3s ease;
-        }
-        
-        .sidebar-overlay.active {
-            display: block;
-            opacity: 1;
-        }
-        
-        /* --- RESPONSIVE UNTUK TABLET & MOBILE --- */
-        @media (max-width: 992px) {
-            /* Auto-collapse sidebar di tablet/mobile */
-            .sidebar {
-                left: calc(-1 * var(--sidebar-width) - var(--float-gap));
-                width: var(--sidebar-width);
-                top: 0;
-                bottom: 0;
-                border-radius: 0 20px 20px 0;
-                z-index: 2000;
-            }
-            
-            /* Sidebar muncul overlay saat di-expand */
-            .sidebar.mobile-expanded {
-                left: 0;
-                box-shadow: 0 0 50px rgba(0,0,0,0.3);
-            }
-            
-            /* Main content full width di mobile */
-            .main-content {
-                margin-left: var(--float-gap);
-                margin-right: var(--float-gap);
-            }
-            
-            .main-content.expanded {
-                margin-left: var(--float-gap);
-            }
-            
-            /* Toggle button selalu visible di mobile */
-            .sidebar-toggle {
-                right: -45px;
-                width: 40px;
-                height: 40px;
-                border-radius: 0 10px 10px 0;
-            }
-            
-            .sidebar.mobile-expanded .sidebar-toggle {
-                right: -16px;
-                border-radius: 25px;
-            }
-            
-            /* Topbar adjustment */
-            .topbar {
-                padding: 12px 20px;
-            }
-            
-            .topbar h5 {
-                font-size: 1.1rem;
-            }
-        }
-        
-        @media (max-width: 576px) {
-            /* Extra adjustments untuk smartphone */
-            .sidebar {
-                width: calc(100vw - 40px);
-                max-width: 280px;
-            }
-            
-            .topbar {
-                padding: 10px 15px;
-            }
-            
-            .topbar h5 {
-                font-size: 1rem;
-            }
-            
-            .main-content {
-                margin-left: 10px;
-                margin-right: 10px;
-                margin-top: 10px;
-            }
-        }
-    </style>
+    <link rel="stylesheet" href="{% static 'css/app.css' %}">
 </head>
 <body>
 
@@ -471,7 +106,7 @@
         {% endwith %}
     </div>
 
-    <div class="main-content" id="mainContent">
+    <div class="main" id="mainContent">
         
         <div class="topbar">
             <div>
@@ -489,7 +124,7 @@
 
                 <div class="text-end d-none d-sm-block">
                     <div class="fw-bold small mb-0">{{ user.username|default:"Guest"|title }}</div>
-                    <div class="text-muted" style="font-size: 0.7rem;">Owner / Admin</div>
+                    <div class="text-muted text-2xs">Owner / Admin</div>
                 </div>
                 <div class="user-avatar">
                     {{ user.username|slice:":1"|upper }}
@@ -507,6 +142,7 @@
         function initSidebarDropdowns() {
             const toggles = document.querySelectorAll('.nav-section-toggle');
             const submenus = document.querySelectorAll('.submenu');
+            const navLinks = document.querySelectorAll('.submenu .nav-link, .nav > .nav-link');
 
             const openSection = (target) => {
                 submenus.forEach((menu) => {
@@ -515,6 +151,7 @@
                     menu.classList.toggle('show', shouldOpen);
                     if (btn) {
                         btn.setAttribute('aria-expanded', shouldOpen);
+                        btn.classList.toggle('open', shouldOpen);
                     }
                 });
             };
@@ -528,6 +165,7 @@
                     if (isOpen) {
                         target.classList.remove('show');
                         btn.setAttribute('aria-expanded', 'false');
+                        btn.classList.remove('open');
                     } else {
                         openSection(target);
                     }
@@ -536,10 +174,15 @@
 
             // Buka section yang mengandung link aktif; jika tidak ada biarkan tertutup
             const activeLink = document.querySelector('.submenu .nav-link.active');
-            const defaultOpen = activeLink ? activeLink.closest('.submenu') : null;
+            const defaultOpen = activeLink ? activeLink.closest('.submenu') : submenus[0];
             if (defaultOpen) {
                 openSection(defaultOpen);
             }
+
+            // Tutup sidebar mobile setelah memilih menu
+            navLinks.forEach((link) => {
+                link.addEventListener('click', closeMobileSidebar);
+            });
         }
 
         function toggleSidebar() {
@@ -555,7 +198,7 @@
             } else {
                 // Mode desktop: collapse/expand biasa
                 sidebar.classList.toggle('collapsed');
-                mainContent.classList.toggle('expanded');
+                mainContent.classList.toggle('collapsed');
             }
         }
         
@@ -576,7 +219,7 @@
             if (isMobile) {
                 // Reset ke mode mobile
                 sidebar.classList.remove('collapsed');
-                mainContent.classList.remove('expanded');
+                mainContent.classList.remove('collapsed');
                 if (!sidebar.classList.contains('mobile-expanded')) {
                     overlay.classList.remove('active');
                 }

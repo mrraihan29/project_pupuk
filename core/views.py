@@ -275,6 +275,11 @@ def export_laporan_xls(start_date, end_date, data):
 # --- VIEW UTAMA: HALAMAN LAPORAN ---
 @login_required
 def laporan_keuangan(request):
+    def _normalize_price(p):
+        """Pastikan harga per ton; jika nilai terlalu kecil (kemungkinan per kg), skalakan 1000x."""
+        scale = 1000 if p < 10000 else 1
+        return p * scale
+
     # 1. SETUP TANGGAL (Default: Tanggal 1 bulan ini s/d Hari Ini)
     today = date.today()
     default_start = today.replace(day=1).strftime('%Y-%m-%d')
@@ -306,8 +311,13 @@ def laporan_keuangan(request):
         fertilizer_type='UREA'
     ).aggregate(total=Sum('tonnage_initial'))['total'] or 0
 
-    modal_npk = qty_beli_npk * harga_npk.price_buy
-    modal_urea = qty_beli_urea * harga_urea.price_buy
+    price_buy_npk = _normalize_price(harga_npk.price_buy)
+    price_buy_urea = _normalize_price(harga_urea.price_buy)
+    price_sell_npk = _normalize_price(harga_npk.price_sell)
+    price_sell_urea = _normalize_price(harga_urea.price_sell)
+
+    modal_npk = qty_beli_npk * price_buy_npk
+    modal_urea = qty_beli_urea * price_buy_urea
     total_modal = modal_npk + modal_urea
 
     # 4. HITUNG OMZET (PENYALURAN / JUAL)
@@ -323,8 +333,8 @@ def laporan_keuangan(request):
         sales_order__fertilizer_type='UREA'
     ).aggregate(total=Sum('tonnage_sent'))['total'] or 0
 
-    omzet_npk = qty_jual_npk * harga_npk.price_sell
-    omzet_urea = qty_jual_urea * harga_urea.price_sell
+    omzet_npk = qty_jual_npk * price_sell_npk
+    omzet_urea = qty_jual_urea * price_sell_urea
     total_omzet = omzet_npk + omzet_urea
 
 # 5. HITUNG BIAYA OPERASIONAL (UPDATE LOGIC BARU)
@@ -355,8 +365,8 @@ def laporan_keuangan(request):
     stok_sisa_npk = SalesOrder.objects.filter(is_closed=False, fertilizer_type='NPK').aggregate(total=Sum('tonnage_current'))['total'] or 0
     stok_sisa_urea = SalesOrder.objects.filter(is_closed=False, fertilizer_type='UREA').aggregate(total=Sum('tonnage_current'))['total'] or 0
 
-    aset_npk = stok_sisa_npk * harga_npk.price_buy
-    aset_urea = stok_sisa_urea * harga_urea.price_buy
+    aset_npk = stok_sisa_npk * price_buy_npk
+    aset_urea = stok_sisa_urea * price_buy_urea
     total_aset = aset_npk + aset_urea
 
     # --- BUNGKUS DATA (CONTEXT) ---

@@ -90,6 +90,14 @@ class Distribution(models.Model):
         # Memastikan semua update database di bawah ini sukses bareng atau gagal bareng
         with transaction.atomic():
             is_new = self.pk is None
+
+            # Lock SO row saat transaksi baru untuk mencegah oversell paralel
+            if is_new and self.sales_order_id:
+                so_locked = SalesOrder.objects.select_for_update().get(pk=self.sales_order_id)
+                if self.tonnage_sent > so_locked.tonnage_current:
+                    raise ValueError("Stok SO tidak cukup untuk penyaluran ini")
+                # sinkronkan instance di memori
+                self.sales_order = so_locked
             
             # 1. Generate Nomor Surat Jalan (Format: SJ/Tahun/Bulan/ID)
             if not self.surat_jalan_no:
@@ -103,7 +111,8 @@ class Distribution(models.Model):
             if is_new:
                 # 2. Kurangi Stok SO
                 self.sales_order.tonnage_current -= self.tonnage_sent
-                if self.sales_order.tonnage_current == 0:
+                if self.sales_order.tonnage_current <= 0:
+                    self.sales_order.tonnage_current = 0
                     self.sales_order.is_closed = True
                 self.sales_order.save()
 
@@ -169,6 +178,7 @@ class StockAdjustment(models.Model):
             
             # 3. Update Master Stok (Sales Order)
             self.sales_order.tonnage_current = self.actual_stock
+            self.sales_order.is_closed = self.actual_stock == 0
             self.sales_order.save()
             
             # 4. Simpan Record Adjustment Ini

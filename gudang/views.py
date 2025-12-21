@@ -1,7 +1,11 @@
 from django.shortcuts import render, redirect
+from django.utils import timezone
 from django.http import JsonResponse, HttpResponse
 from django.contrib import messages
+from django.contrib.auth.decorators import login_required
 from django.db.models import Sum, Q
+from django.db import transaction
+from django.conf import settings
 from core.models import Kios, KiosAllocation, FertilizerPrice
 from .models import SalesOrder, Distribution, StockAdjustment, StockCard
 from .forms import DistributionForm, StockAdjustmentForm, SalesOrderForm
@@ -10,6 +14,7 @@ from xhtml2pdf import pisa
 from core.decorators import owner_required
 
 # --- VIEW UTAMA ---
+@login_required
 def distribution_create(request):
     if request.method == 'POST':
         form = DistributionForm(request.POST)
@@ -23,12 +28,14 @@ def distribution_create(request):
     return render(request, 'gudang/distribution_form.html', {'form': form})
 
 # --- API HELPER (Untuk AJAX JavaScript) ---
+@login_required
 def get_kios_info(request):
     """
     API ini dipanggil saat Admin memilih Kios di dropdown.
     Mengembalikan data: Alamat, PIC, Sisa Kuota Kios, & Sisa Kuota Kecamatan.
     """
     kios_id = request.GET.get('kios_id')
+    current_year = timezone.now().year
     
     try:
         kios = Kios.objects.get(id=kios_id)
@@ -39,7 +46,7 @@ def get_kios_info(request):
         for f_type in ['NPK', 'UREA']:
             # 1. Kuota Kios Ini
             try:
-                kios_alloc = KiosAllocation.objects.get(kios=kios, fertilizer_type=f_type, year=2025) # Harusnya dinamis tahunnya
+                kios_alloc = KiosAllocation.objects.get(kios=kios, fertilizer_type=f_type, year=current_year)
                 k_rem = kios_alloc.quota_remaining
             except KiosAllocation.DoesNotExist:
                 k_rem = 0
@@ -48,12 +55,12 @@ def get_kios_info(request):
             d_rem = KiosAllocation.objects.filter(
                 kios__district=kios.district,
                 fertilizer_type=f_type,
-                year=2025
+                year=current_year
             ).aggregate(Sum('quota_remaining'))['quota_remaining__sum'] or 0
             
             allocations[f_type] = {
-                'kios_remaining': float(k_rem),
-                'district_remaining': float(d_rem)
+                'kios_remaining': str(k_rem),
+                'district_remaining': str(d_rem)
             }
 
         data = {
@@ -67,6 +74,7 @@ def get_kios_info(request):
     except Kios.DoesNotExist:
         return JsonResponse({'error': 'Kios not found'}, status=404)
 
+@login_required
 def get_so_info(request):
     """
     API untuk mengambil data stok & jenis pupuk dari SO yang dipilih
@@ -76,12 +84,13 @@ def get_so_info(request):
         so = SalesOrder.objects.get(id=so_id)
         return JsonResponse({
             'fertilizer_type': so.fertilizer_type,
-            'current_stock': float(so.tonnage_current)
+            'current_stock': str(so.tonnage_current)
         })
     except SalesOrder.DoesNotExist:
         return JsonResponse({'error': 'SO not found'}, status=404)
 
 
+@login_required
 def get_so_details(request):
     """API detail SO untuk kebutuhan auto-fill form distribusi."""
     so_id = request.GET.get('so_id')
@@ -97,32 +106,37 @@ def get_so_details(request):
         'id': so.id,
         'code': so.so_code,
         'type': so.fertilizer_type,
-        'remaining': float(so.tonnage_current),
+        'remaining': str(so.tonnage_current),
         'district': so.district,
         'is_closed': so.is_closed,
     })
     
 # --- LIST PENYALURAN (History) ---
+@login_required
 def distribution_list(request):
     dist_data = Distribution.objects.all().select_related('kios', 'sales_order', 'armada').order_by('-transaction_date')
     return render(request, 'gudang/distribution_list.html', {'dist_data': dist_data})
 
 # --- PDF GENERATOR ---
+@login_required
 def print_document(request, pk, doc_type):
     """
     doc_type: 'sj' (Surat Jalan) atau 'inv' (Invoice)
     """
     dist = Distribution.objects.get(pk=pk)
     
-    # Ambil Harga Master saat ini (Sesuai Jenis Pupuk SO)
-    # Note: Idealnya harga disimpan di tabel Invoice, tapi untuk MVP kita ambil Master Harga
-    try:
-        price_obj = FertilizerPrice.objects.get(fertilizer_type=dist.sales_order.fertilizer_type)
-        price_per_ton = price_obj.price_sell
-    except FertilizerPrice.DoesNotExist:
-        price_per_ton = 0
-
-    total_price = dist.tonnage_sent * price_per_ton
+    # Gunakan harga yang sudah difiksasi di Invoice bila ada, supaya dokumen historis konsisten
+    invoice = getattr(dist, 'invoice', None)
+    if invoice:
+        price_per_ton = invoice.total_amount / dist.tonnage_sent if dist.tonnage_sent else 0
+        total_price = invoice.total_amount
+    else:
+        try:
+            price_obj = FertilizerPrice.objects.get(fertilizer_type=dist.sales_order.fertilizer_type)
+            price_per_ton = price_obj.price_sell
+        except FertilizerPrice.DoesNotExist:
+            price_per_ton = 0
+        total_price = dist.tonnage_sent * price_per_ton
 
     context = {
         'dist': dist,
@@ -131,9 +145,9 @@ def print_document(request, pk, doc_type):
         'total_price': total_price,
         'doc_type': doc_type,
         'company': {
-            'name': 'CV SEMBADA TANI',
-            'address': 'Jl. Raya Pertanian No. 1, Semarang',
-            'phone': '(024) 12345678'
+            'name': getattr(settings, 'COMPANY_NAME', 'CV SEMBADA TANI'),
+            'address': getattr(settings, 'COMPANY_ADDRESS', 'Jl. Raya Pertanian No. 1, Semarang'),
+            'phone': getattr(settings, 'COMPANY_PHONE', '(024) 12345678'),
         }
     }
 
@@ -159,6 +173,7 @@ def print_document(request, pk, doc_type):
         return HttpResponse('We had some errors <pre>' + html + '</pre>')
     return response
 
+@login_required
 @owner_required # Security Layer: Hanya Owner/Superuser
 def stock_opname(request):
     if request.method == 'POST':
@@ -178,11 +193,13 @@ def stock_opname(request):
 
     return render(request, 'gudang/stock_opname.html', {'form': form})
 
+@login_required
 def so_list(request):
     # Tampilkan SO yang belum closed (masih ada stok)
     so_data = SalesOrder.objects.all().order_by('-entry_date')
     return render(request, 'gudang/so_list.html', {'so_data': so_data})
 
+@login_required
 def so_create(request):
     if request.method == 'POST':
         form = SalesOrderForm(request.POST)
@@ -195,6 +212,7 @@ def so_create(request):
     return render(request, 'gudang/so_form.html', {'form': form})
 
 # --- KARTU STOK ---
+@login_required
 def stock_card_list(request):
     # Ambil parameter filter jenis pupuk (Default NPK)
     jenis = request.GET.get('jenis', 'NPK') 
