@@ -20,7 +20,7 @@ class Invoice(models.Model):
     invoice_no = models.CharField("No Invoice", max_length=50, unique=True)
     total_amount = models.DecimalField("Total Tagihan (Rp)", max_digits=15, decimal_places=2)
     
-    amount_paid = models.DecimalField("Sudah Dibayar (Rp)", max_digits=15, decimal_places=2, default=0)
+    amount_paid = models.DecimalField("Sudah Dibayar (Rp)", max_digits=15, decimal_places=2, default=Decimal('0.00'))
     # Sisa hutang kita hitung otomatis (property) atau field db, field db lebih mudah untuk filter query
     remaining_balance = models.DecimalField("Sisa Hutang (Rp)", max_digits=15, decimal_places=2)
     
@@ -65,31 +65,58 @@ class Payment(models.Model):
 
 # --- MODUL OPERASIONAL (ANTI-FRAUD) ---
 class BiayaOperasional(models.Model):
-    KATEGORI_CHOICES = [
-        ('BENSIN', 'Bahan Bakar (BBM)'),
-        ('MAKAN', 'Uang Makan Supir'),
-        ('TOL', 'Biaya Tol / Parkir'),
-        ('SERVIS', 'Servis & Sparepart (Maintenance)'), # <-- Kritis untuk Fraud
-        ('LAIN', 'Lain-lain'),
+    # OPSI KATEGORI UTAMA (Sesuai Image 1)
+    MAIN_CATEGORY = [
+        ('ARMADA', 'Biaya Armada'),
+        ('KANTOR', 'Biaya Kantor'),
+    ]
+    
+    # OPSI JENIS PENGELUARAN (Sesuai Image 1)
+    SUB_CATEGORY = [
+        # Untuk Armada
+        ('PERBAIKAN', 'Perbaikan / Service'),
+        ('ONGKOS', 'Ongkos Jalan / BBM'),
+        # Untuk Kantor
+        ('RUTIN', 'Rutin (Gaji/Listrik)'),
+        ('DADAKAN', 'Dadakan (Sumbangan/Lainnya)'),
     ]
 
-    armada = models.ForeignKey(Armada, on_delete=models.CASCADE, related_name='operational_costs')
-    kategori = models.CharField(max_length=10, choices=KATEGORI_CHOICES)
-    nominal = models.DecimalField("Biaya (Rp)", max_digits=12, decimal_places=2)
+    # OPSI URGENSI (Sesuai Image 2 - Kartu Kontrol)
+    URGENCY_LEVEL = [
+        ('NORMAL', 'Normal'),
+        ('URGENT', 'URGENT'),
+    ]
+
+    STATUS_CHOICES = [
+        ('PROSES', 'Dalam Proses'),
+        ('SELESAI', 'Selesai'),
+    ]
+
+    # --- FIELD DATA ---
+    kategori_utama = models.CharField(max_length=10, choices=MAIN_CATEGORY, default='KANTOR')
+    jenis_biaya = models.CharField("Jenis Biaya", max_length=20, choices=SUB_CATEGORY)
     
-    tanggal = models.DateField(default=timezone.now)
-    keterangan = models.TextField("Detail (Nama Bengkel/Ket)", blank=True)
+    # Link ke Armada (Opsional, hanya jika kategori = ARMADA)
+    armada = models.ForeignKey(Armada, on_delete=models.SET_NULL, null=True, blank=True)
     
-    # Bukti Foto (Wajib untuk audit)
-    foto_bukti = models.ImageField("Foto Nota/Struk", upload_to='operasional/', blank=True, null=True)
+    tanggal = models.DateField("Tgl Laporan")
+    nominal = models.DecimalField(max_digits=12, decimal_places=0)
     
-    # Status Approval Owner
-    is_approved = models.BooleanField("Di-ACC Owner?", default=False)
+    description = models.TextField("Deskripsi Masalah/Keterangan")
     
-    created_at = models.DateTimeField(auto_now_add=True)
+    # --- FITUR KARTU KONTROL (Image 2) ---
+    urgensi = models.CharField(max_length=10, choices=URGENCY_LEVEL, default='NORMAL')
+    status = models.CharField(max_length=10, choices=STATUS_CHOICES, default='SELESAI')
+    tanggal_selesai = models.DateField("Tgl Selesai", null=True, blank=True)
+    
+    # Bukti Nota / Foto Kerusakan
+    bukti_foto = models.ImageField(upload_to='biaya_ops/', null=True, blank=True)
+
+    def save(self, *args, **kwargs):
+        # Auto-set Tanggal Selesai jika status SELESAI & tgl kosong
+        if self.status == 'SELESAI' and not self.tanggal_selesai:
+            self.tanggal_selesai = self.tanggal
+        super().save(*args, **kwargs)
 
     def __str__(self):
-        return f"{self.armada.plate_number} - {self.kategori} - Rp {self.nominal}"
-
-    class Meta:
-        verbose_name_plural = "Biaya Operasional"
+        return f"{self.jenis_biaya} - Rp {self.nominal}"

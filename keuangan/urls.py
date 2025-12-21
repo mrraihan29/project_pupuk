@@ -13,4 +13,6 @@ urlpatterns = [
     path('operational/delete/<int:pk>/', views.ops_delete, name='ops_delete'),  
     
     path('api/armada-history/', views.get_armada_history, name='api_armada_history'),
+    
+    path('kartu-kontrol/', views.kartu_kontrol_armada, name='kartu_kontrol'),
 ]

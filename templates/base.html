@@ -455,7 +455,10 @@
                         </a>
                         <a class="nav-link{% if current_url == 'ops_list' %} active{% endif %}" href="{% url 'ops_list' %}" title="Biaya Operasional">
                             <i class="bi bi-tools"></i>
-                            <span>Biaya Ops</span>
+                            <span>Biaya Operasional</span>
+                        </a>
+                        <a class="nav-link{% if current_url == 'kartu_kontrol' %} active{% endif %}" href="{% url 'kartu_kontrol' %}" title="Kartu Kontrol Service">
+                            <i class="bi bi-wrench-adjustable-circle"></i> <span>Kartu Kontrol Armada</span>
                         </a>
                         <a class="nav-link{% if current_url == 'laporan_keuangan' %} active{% endif %}" href="{% url 'laporan_keuangan' %}" title="Laba Rugi & Aset">
                             <i class="bi bi-file-earmark-spreadsheet-fill"></i>

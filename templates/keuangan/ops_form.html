@@ -1,107 +1,108 @@
 {% extends 'base.html' %}
-{% block page_title %}Ajukan Biaya Operasional{% endblock %}
+{% block page_title %}Input Biaya Operasional{% endblock %}
 
 {% block content %}
 <div class="row justify-content-center">
-    <div class="col-md-6">
-        <div class="card p-4">
-            <h6 class="fw-bold mb-4 text-muted text-uppercase">Form Klaim Biaya Jalan</h6>
-            <form method="post" enctype="multipart/form-data">
-                {% csrf_token %}
-                <div class="row g-3">
-                    <div class="col-md-12">
-                        <label>Pilih Armada</label>
-                        {{ form.armada }} </div>
+    <div class="col-md-8">
+        <div class="card shadow-sm border-0">
+            <div class="card-header bg-white py-3">
+                <h5 class="fw-bold mb-0 text-primary">Form Pengeluaran & Kontrol</h5>
+            </div>
+            <div class="card-body p-4">
+                <form method="post" enctype="multipart/form-data"> {% csrf_token %}
                     
-                    <div class="col-12 d-none" id="historyArea">
-                        <div class="card bg-light border-warning">
-                            <div class="card-header bg-warning text-dark small fw-bold">
-                                <i class="bi bi-clock-history me-1"></i> Riwayat 5 Transaksi Terakhir
-                            </div>
-                            <div class="table-responsive">
-                                <table class="table table-sm table-bordered mb-0 small bg-white">
-                                    <thead>
-                                        <tr>
-                                            <th>Tgl</th>
-                                            <th>Kat</th>
-                                            <th>Ket</th>
-                                            <th>Rp</th>
-                                        </tr>
-                                    </thead>
-                                    <tbody id="historyTableBody">
-                                        </tbody>
-                                </table>
+                    <div class="row g-3">
+                        <div class="col-md-12">
+                            <label class="fw-bold">Tanggal Laporan</label>
+                            {{ form.tanggal }}
+                        </div>
+
+                        <div class="col-md-6">
+                            <label class="fw-bold">Kategori Utama</label>
+                            {{ form.kategori_utama }}
+                        </div>
+
+                        <div class="col-md-6">
+                            <label class="fw-bold">Jenis Pengeluaran</label>
+                            {{ form.jenis_biaya }}
+                        </div>
+
+                        <div class="col-12 p-3 bg-light rounded border" id="armadaSection">
+                            <h6 class="text-muted fw-bold mb-3"><i class="bi bi-truck me-2"></i>Detail Armada</h6>
+                            <div class="row g-3">
+                                <div class="col-md-6">
+                                    <label>Pilih Armada</label>
+                                    {{ form.armada }}
+                                </div>
+                                <div class="col-md-6">
+                                    <label class="text-danger fw-bold">Urgensi</label>
+                                    {{ form.urgensi }}
+                                </div>
                             </div>
                         </div>
-                    </div>
 
-                    <div class="col-md-6">
-                        <label>Kategori Pengeluaran</label>
-                        {{ form.kategori }}
-                    </div>
-                    <div class="col-md-6">
-                        <label>Nominal (Rp)</label>
-                        {{ form.nominal }}
-                    </div>
-                    <div class="col-md-6">
-                        <label>Tanggal Transaksi</label>
-                        {{ form.tanggal }}
-                    </div>
-                    <div class="col-12">
-                        <label>Keterangan Detail</label>
-                        {{ form.keterangan }}
-                    </div>
-                    <div class="col-12">
-                        <label>Upload Foto Nota/Struk</label>
-                        {{ form.foto_bukti }}
-                    </div>
-                </div>
+                        <div class="col-md-6">
+                            <label class="fw-bold">Nominal (Rp)</label>
+                            <div class="input-group">
+                                <span class="input-group-text">Rp</span>
+                                {{ form.nominal }}
+                            </div>
+                        </div>
+                        <div class="col-md-6">
+                            <label class="fw-bold">Upload Nota / Bukti</label>
+                            {{ form.bukti_foto }}
+                        </div>
 
-                <div class="d-flex justify-content-end gap-2 mt-4">
-                    <a href="{% url 'ops_list' %}" class="btn btn-light border">Batal</a>
-                    <button type="submit" class="btn btn-primary px-4">Ajukan Klaim</button>
-                </div>
-            </form>
+                        <div class="col-12">
+                            <label class="fw-bold">Deskripsi / Keterangan</label>
+                            {{ form.description }}
+                            <div class="form-text">Contoh: "Ganti Ban Kanan Belakang" atau "Bayar Listrik Bulan Nov"</div>
+                        </div>
+
+                        <div class="col-md-6">
+                            <label class="fw-bold">Status Pengerjaan</label>
+                            {{ form.status }}
+                        </div>
+
+                        <div class="col-12 mt-4">
+                            <button type="submit" class="btn btn-primary w-100 fw-bold py-2">
+                                <i class="bi bi-save me-2"></i>SIMPAN DATA
+                            </button>
+                        </div>
+                    </div>
+                </form>
+            </div>
         </div>
     </div>
 </div>
 
 <script>
-    const armadaSelect = document.getElementById('id_armada');
-    const historyArea = document.getElementById('historyArea');
-    const historyBody = document.getElementById('historyTableBody');
+    document.addEventListener("DOMContentLoaded", function() {
+        const katSelect = document.getElementById('id_kategori_utama');
+        const armadaSec = document.getElementById('armadaSection');
+        const armadaInput = document.getElementById('id_armada_container'); // Pastikan ID ini sesuai forms.py
 
-    armadaSelect.addEventListener('change', function() {
-        const armadaId = this.value;
-        
-        if (armadaId) {
-            // Panggil API Backend
-            fetch(`{% url 'api_armada_history' %}?armada_id=${armadaId}`)
-                .then(response => response.json())
-                .then(data => {
-                    historyBody.innerHTML = ''; // Kosongkan tabel lama
-                    
-                    if (data.history.length > 0) {
-                        historyArea.classList.remove('d-none'); // Munculkan tabel
-                        
-                        data.history.forEach(item => {
-                            const row = `
-                                <tr>
-                                    <td>${item.tanggal}</td>
-                                    <td>${item.kategori}</td>
-                                    <td class="text-truncate" style="max-width: 100px;">${item.keterangan}</td>
-                                    <td class="fw-bold">${item.nominal.toLocaleString()}</td>
-                                </tr>
-                            `;
-                            historyBody.innerHTML += row;
-                        });
-                    } else {
-                        historyArea.classList.add('d-none'); // Sembunyikan jika belum ada history
-                    }
-                });
-        } else {
-            historyArea.classList.add('d-none');
+        function toggleArmada() {
+            if(katSelect.value === 'ARMADA') {
+                // Tampilkan Form Armada
+                armadaSec.style.display = 'block';
+                // Wajibkan isi Armada (Client Side Validation)
+                armadaInput.setAttribute('required', 'required');
+            } else {
+                // Sembunyikan Form Armada
+                armadaSec.style.display = 'none';
+                // Hapus kewajiban isi
+                armadaInput.removeAttribute('required');
+                // Reset pilihan armada jadi kosong
+                armadaInput.value = "";
+            }
         }
+
+        // Dengar setiap kali dropdown kategori berubah
+        katSelect.addEventListener('change', toggleArmada);
+        
+        // Jalankan sekali saat halaman loading (untuk handle edit/error)
+        toggleArmada();
     });
 </script>
 {% endblock %}

@@ -18,5 +18,6 @@ class InvoiceAdmin(admin.ModelAdmin):
 
 @admin.register(BiayaOperasional)
 class OpsAdmin(admin.ModelAdmin):
-    list_display = ('tanggal', 'armada', 'kategori', 'nominal', 'is_approved')
-    list_filter = ('kategori', 'is_approved', 'armada')
+    list_display = ('tanggal', 'kategori_utama', 'jenis_biaya', 'nominal', 'status')
+    list_filter = ('kategori_utama', 'urgensi', 'status')
+    search_fields = ('description',)

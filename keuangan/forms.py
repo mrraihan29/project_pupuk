@@ -17,12 +17,26 @@ class PaymentForm(forms.ModelForm):
 class BiayaOperasionalForm(forms.ModelForm):
     class Meta:
         model = BiayaOperasional
-        fields = ['armada', 'kategori', 'nominal', 'tanggal', 'keterangan', 'foto_bukti']
+        # KITA PAKAI NAMA FIELD BARU SESUAI MODELS.PY
+        fields = [
+            'tanggal', 
+            'kategori_utama',  # Dulu: kategori
+            'jenis_biaya',     # Baru
+            'armada', 
+            'nominal', 
+            'urgensi',         # Baru
+            'status',          # Baru
+            'description',     # Dulu: keterangan
+            'bukti_foto'       # Dulu: foto_bukti
+        ]
         widgets = {
-            'armada': forms.Select(attrs={'class': 'form-select'}),
-            'kategori': forms.Select(attrs={'class': 'form-select'}),
-            'nominal': forms.NumberInput(attrs={'class': 'form-control', 'placeholder': 'Rp'}),
             'tanggal': forms.DateInput(attrs={'type': 'date', 'class': 'form-control'}),
-            'keterangan': forms.Textarea(attrs={'class': 'form-control', 'rows': 2}),
-            'foto_bukti': forms.FileInput(attrs={'class': 'form-control'}),
+            'kategori_utama': forms.Select(attrs={'class': 'form-select', 'id': 'id_kategori_utama'}),
+            'jenis_biaya': forms.Select(attrs={'class': 'form-select'}),
+            'armada': forms.Select(attrs={'class': 'form-select', 'id': 'id_armada_container'}),
+            'nominal': forms.NumberInput(attrs={'class': 'form-control'}),
+            'urgensi': forms.Select(attrs={'class': 'form-select'}),
+            'status': forms.Select(attrs={'class': 'form-select'}),
+            'description': forms.Textarea(attrs={'class': 'form-control', 'rows': 2, 'placeholder': 'Jelaskan detail pengeluaran...'}),
+            'bukti_foto': forms.FileInput(attrs={'class': 'form-control'}),
         }

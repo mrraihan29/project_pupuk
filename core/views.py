@@ -327,19 +327,21 @@ def laporan_keuangan(request):
     omzet_urea = qty_jual_urea * harga_urea.price_sell
     total_omzet = omzet_npk + omzet_urea
 
-    # 5. HITUNG BIAYA OPERASIONAL (SPLIT)
-    # Filter: tanggal transaksi
-    # Group Armada: Service, Sparepart, BBM, Ban
+# 5. HITUNG BIAYA OPERASIONAL (UPDATE LOGIC BARU)
+    
+    # Logic Lama: Filter berdasarkan 'kategori__in' (Nama field lama)
+    # Logic Baru: Filter berdasarkan 'kategori_utama' (Nama field baru)
+    
+    # Biaya Armada (Langsung filter kategori_utama='ARMADA')
     biaya_armada = BiayaOperasional.objects.filter(
         tanggal__range=[start_date, end_date],
-        kategori__in=['BENSIN', 'SERVIS', 'TOL']
+        kategori_utama='ARMADA'  # Field Baru
     ).aggregate(total=Sum('nominal'))['total'] or 0
 
-    # Group Kantor: Sisanya
+    # Biaya Kantor (Langsung filter kategori_utama='KANTOR')
     biaya_kantor = BiayaOperasional.objects.filter(
-        tanggal__range=[start_date, end_date]
-    ).exclude(
-        kategori__in=['BENSIN', 'SERVIS', 'TOL']
+        tanggal__range=[start_date, end_date],
+        kategori_utama='KANTOR'  # Field Baru
     ).aggregate(total=Sum('nominal'))['total'] or 0
     
     total_ops = biaya_armada + biaya_kantor
