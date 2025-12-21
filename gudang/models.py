@@ -73,7 +73,7 @@ class StockCard(models.Model):
 # --- 3. DISTRIBUTION (PENYALURAN) - OUTBOUND ---
 class Distribution(models.Model):
     sales_order = models.ForeignKey(SalesOrder, on_delete=models.CASCADE)
-    kios = models.ForeignKey(Kios, on_delete=models.CASCADE)
+    kios = models.ForeignKey(Kios, on_delete=models.CASCADE, related_name='distributions')
     armada = models.ForeignKey(Armada, on_delete=models.SET_NULL, null=True)
     
     tonnage_sent = models.DecimalField("Tonase Kirim", max_digits=10, decimal_places=2)

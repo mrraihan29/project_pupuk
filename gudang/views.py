@@ -1,7 +1,7 @@
 from django.shortcuts import render, redirect
 from django.http import JsonResponse, HttpResponse
 from django.contrib import messages
-from django.db.models import Sum
+from django.db.models import Sum, Q
 from core.models import Kios, KiosAllocation, FertilizerPrice
 from .models import SalesOrder, Distribution, StockAdjustment, StockCard
 from .forms import DistributionForm, StockAdjustmentForm, SalesOrderForm
@@ -80,6 +80,27 @@ def get_so_info(request):
         })
     except SalesOrder.DoesNotExist:
         return JsonResponse({'error': 'SO not found'}, status=404)
+
+
+def get_so_details(request):
+    """API detail SO untuk kebutuhan auto-fill form distribusi."""
+    so_id = request.GET.get('so_id')
+    if not so_id:
+        return JsonResponse({'error': 'Missing so_id'}, status=400)
+
+    try:
+        so = SalesOrder.objects.get(id=so_id)
+    except SalesOrder.DoesNotExist:
+        return JsonResponse({'error': 'SO not found'}, status=404)
+
+    return JsonResponse({
+        'id': so.id,
+        'code': so.so_code,
+        'type': so.fertilizer_type,
+        'remaining': float(so.tonnage_current),
+        'district': so.district,
+        'is_closed': so.is_closed,
+    })
     
 # --- LIST PENYALURAN (History) ---
 def distribution_list(request):
@@ -175,18 +196,45 @@ def so_create(request):
 
 # --- KARTU STOK ---
 def stock_card_list(request):
-    # Ambil semua log, urutkan dari yang terbaru
-    logs = StockCard.objects.all().select_related('sales_order').order_by('-date')
-    return render(request, 'gudang/stock_card_list.html', {'logs': logs})
+    # Ambil parameter filter jenis pupuk (Default NPK)
+    jenis = request.GET.get('jenis', 'NPK') 
+    
+    # 1. Ambil semua log transaksi untuk jenis pupuk tersebut
+    # Urutkan dari yang TERLAMA ke TERBARU agar perhitungan saldo nyambung (Running Balance)
+    logs = StockCard.objects.filter(
+        sales_order__fertilizer_type=jenis
+    ).select_related('sales_order').order_by('date', 'id')
 
-def get_so_details(request):
-    so_id = request.GET.get('so_id')
-    try:
-        so = SalesOrder.objects.get(pk=so_id)
-        return JsonResponse({
-            'district': so.district,          # WAJIB ADA
-            'remaining': float(so.tonnage_current),
-            'type': so.fertilizer_type
+    # 2. Hitung Saldo Berjalan (Kumulatif)
+    running_balance = 0
+    report_data = []
+
+    for log in logs:
+        # Tentukan Masuk/Keluar
+        masuk = log.qty_change if log.trx_type == 'IN' else 0
+        keluar = log.qty_change if log.trx_type == 'OUT' else 0
+        
+        # Matematika Kumulatif
+        if log.trx_type == 'IN':
+            running_balance += log.qty_change
+        else:
+            running_balance -= log.qty_change
+            
+        report_data.append({
+            'date': log.date,
+            'so_code': log.sales_order.so_code,
+            'reference': log.reference_number, # Bisa nama Kios atau Keterangan Adjustment
+            'masuk': masuk,
+            'keluar': keluar,
+            'saldo': running_balance, # INI YANG DIMINTA WIREFRAME
         })
-    except SalesOrder.DoesNotExist:
-        return JsonResponse({'error': 'Not found'}, status=404)
+
+    # Balik urutan agar yang terbaru muncul di atas (Opsional, tapi biasanya user suka lihat yg baru dulu)
+    # Tapi kalau mau persis buku tabungan, biarkan urut tanggal. 
+    # Sesuai gambar, sepertinya urut tanggal (Stok Awal -> Nov 1). Jadi kita biarkan urut lama ke baru.
+    
+    context = {
+        'report_data': report_data,
+        'current_jenis': jenis
+    }
+    return render(request, 'gudang/stock_card_list.html', context)

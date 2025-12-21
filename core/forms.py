@@ -1,6 +1,6 @@
 from django import forms
 from django.forms import inlineformset_factory
-from .models import Kios, KiosAllocation, Armada
+from .models import Kios, KiosAllocation, Armada, FertilizerPrice
 
 class KiosForm(forms.ModelForm):
     class Meta:
@@ -38,4 +38,13 @@ class ArmadaForm(forms.ModelForm):
             'vehicle_type': forms.TextInput(attrs={'class': 'form-control', 'placeholder': 'Contoh: Truk Engkel'}),
             'driver_name': forms.TextInput(attrs={'class': 'form-control'}),
             'is_active': forms.CheckboxInput(attrs={'class': 'form-check-input'}),
+        }
+        
+class HargaPupukForm(forms.ModelForm):
+    class Meta:
+        model = FertilizerPrice
+        fields = ['price_buy', 'price_sell']
+        widgets = {
+            'price_buy': forms.NumberInput(attrs={'class': 'form-control', 'step': '100'}),
+            'price_sell': forms.NumberInput(attrs={'class': 'form-control', 'step': '100'}),
         }

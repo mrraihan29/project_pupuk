@@ -1,34 +1,65 @@
 {% extends 'base.html' %}
-{% block page_title %}Kartu Stok (Log Mutasi){% endblock %}
+{% block page_title %}Kartu Stok (Ledger){% endblock %}
+
 {% block content %}
 <div class="card p-4">
-    <h5 class="fw-bold mb-4">Riwayat Pergerakan Barang</h5>
-    <table class="table table-sm table-striped">
-        <thead>
-            <tr>
-                <th>Waktu</th>
-                <th>Kode SO</th>
-                <th>Tipe</th>
-                <th>Referensi</th>
-                <th>Mutasi</th>
-                <th>Saldo Akhir</th>
-            </tr>
-        </thead>
-        <tbody>
-            {% for log in logs %}
-            <tr>
-                <td>{{ log.date|date:"d M Y H:i" }}</td>
-                <td>{{ log.sales_order.so_code }}</td>
-                <td>
-                    {% if log.trx_type == 'IN' %}<span class="text-success fw-bold">MASUK</span>
-                    {% else %}<span class="text-danger fw-bold">KELUAR</span>{% endif %}
-                </td>
-                <td>{{ log.reference_number }}</td>
-                <td class="fw-bold">{{ log.qty_change }}</td>
-                <td>{{ log.balance_after }}</td>
-            </tr>
-            {% endfor %}
-        </tbody>
-    </table>
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <div>
+            <h5 class="fw-bold mb-0">Kartu Stok Kumulatif</h5>
+            <small class="text-muted">Mutasi stok global berdasarkan jenis pupuk.</small>
+        </div>
+        
+        <div class="btn-group">
+            <a href="?jenis=NPK" class="btn {% if current_jenis == 'NPK' %}btn-danger{% else %}btn-outline-danger{% endif %}">
+                NPK
+            </a>
+            <a href="?jenis=UREA" class="btn {% if current_jenis == 'UREA' %}btn-primary{% else %}btn-outline-primary{% endif %}">
+                UREA
+            </a>
+        </div>
+    </div>
+
+    <div class="table-responsive">
+        <table class="table table-bordered table-hover align-middle text-center">
+            <thead class="table-light fw-bold">
+                <tr>
+                    <th style="width: 15%">TGL</th>
+                    <th style="width: 20%">KODE SO</th>
+                    <th style="width: 25%">KETERANGAN</th> <th style="width: 10%" class="text-success">MASUK</th> <th style="width: 10%" class="text-danger">KELUAR</th>
+                    <th style="width: 20%" class="bg-light">STOK AKHIR</th> </tr>
+            </thead>
+            <tbody>
+                {% for row in report_data %}
+                <tr>
+                    <td class="text-muted small">{{ row.date|date:"d M Y" }}</td>
+                    <td class="fw-bold">{{ row.so_code }}</td>
+                    <td class="text-start small">{{ row.reference }}</td>
+                    
+                    <td>
+                        {% if row.masuk > 0 %}
+                            <span class="text-success fw-bold">+{{ row.masuk }}</span>
+                        {% else %} - {% endif %}
+                    </td>
+
+                    <td>
+                        {% if row.keluar > 0 %}
+                            <span class="text-danger fw-bold">-{{ row.keluar }}</span>
+                        {% else %} - {% endif %}
+                    </td>
+
+                    <td class="fw-bold bg-light fs-6">
+                        {{ row.saldo }} Ton
+                    </td>
+                </tr>
+                {% empty %}
+                <tr>
+                    <td colspan="6" class="text-center py-5 text-muted">
+                        Belum ada transaksi untuk pupuk {{ current_jenis }}.
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
 </div>
 {% endblock %}

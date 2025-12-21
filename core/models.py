@@ -77,3 +77,4 @@ class FertilizerPrice(models.Model):
 
     class Meta:
         verbose_name_plural = "Master Harga Pupuk"
+        

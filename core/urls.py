@@ -12,4 +12,7 @@ urlpatterns = [
     
     path('armada/', views.armada_list, name='armada_list'),
     path('armada/add/', views.armada_create, name='armada_create'),
+    
+    path('master/harga/', views.master_harga, name='master_harga'),       # Untuk Menu Master Harga
+    path('laporan/keuangan/', views.laporan_keuangan, name='laporan_keuangan'), # Untuk Menu Laba Rugi
 ]

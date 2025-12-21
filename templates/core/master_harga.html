@@ -1,0 +1,59 @@
+{% extends 'base.html' %}
+{% block page_title %}Master Harga Pupuk{% endblock %}
+
+{% block content %}
+<form method="post">
+    {% csrf_token %}
+    <div class="row">
+        <div class="col-md-6">
+            <div class="card border-danger shadow-sm">
+                <div class="card-header bg-danger text-white fw-bold">PUPUK NPK (MERAH)</div>
+                <div class="card-body">
+                    <div class="mb-3">
+                        <label class="fw-bold">Harga Tebus (Beli)</label>
+                        <div class="input-group">
+                            <span class="input-group-text">Rp</span>
+                            {{ form_npk.price_buy }}
+                        </div>
+                    </div>
+                    <div class="mb-3">
+                        <label class="fw-bold">Harga Jual (Kios)</label>
+                        <div class="input-group">
+                            <span class="input-group-text">Rp</span>
+                            {{ form_npk.price_sell }}
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="col-md-6">
+            <div class="card border-primary shadow-sm">
+                <div class="card-header bg-primary text-white fw-bold">PUPUK UREA (PUTIH)</div>
+                <div class="card-body">
+                    <div class="mb-3">
+                        <label class="fw-bold">Harga Tebus (Beli)</label>
+                        <div class="input-group">
+                            <span class="input-group-text">Rp</span>
+                            {{ form_urea.price_buy }}
+                        </div>
+                    </div>
+                    <div class="mb-3">
+                        <label class="fw-bold">Harga Jual (Kios)</label>
+                        <div class="input-group">
+                            <span class="input-group-text">Rp</span>
+                            {{ form_urea.price_sell }}
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="mt-4 text-end">
+        <button type="submit" class="btn btn-success px-5 fw-bold" onclick="return confirm('Harga akan berubah untuk transaksi selanjutnya. Yakin?');">
+            <i class="bi bi-save me-2"></i>SIMPAN PERUBAHAN HARGA
+        </button>
+    </div>
+</form>
+{% endblock %}
