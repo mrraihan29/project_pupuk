@@ -1,95 +1,126 @@
 from django import forms
-from django.db.models import Sum
-from core.models import KiosAllocation
-from .models import Distribution, SalesOrder, StockAdjustment
+from django.forms import inlineformset_factory
+from django.core.exceptions import ValidationError
+from datetime import date
 
-# --- FORM PENEBUSAN (STOK MASUK) ---
+# Import Models
+from .models import SalesOrder, SalesOrderAllocation, Distribution, WarehouseTransfer, StockCard
+from core.models import JenisPupuk, Kios, Armada
+
+# ==========================================
+# 1. FORM PENEBUSAN (SO) + ALOKASI
+# ==========================================
 class SalesOrderForm(forms.ModelForm):
     class Meta:
         model = SalesOrder
-        # SESUAI IMAGE 2: Kode SO -> Tgl Ngisi -> Kecamatan -> Tonase
-        fields = ['so_code', 'entry_date', 'district', 'tonnage_initial']
+        fields = ['so_number', 'date', 'jenis_pupuk', 'file_upload']
         widgets = {
-            'so_code': forms.TextInput(attrs={'class': 'form-control', 'placeholder': '3101-xxxx (NPK) atau 3820-xxxx (UREA)'}),
-            'entry_date': forms.DateInput(attrs={'type': 'date', 'class': 'form-control'}),
-            'district': forms.Select(attrs={'class': 'form-select'}),
-            'tonnage_initial': forms.NumberInput(attrs={'class': 'form-control', 'step': '0.01'}),
+            'so_number': forms.TextInput(attrs={
+                'class': 'form-control', 
+                'placeholder': 'Contoh: 3101-A'
+            }),
+            'date': forms.DateInput(attrs={
+                'class': 'form-control', 
+                'type': 'date'
+            }),
+            'jenis_pupuk': forms.Select(attrs={'class': 'form-select'}),
+            'file_upload': forms.FileInput(attrs={'class': 'form-control'}),
         }
-    
-    def clean_so_code(self):
-        # Validasi Kode SO agar sesuai aturan Client
-        code = self.cleaned_data.get('so_code')
-        if not (code.startswith('3101') or code.startswith('3820')):
-            raise forms.ValidationError("Kode SO harus diawali 3101 (NPK) atau 3820 (UREA)")
-        return code
 
-# --- FORM PENYALURAN (STOK KELUAR) ---
+    def clean_so_number(self):
+        # Validasi: Ubah input jadi huruf besar semua agar rapi
+        return self.cleaned_data['so_number'].upper()
+
+# Formset untuk Alokasi Kecamatan (Parent-Child)
+AllocationFormSet = inlineformset_factory(
+    SalesOrder, SalesOrderAllocation,
+    fields=('kecamatan', 'tonnage'),
+    extra=1, # Default tampil 1 baris kosong
+    can_delete=True,
+    widgets={
+        'kecamatan': forms.Select(attrs={'class': 'form-select'}),
+        'tonnage': forms.NumberInput(attrs={
+            'class': 'form-control', 
+            'placeholder': 'Ton', 
+            'min': '0'
+        }),
+    }
+)
+
+# ==========================================
+# 2. FORM DISTRIBUSI (SURAT JALAN)
+# ==========================================
 class DistributionForm(forms.ModelForm):
     class Meta:
         model = Distribution
-        # SESUAI IMAGE 3: Kode SO -> Tgl Ngirim -> Tgl PKP -> Kios -> Tonase -> Armada
-        fields = ['sales_order', 'transaction_date', 'pkp_date', 'kios', 'tonnage_sent', 'armada', 'notes']
+        fields = ['date', 'pkp_date', 'kios', 'armada', 'source_type', 'source_so', 'jenis_pupuk', 'tonnage']
         widgets = {
-            'sales_order': forms.Select(attrs={'class': 'form-select', 'id': 'id_sales_order'}), # ID PENTING UTK JS AUTO-FILL
-            'transaction_date': forms.DateInput(attrs={'type': 'date', 'class': 'form-control'}),
-            'pkp_date': forms.DateInput(attrs={'type': 'date', 'class': 'form-control'}), # Field Baru (Administrasi)
+            'date': forms.DateInput(attrs={'class': 'form-control', 'type': 'date'}),
+            'pkp_date': forms.DateInput(attrs={'class': 'form-control', 'type': 'date'}),
             'kios': forms.Select(attrs={'class': 'form-select'}),
-            'tonnage_sent': forms.NumberInput(attrs={'class': 'form-control', 'id': 'id_tonnage_kirim', 'step': '0.01'}),
             'armada': forms.Select(attrs={'class': 'form-select'}),
-            'notes': forms.Textarea(attrs={'class': 'form-control', 'rows': 3, 'placeholder': 'Catatan tambahan...'}),
+            
+            # ID Khusus untuk JavaScript (Smart Dropdown)
+            'source_type': forms.Select(attrs={'class': 'form-select', 'id': 'id_source_type'}),
+            'source_so': forms.Select(attrs={'class': 'form-select', 'id': 'id_source_so'}),
+            'jenis_pupuk': forms.Select(attrs={'class': 'form-select', 'id': 'id_jenis_pupuk'}),
+            
+            'tonnage': forms.NumberInput(attrs={'class': 'form-control', 'placeholder': 'Ton'}),
         }
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        # Filter: Hanya tampilkan SO yang belum closed (Stok > 0)
-        self.fields['sales_order'].queryset = SalesOrder.objects.filter(is_closed=False, tonnage_current__gt=0)
+        # FILTER PENTING: Jangan tampilkan Armada yang sudah non-aktif (rusak/dijual)
+        self.fields['armada'].queryset = Armada.objects.filter(is_active=True)
+        # Jangan tampilkan Kios yang tutup permanen
+        self.fields['kios'].queryset = Kios.objects.filter(is_active=True)
 
-    def clean(self):
-        cleaned_data = super().clean()
-        kios = cleaned_data.get('kios')
-        sales_order = cleaned_data.get('sales_order')
-        tonnage = cleaned_data.get('tonnage_sent')
-        tgl_transaksi = cleaned_data.get('transaction_date')
-        
-        if not (kios and sales_order and tonnage and tgl_transaksi):
-            return
-
-        # 1. Validasi Stok SO (Stok Gudang Fisik)
-        if tonnage > sales_order.tonnage_current:
-            raise forms.ValidationError(f"Stok SO Tidak Cukup! Sisa di Gudang: {sales_order.tonnage_current} Ton")
-
-        # 2. Validasi Kuota Kecamatan (TRAFFIC LIGHT LOGIC)
-        # Kita hitung total sisa kuota SATU KECAMATAN untuk jenis pupuk ini
-        jenis_pupuk = sales_order.fertilizer_type
-        tahun = tgl_transaksi.year
-        
-        # Ambil sisa kuota kecamatan (Pool)
-        total_district_quota = KiosAllocation.objects.filter(
-            kios__district=kios.district, # Filter berdasarkan Kecamatan Kios Tujuan
-            year=tahun,
-            fertilizer_type=jenis_pupuk
-        ).aggregate(Sum('quota_remaining'))['quota_remaining__sum'] or 0
-
-        # Jika Tonase Kirim > Sisa Jatah Kecamatan -> STOP (MERAH)
-        if tonnage > total_district_quota:
-            raise forms.ValidationError(
-                f"GAGAL SALUR (RED LIGHT): Kuota Kecamatan {kios.district} untuk {jenis_pupuk} sudah habis! "
-                f"Sisa Kecamatan: {total_district_quota} Ton."
-            )
-
-# --- FORM STOCK OPNAME (ADJUSTMENT) ---
-class StockAdjustmentForm(forms.ModelForm):
+# ==========================================
+# 3. FORM TRANSFER GUDANG (TARIK STOK)
+# ==========================================
+class WarehouseTransferForm(forms.ModelForm):
     class Meta:
-        model = StockAdjustment
-        fields = ['sales_order', 'actual_stock', 'reason']
+        model = WarehouseTransfer
+        fields = ['date', 'source_so', 'tonnage', 'reference_code', 'notes']
         widgets = {
-            'sales_order': forms.Select(attrs={'class': 'form-select'}),
-            'actual_stock': forms.NumberInput(attrs={'class': 'form-control', 'step': '0.01', 'placeholder': 'Masukkan angka hasil hitung fisik...'}),
-            'reason': forms.Textarea(attrs={'class': 'form-control', 'rows': 3, 'placeholder': 'Jelaskan kenapa stok berubah...'}),
+            'date': forms.DateInput(attrs={'class': 'form-control', 'type': 'date'}),
+            # Hanya tampilkan SO yang belum closed (Masih ada stok)
+            'source_so': forms.Select(attrs={'class': 'form-select'}),
+            'tonnage': forms.NumberInput(attrs={'class': 'form-control', 'placeholder': 'Jumlah Ditarik'}),
+            'reference_code': forms.TextInput(attrs={'class': 'form-control', 'placeholder': 'No. Surat Jalan Pabrik'}),
+            'notes': forms.Textarea(attrs={'class': 'form-control', 'rows': 2}),
         }
-    
+
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        # Hanya tampilkan SO yang belum closed atau masih relevan
-        self.fields['sales_order'].queryset = SalesOrder.objects.filter(is_closed=False)
-        self.fields['sales_order'].label = "Pilih Batch / Kode SO"
+        # Hanya tampilkan SO yang belum ditutup (masih ada sisa)
+        self.fields['source_so'].queryset = SalesOrder.objects.filter(is_closed=False)
+
+# ==========================================
+# 4. FORM STOCK OPNAME (MANUAL)
+# ==========================================
+class StockOpnameForm(forms.Form):
+    """Form manual untuk menyesuaikan stok jika selisih"""
+    date = forms.DateField(
+        label="Tanggal Opname",
+        widget=forms.DateInput(attrs={'class': 'form-control', 'type': 'date'}),
+        initial=date.today
+    )
+    jenis_pupuk = forms.ModelChoiceField(
+        queryset=JenisPupuk.objects.filter(is_active=True),
+        widget=forms.Select(attrs={'class': 'form-select'})
+    )
+    stock_type = forms.ChoiceField(
+        choices=StockCard.STOCK_TYPE_CHOICES,
+        label="Lokasi Stok",
+        widget=forms.Select(attrs={'class': 'form-select'})
+    )
+    actual_qty = forms.DecimalField(
+        label="Stok Fisik Real (Ton)",
+        widget=forms.NumberInput(attrs={'class': 'form-control', 'step': '0.01'})
+    )
+    notes = forms.CharField(
+        label="Catatan / Alasan Selisih",
+        widget=forms.Textarea(attrs={'class': 'form-control', 'rows': 2}),
+        required=False
+    )

@@ -1,37 +1,28 @@
 from django.contrib import admin
-from .models import SalesOrder, StockCard, Distribution
+from .models import SalesOrder, SalesOrderAllocation, WarehouseTransfer, Distribution, StockCard
 
-class StockCardInline(admin.TabularInline):
-    model = StockCard
-    extra = 0
-    readonly_fields = ('date', 'trx_type', 'qty_change', 'balance_after', 'reference_number')
-    can_delete = False # Audit log tidak boleh dihapus sembarangan
+class AllocationInline(admin.TabularInline):
+    model = SalesOrderAllocation
+    extra = 1
 
 @admin.register(SalesOrder)
 class SalesOrderAdmin(admin.ModelAdmin):
-    list_display = ('so_code', 'fertilizer_type', 'tonnage_initial', 'tonnage_current', 'entry_date', 'maturity_date', 'is_closed')
-    search_fields = ('so_code',)
-    list_filter = ('fertilizer_type', 'is_closed', 'maturity_date')
-    readonly_fields = ('fertilizer_type', 'tonnage_current', 'maturity_date') # Field ini otomatis, admin dilarang edit manual
-    inlines = [StockCardInline] # Bisa lihat history mutasi langsung di detail SO
+    list_display = ('so_number', 'date', 'jenis_pupuk', 'total_tonnage', 'is_closed')
+    inlines = [AllocationInline]
+    list_filter = ('jenis_pupuk', 'is_closed')
+    search_fields = ('so_number',)
+
+@admin.register(WarehouseTransfer)
+class TransferAdmin(admin.ModelAdmin):
+    list_display = ('date', 'source_so', 'tonnage', 'reference_code')
+
+@admin.register(Distribution)
+class DistributionAdmin(admin.ModelAdmin):
+    list_display = ('no_surat_jalan', 'date', 'kios', 'source_type', 'tonnage')
+    list_filter = ('source_type', 'date')
 
 @admin.register(StockCard)
 class StockCardAdmin(admin.ModelAdmin):
-    list_display = ('date', 'sales_order', 'trx_type', 'qty_change', 'balance_after', 'reference_number')
-    list_filter = ('trx_type', 'date')
-    search_fields = ('reference_number', 'sales_order__so_code')
-    
-    # Mencegah manipulasi kartu stok manual lewat admin
-    def has_add_permission(self, request):
-        return False
-    def has_change_permission(self, request, obj=None):
-        return False
-    def has_delete_permission(self, request, obj=None):
-        return False
-    
-@admin.register(Distribution)
-class DistributionAdmin(admin.ModelAdmin):
-    list_display = ('surat_jalan_no', 'transaction_date', 'kios', 'sales_order', 'tonnage_sent')
-    list_filter = ('transaction_date', 'kios')
-    search_fields = ('surat_jalan_no', 'kios__name')
-    autocomplete_fields = ['sales_order', 'kios', 'armada'] # Agar dropdown tidak berat jika data banyak
+    list_display = ('date', 'stock_type', 'transaction_type', 'reference_number', 'qty_in', 'qty_out', 'jenis_pupuk')
+    list_filter = ('stock_type', 'transaction_type', 'jenis_pupuk')
+    readonly_fields = ('qty_in', 'qty_out', 'balance', 'reference_number') # Agar tidak diedit manual sembarangan

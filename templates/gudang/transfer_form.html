@@ -1,0 +1,65 @@
+{% extends 'base.html' %}
+
+{% block content %}
+<div class="row justify-content-center">
+    <div class="col-md-8">
+        <div class="card shadow border-0">
+            <div class="card-header bg-warning text-dark">
+                <h5 class="mb-0"><i class="bi bi-box-seam me-2"></i>Tarik Stok (Virtual ke Fisik)</h5>
+            </div>
+            <div class="card-body p-4">
+                <div class="alert alert-info d-flex align-items-center" role="alert">
+                    <i class="bi bi-info-circle-fill me-2 fs-4"></i>
+                    <div>
+                        Fitur ini memindahkan stok dari <b>Pabrik (SO)</b> ke <b>Gudang Penyangga</b>. 
+                        Pastikan truk pembawa pupuk sudah tiba di gudang.
+                    </div>
+                </div>
+
+                <form method="post">
+                    {% csrf_token %}
+                    
+                    <div class="mb-3">
+                        <label class="form-label fw-bold">Tanggal Masuk Gudang</label>
+                        {{ form.date }}
+                    </div>
+
+                    <div class="mb-3">
+                        <label class="form-label fw-bold">Ambil dari SO Nomor</label>
+                        {{ form.source_so }}
+                        <div class="form-text">Hanya SO yang belum habis (Closed) yang muncul di sini.</div>
+                    </div>
+
+                    <div class="mb-3">
+                        <label class="form-label fw-bold">Jumlah Ditarik (Ton)</label>
+                        <div class="input-group">
+                            {{ form.tonnage }}
+                            <span class="input-group-text">Ton</span>
+                        </div>
+                        {% if form.tonnage.errors %}
+                            <div class="text-danger small">{{ form.tonnage.errors }}</div>
+                        {% endif %}
+                    </div>
+
+                    <div class="mb-3">
+                        <label class="form-label fw-bold">No. Surat Jalan Pabrik (Ref)</label>
+                        {{ form.reference_code }}
+                    </div>
+
+                    <div class="mb-3">
+                        <label class="form-label">Catatan Tambahan</label>
+                        {{ form.notes }}
+                    </div>
+
+                    <div class="d-grid gap-2 mt-4">
+                        <button type="submit" class="btn btn-warning btn-lg text-dark fw-bold">
+                            <i class="bi bi-download me-2"></i>PROSES MASUK GUDANG
+                        </button>
+                        <a href="{% url 'transfer_list' %}" class="btn btn-light">Batal</a>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

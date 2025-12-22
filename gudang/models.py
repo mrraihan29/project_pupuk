@@ -1,208 +1,278 @@
-from django.conf import settings
-from django.db import models, transaction
+import uuid
+from decimal import Decimal
+from django.db import models
+from django.core.exceptions import ValidationError
 from django.utils import timezone
-from core.models import Kios, Armada, KiosAllocation
+from django.db.models import Sum
 
-# --- 1. SALES ORDER (SO) - INBOUND ---
+# Mengambil Model dari Core yang baru saja kita sepakati
+from core.models import JenisPupuk, Kecamatan, Kios, Armada
+
+# ==========================================
+# 1. SALES ORDER (PENEBUSAN / STOK VIRTUAL)
+# ==========================================
 class SalesOrder(models.Model):
-    # Opsi Kecamatan (Sesuaikan dengan wilayah kerja Client)
-    DISTRICT_CHOICES = [
-        ('Bancak', 'Bancak'),
-        ('Pabelan', 'Pabelan'),
-        ('Suruh', 'Suruh'),
-        ('Getasan', 'Getasan'),
-        ('Tuntang', 'Tuntang'),
-        # Tambahkan kecamatan lain sesuai Video 1
-    ]
+    """
+    Induk Transaksi Penebusan (Purchase Order ke Pabrik).
+    Mewakili 'Stok Virtual' (Barang milik kita tapi masih di gudang pabrik).
+    
+    Logika:
+    Stok Virtual akan berkurang jika:
+    1. Ditarik ke Gudang Sendiri (WarehouseTransfer)
+    2. Didistribusikan Langsung ke Kios (Distribution tipe VIRTUAL)
+    """
+    so_number = models.CharField("Nomor SO", max_length=50, unique=True, help_text="Nomor Sales Order dari Pabrik")
+    date = models.DateField("Tanggal Penebusan")
+    
+    # User memilih manual jenis pupuk (Sesuai request: hapus auto-detect)
+    jenis_pupuk = models.ForeignKey(JenisPupuk, on_delete=models.PROTECT, verbose_name="Jenis Pupuk")
+    
+    file_upload = models.FileField("Bukti DO/SO", upload_to='documents/so/', null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+    
+    # Penanda jika stok SO ini sudah habis total (0)
+    is_closed = models.BooleanField("Selesai?", default=False, help_text="Centang otomatis jika sisa stok virtual habis")
 
-    so_code = models.CharField("Kode SO (Batch)", max_length=50, unique=True)
-    fertilizer_type = models.CharField(max_length=10, choices=[('NPK', 'NPK'), ('UREA', 'UREA')])
-    
-    # REVISI IMAGE 2: Stok terikat Kecamatan
-    district = models.CharField("Alokasi Kecamatan", max_length=50, choices=DISTRICT_CHOICES, default='Bancak') 
-    
-    tonnage_initial = models.DecimalField("Tonase Awal", max_digits=10, decimal_places=2)
-    tonnage_current = models.DecimalField("Sisa Stok", max_digits=10, decimal_places=2)
-    entry_date = models.DateField("Tanggal Ngisi")
-    maturity_date = models.DateField("Jatuh Tempo Gudang", blank=True)
-    is_closed = models.BooleanField(default=False)
+    def __str__(self):
+        return f"{self.so_number} - {self.jenis_pupuk.name}"
+
+    class Meta:
+        verbose_name = "Data Penebusan (SO)"
+        verbose_name_plural = "Data Penebusan (SO)"
+        ordering = ['-date']
+
+    @property
+    def total_tonnage(self):
+        """Menghitung Total Tonase dari Alokasi Kecamatan"""
+        return self.allocations.aggregate(total=Sum('tonnage'))['total'] or Decimal('0')
+
+    def get_virtual_balance(self):
+        """
+        Menghitung Sisa Stok Virtual Real-time.
+        Rumus: Total SO - (Total Transfer ke Gudang + Total Distribusi Langsung)
+        """
+        # 1. Hitung total yang sudah ditarik ke gudang fisik (Fisik In)
+        transferred = self.transfers.aggregate(total=Sum('tonnage'))['total'] or Decimal('0')
+        
+        # 2. Hitung total yang didistribusikan LANGSUNG dari Pabrik (Virtual Out)
+        distributed = self.distributions.filter(source_type='VIRTUAL').aggregate(total=Sum('tonnage'))['total'] or Decimal('0')
+        
+        return self.total_tonnage - transferred - distributed
 
     def save(self, *args, **kwargs):
-        # Auto-detect Type
-        if self.so_code.startswith('3101'): self.fertilizer_type = 'NPK'
-        elif self.so_code.startswith('3820'): self.fertilizer_type = 'UREA'
-        
-        # Auto-calc Jatuh Tempo (21 Hari)
-        if not self.maturity_date:
-            from datetime import timedelta
-            self.maturity_date = self.entry_date + timedelta(days=21)
-            
-        # Set initial current
-        if not self.pk:
-            self.tonnage_current = self.tonnage_initial
-            
+        # Auto Close jika balance 0 (Logic sederhana)
+        # Note: Idealnya ini dijalankan via Signal agar lebih reaktif
         super().save(*args, **kwargs)
 
+
+class SalesOrderAllocation(models.Model):
+    """
+    Detail Alokasi per Kecamatan untuk 1 Nomor SO.
+    (Parent-Child Relationship)
+    """
+    sales_order = models.ForeignKey(SalesOrder, on_delete=models.CASCADE, related_name="allocations")
+    kecamatan = models.ForeignKey(Kecamatan, on_delete=models.PROTECT, verbose_name="Alokasi Kecamatan")
+    tonnage = models.DecimalField("Jumlah (Ton)", max_digits=10, decimal_places=2)
+
     def __str__(self):
-        return f"{self.so_code} ({self.district})"
+        return f"{self.kecamatan.name}: {self.tonnage} Ton"
+    
+    class Meta:
+        verbose_name = "Rincian Alokasi SO"
+        verbose_name_plural = "Rincian Alokasi SO"
 
 
-# --- 2. KARTU STOK (LOG MUTASI) ---
-class StockCard(models.Model):
-    TRX_TYPES = [
-        ('IN', 'Masuk (Penebusan)'),
-        ('OUT', 'Keluar (Penyaluran)'),
+# ==========================================
+# 2. WAREHOUSE TRANSFER (TARIK KE GUDANG)
+# ==========================================
+class WarehouseTransfer(models.Model):
+    """
+    Transaksi memindahkan stok dari 'Virtual' (SO) ke 'Fisik' (Gudang Penyangga).
+    Mengurangi Virtual Balance SO -> Menambah Physical Stock di Gudang.
+    """
+    source_so = models.ForeignKey(SalesOrder, on_delete=models.PROTECT, verbose_name="Sumber SO", related_name="transfers")
+    date = models.DateField("Tanggal Masuk Gudang", default=timezone.now)
+    
+    tonnage = models.DecimalField("Jumlah Ditarik (Ton)", max_digits=10, decimal_places=2)
+    reference_code = models.CharField("No. Surat Jalan Pabrik", max_length=50, blank=True, help_text="Nomor referensi pengiriman dari pabrik ke gudang kita")
+    
+    notes = models.TextField("Catatan", blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    def __str__(self):
+        return f"Tarik {self.tonnage} Ton dari {self.source_so.so_number}"
+
+    class Meta:
+        verbose_name = "Stok Masuk Gudang (Fisik)"
+        verbose_name_plural = "Stok Masuk Gudang (Fisik)"
+
+    def clean(self):
+        """
+        VALIDASI PENTING:
+        Tidak boleh menarik barang melebihi sisa stok virtual di SO tersebut.
+        """
+        if not self.source_so_id:
+            return # Skip validation if SO not selected yet
+
+        # Ambil sisa saldo virtual SAAT INI
+        remaining = self.source_so.get_virtual_balance()
+        
+        # Jika sedang edit data lama, kita harus kembalikan nilai tonnage lama dulu ke saldo
+        if self.pk:
+            old_record = WarehouseTransfer.objects.get(pk=self.pk)
+            remaining += old_record.tonnage
+            
+        if self.tonnage > remaining:
+            raise ValidationError(f"Gagal! Sisa stok virtual SO {self.source_so.so_number} hanya tinggal {remaining:,.2f} Ton. Anda meminta {self.tonnage:,.2f} Ton.")
+
+
+# ==========================================
+# 3. DISTRIBUTION (SURAT JALAN)
+# ==========================================
+class Distribution(models.Model):
+    """
+    Transaksi Pengiriman ke Kios (Surat Jalan).
+    Mendukung 'Hybrid Source':
+    1. VIRTUAL: Barang dari Pabrik langsung ke Kios (Drop-off).
+    2. PHYSICAL: Barang dari Gudang Penyangga dikirim ke Kios.
+    """
+    SOURCE_CHOICES = [
+        ('VIRTUAL', 'Langsung dari Pabrik (Potong SO)'),
+        ('PHYSICAL', 'Dari Gudang Penyangga (Potong Stok Fisik)'),
     ]
 
-    sales_order = models.ForeignKey(SalesOrder, on_delete=models.CASCADE, related_name='stock_cards')
-    trx_type = models.CharField("Tipe Transaksi", max_length=5, choices=TRX_TYPES)
-    reference_number = models.CharField("Referensi", max_length=100, help_text="No SO atau No Surat Jalan")
+    # Identitas Surat Jalan
+    no_surat_jalan = models.CharField("No. Surat Jalan", max_length=50, unique=True, editable=False)
+    date = models.DateField("Tanggal Kirim")
+    pkp_date = models.DateField("Tanggal PKP", help_text="Tanggal administrasi perpajakan/laporan")
     
-    qty_change = models.DecimalField("Mutasi (Ton)", max_digits=10, decimal_places=2)
-    balance_after = models.DecimalField("Saldo Akhir (Ton)", max_digits=10, decimal_places=2)
+    # Tujuan & Armada
+    kios = models.ForeignKey(Kios, on_delete=models.PROTECT, verbose_name="Kios Tujuan")
+    armada = models.ForeignKey(Armada, on_delete=models.PROTECT, verbose_name="Armada Pengirim")
     
-    date = models.DateTimeField(auto_now_add=True)
+    # Logika Stok
+    source_type = models.CharField("Sumber Stok", max_length=10, choices=SOURCE_CHOICES, default='VIRTUAL')
+    
+    # Jika Virtual -> Wajib pilih SO mana yang dipotong
+    source_so = models.ForeignKey(SalesOrder, on_delete=models.PROTECT, null=True, blank=True, verbose_name="Ambil dari SO", related_name="distributions")
+    
+    # Jenis Pupuk:
+    # - Jika VIRTUAL: Otomatis ikut SO.
+    # - Jika PHYSICAL: User wajib pilih manual.
+    jenis_pupuk = models.ForeignKey(JenisPupuk, on_delete=models.PROTECT, verbose_name="Jenis Pupuk")
+    
+    tonnage = models.DecimalField("Jumlah Kirim (Ton)", max_digits=10, decimal_places=2)
+    
+    # Snapshot Data Armada (Agar history aman jika Master Armada berubah/dihapus)
+    driver_name_snapshot = models.CharField("Nama Supir (Saat Kirim)", max_length=100, blank=True)
+    nopol_snapshot = models.CharField("Nopol (Saat Kirim)", max_length=20, blank=True)
+    
+    created_at = models.DateTimeField(auto_now_add=True)
 
-    def __str__(self):
-        return f"{self.date.strftime('%d/%m/%Y')} - {self.sales_order.so_code} - {self.trx_type}"
+    def save(self, *args, **kwargs):
+        # 1. Generate Auto Number (Format: SJ/YYYYMMDD/XXXX)
+        if not self.no_surat_jalan:
+            today_str = timezone.now().strftime('%Y%m%d')
+            uid = str(uuid.uuid4())[:4].upper()
+            self.no_surat_jalan = f"SJ/{today_str}/{uid}"
 
-    class Meta:
-        verbose_name_plural = "Kartu Stok (Log)"
-        ordering = ['-date']
+        # 2. Snapshot Data Armada
+        if self.armada:
+            self.driver_name_snapshot = self.armada.driver_name
+            self.nopol_snapshot = self.armada.plate_number
+
+        # 3. Auto-Fill Jenis Pupuk jika dari SO (Virtual)
+        if self.source_type == 'VIRTUAL' and self.source_so:
+            self.jenis_pupuk = self.source_so.jenis_pupuk
+
+        super().save(*args, **kwargs)
+
+    def clean(self):
+        # Validasi 1: Konsistensi Sumber Stok
+        if self.source_type == 'VIRTUAL' and not self.source_so:
+            raise ValidationError({'source_so': "Jika sumber stok adalah 'Langsung Pabrik', Anda WAJIB memilih Nomor SO!"})
         
-# --- 3. DISTRIBUTION (PENYALURAN) - OUTBOUND ---
-class Distribution(models.Model):
-    sales_order = models.ForeignKey(SalesOrder, on_delete=models.CASCADE)
-    kios = models.ForeignKey(Kios, on_delete=models.CASCADE, related_name='distributions')
-    armada = models.ForeignKey(Armada, on_delete=models.SET_NULL, null=True)
-    
-    tonnage_sent = models.DecimalField("Tonase Kirim", max_digits=10, decimal_places=2)
-    transaction_date = models.DateField("Tanggal Ngirim (Fisik)")
-    
-    pkp_date = models.DateField("Tanggal PKP (Admin)", help_text="Tanggal yang tercetak di Surat Jalan & Invoice") 
-    
-    surat_jalan_no = models.CharField(max_length=50, blank=True)
-    notes = models.TextField(blank=True)
-    created_at = models.DateTimeField(auto_now_add=True)
-
-    def save(self, *args, **kwargs):
-        # ATOMIC TRANSACTION (Risk R-05 & NFR-01)
-        # Memastikan semua update database di bawah ini sukses bareng atau gagal bareng
-        with transaction.atomic():
-            is_new = self.pk is None
-
-            # Lock SO row saat transaksi baru untuk mencegah oversell paralel
-            if is_new and self.sales_order_id:
-                so_locked = SalesOrder.objects.select_for_update().get(pk=self.sales_order_id)
-                if self.tonnage_sent > so_locked.tonnage_current:
-                    raise ValueError("Stok SO tidak cukup untuk penyaluran ini")
-                # sinkronkan instance di memori
-                self.sales_order = so_locked
+        # Validasi 2: Cek Kecukupan Stok Virtual
+        if self.source_type == 'VIRTUAL' and self.source_so:
+            remaining = self.source_so.get_virtual_balance()
             
-            # 1. Generate Nomor Surat Jalan (Format: SJ/Tahun/Bulan/ID)
-            if not self.surat_jalan_no:
-                last_id = Distribution.objects.order_by('-id').first()
-                new_id = (last_id.id + 1) if last_id else 1
-                self.surat_jalan_no = f"SJ/{timezone.now().strftime('%Y%m')}/{new_id:04d}"
+            # Handle Edit Logic
+            if self.pk:
+                old_record = Distribution.objects.get(pk=self.pk)
+                # Kembalikan stok lama ke perhitungan
+                if old_record.source_type == 'VIRTUAL' and old_record.source_so == self.source_so:
+                    remaining += old_record.tonnage
 
-            # Simpan Data Distribusi Dulu
-            super().save(*args, **kwargs)
-
-            if is_new:
-                # 2. Kurangi Stok SO
-                self.sales_order.tonnage_current -= self.tonnage_sent
-                if self.sales_order.tonnage_current <= 0:
-                    self.sales_order.tonnage_current = 0
-                    self.sales_order.is_closed = True
-                self.sales_order.save()
-
-                # 3. Potong Kuota Kios (Fluid Allocation Logic)
-                # Cari alokasi yang cocok (Tahun sama, Jenis Pupuk sama)
-                # Logic: SO Code 3101 -> NPK. SO Code 3820 -> UREA.
-                jenis_pupuk = self.sales_order.fertilizer_type
-                tahun_sekarang = self.transaction_date.year
-                
-                try:
-                    allocation = KiosAllocation.objects.get(
-                        kios=self.kios, 
-                        year=tahun_sekarang, 
-                        fertilizer_type=jenis_pupuk
-                    )
-                    allocation.quota_remaining -= self.tonnage_sent
-                    allocation.save()
-                except KiosAllocation.DoesNotExist:
-                    # Jika data alokasi belum dibuat, biarkan dulu (atau raise Error tergantung kebijakan)
-                    # Untuk sekarang kita pass, anggap admin lupa input master alokasi
-                    pass
+            if self.tonnage > remaining:
+                raise ValidationError({'tonnage': f"Stok Virtual SO {self.source_so.so_number} tidak cukup! Sisa: {remaining:,.2f} Ton."})
+        
+        # Validasi 3: Cek Kecukupan Stok Fisik
+        if self.source_type == 'PHYSICAL':
+            # Logic Cek Stok Fisik (Agak berat query-nya, kita gunakan helper function dari StockCard nanti)
+            # Untuk sekarang kita skip validasi fisik di level Model clean() agar tidak circular import atau query berat.
+            # Validasi fisik sebaiknya dilakukan di Form/View.
+            pass
 
     def __str__(self):
-        return f"{self.surat_jalan_no} - {self.kios.name} ({self.tonnage_sent} Ton)"
+        return f"{self.no_surat_jalan} - {self.kios.name}"
 
     class Meta:
-        verbose_name_plural = "Data Penyaluran (Distribusi)"
-        ordering = ['-transaction_date']
+        verbose_name = "Distribusi / Surat Jalan"
+        verbose_name_plural = "Distribusi / Surat Jalan"
+        ordering = ['-date', '-created_at']
 
-class StockAdjustment(models.Model):
+
+# ==========================================
+# 4. KARTU STOK (THE LEDGER)
+# ==========================================
+class StockCard(models.Model):
     """
-    Model untuk mencatat segala bentuk koreksi stok (Stock Opname).
-    Menggunakan pendekatan 'Audit Log' dimana setiap perubahan tercatat history-nya.
+    Buku Besar Stok (Ledger).
+    Mencatat SETIAP pergerakan barang (Masuk/Keluar).
+    Ini adalah 'Single Source of Truth' untuk saldo stok Fisik maupun Virtual.
+    
+    Catatan:
+    Data di sini diisi otomatis via SIGNALS (gudang/signals.py).
+    JANGAN input manual ke tabel ini kecuali untuk 'Stock Opname'.
     """
-    sales_order = models.ForeignKey(SalesOrder, on_delete=models.CASCADE, related_name='adjustments')
+    STOCK_TYPE_CHOICES = [
+        ('VIRTUAL', 'Stok Virtual (SO)'),
+        ('PHYSICAL', 'Stok Fisik (Gudang)'),
+    ]
     
-    # Snapshot data sebelum diedit (Untuk bukti audit)
-    previous_stock = models.DecimalField("Stok Sistem (Sebelum)", max_digits=10, decimal_places=2, editable=False)
-    
-    # Inputan User (Fisik Nyata)
-    actual_stock = models.DecimalField("Stok Fisik (Actual)", max_digits=10, decimal_places=2)
-    
-    # Hasil kalkulasi (Selisih)
-    adjustment_qty = models.DecimalField("Selisih (Adjustment)", max_digits=10, decimal_places=2, editable=False)
-    
-    reason = models.TextField("Alasan Koreksi", help_text="Wajib diisi detail. Contoh: Stock Opname Bulan November 2025")
-    executor = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT, verbose_name="Eksekutor")
+    TRANSACTION_TYPES = [
+        ('IN_SO', 'Penebusan Baru (Virtual In)'),
+        ('OUT_TRF', 'Ditarik ke Gudang (Virtual Out)'),
+        ('IN_TRF', 'Masuk Gudang (Physical In)'),
+        ('OUT_DIST_V', 'Distribusi Langsung (Virtual Out)'),
+        ('OUT_DIST_P', 'Distribusi Gudang (Physical Out)'),
+        ('ADJUST', 'Penyesuaian / Opname'),
+    ]
+
+    date = models.DateField("Tanggal Transaksi")
     created_at = models.DateTimeField(auto_now_add=True)
+    
+    jenis_pupuk = models.ForeignKey(JenisPupuk, on_delete=models.CASCADE)
+    stock_type = models.CharField("Tipe Stok", max_length=10, choices=STOCK_TYPE_CHOICES)
+    transaction_type = models.CharField("Jenis Transaksi", max_length=20, choices=TRANSACTION_TYPES)
+    
+    # Referensi Dokumen (Disimpan sebagai string agar fleksibel menerima No SO / No SJ)
+    reference_number = models.CharField("No. Ref (SO/SJ)", max_length=100)
+    description = models.CharField("Keterangan", max_length=255)
+    
+    # Mutasi
+    qty_in = models.DecimalField("Masuk", max_digits=12, decimal_places=2, default=0)
+    qty_out = models.DecimalField("Keluar", max_digits=12, decimal_places=2, default=0)
+    
+    # Saldo Berjalan (Running Balance)
+    # Diisi otomatis saat save() berdasarkan saldo sebelumnya
+    balance = models.DecimalField("Saldo Akhir", max_digits=12, decimal_places=2, default=0)
 
-    def save(self, *args, **kwargs):
-        # ATOMIC TRANSACTION: Pastikan semua proses db di bawah ini sukses bareng atau gagal bareng
-        with transaction.atomic():
-            # 1. Ambil Stok Lama dari Database (Real-time)
-            # Kita refresh dari db untuk menghindari race condition
-            self.sales_order.refresh_from_db()
-            self.previous_stock = self.sales_order.tonnage_current
-            
-            # 2. Hitung Selisih
-            # Rumus: Stok Fisik - Stok Sistem
-            # Contoh: Fisik 90 - Sistem 100 = -10 (Kurang/Hilang)
-            # Contoh: Fisik 110 - Sistem 100 = +10 (Kelebihan/Retur tak tercatat)
-            self.adjustment_qty = self.actual_stock - self.previous_stock
-            
-            # 3. Update Master Stok (Sales Order)
-            self.sales_order.tonnage_current = self.actual_stock
-            self.sales_order.is_closed = self.actual_stock == 0
-            self.sales_order.save()
-            
-            # 4. Simpan Record Adjustment Ini
-            super().save(*args, **kwargs)
-            
-            # 5. Catat ke KARTU STOK (StockCard)
-            # Ini wajib agar "Running Balance" di kartu stok tetap nyambung matematikanya.
-            from .models import StockCard # Import di dalam untuk hindari circular import
-            
-            # Tentukan tipe transaksi berdasarkan plus/minus
-            trx_type = 'IN' if self.adjustment_qty > 0 else 'OUT'
-            ref_note = f"STOCK OPNAME #{self.pk} ({self.reason})"
-            
-            StockCard.objects.create(
-                sales_order=self.sales_order,
-                trx_type=trx_type,
-                reference_number=ref_note,
-                qty_change=abs(self.adjustment_qty), # Selalu positif di log
-                balance_after=self.actual_stock
-            )
+    class Meta:
+        verbose_name = "Kartu Stok (Ledger)"
+        verbose_name_plural = "Kartu Stok (Ledger)"
+        ordering = ['date', 'created_at']
 
     def __str__(self):
-        return f"Adj #{self.pk} - {self.sales_order.so_code}"
-
-    class Meta:
-        verbose_name = "Stock Opname / Adjustment"
-        ordering = ['-created_at']
+        return f"{self.date} - {self.jenis_pupuk.name} ({self.transaction_type})"

@@ -1,207 +1,101 @@
 {% extends 'base.html' %}
 
-{% block page_title %}Penyaluran (Stok Keluar){% endblock %}
+{% block page_title %}Buat Surat Jalan (Distribusi){% endblock %}
 
 {% block content %}
-<div class="row g-4">
-    <!-- Form Column -->
-    <div class="col-lg-7">
-        <div class="card distribution-card">
-            <div class="card-header">
-                <div class="d-flex align-items-center gap-3">
-                    <div class="icon-wrapper">
-                        <i class="bi bi-truck"></i>
-                    </div>
-                    <div>
-                        <h5 class="mb-0 fw-bold">Form Penyaluran Barang</h5>
-                        <p class="text-muted small mb-0">Input data distribusi pupuk ke kios</p>
-                    </div>
-                </div>
+<div class="row justify-content-center">
+    <div class="col-md-9">
+        <div class="card distribution-card shadow border-0">
+            <div class="card-header bg-success text-white">
+                <h5 class="mb-0"><i class="bi bi-truck me-2"></i>Buat Surat Jalan (Distribusi)</h5>
             </div>
-            
-            <div class="card-body">
+            <div class="card-body p-4">
+                
                 <form method="post" id="distForm">
                     {% csrf_token %}
                     
-                    <!-- Section 1: Info Dasar -->
-                    <div class="form-section">
-                        <h6 class="section-title">
-                            <i class="bi bi-calendar-check me-2"></i>Informasi Dasar
-                        </h6>
-                        <div class="row g-3">
-                            <div class="col-md-6">
-                                <label class="form-label">
-                                    <i class="bi bi-calendar3 me-1"></i>Tanggal Kirim
-                                </label>
-                                {{ form.transaction_date }}
-                            </div>
-                            <div class="col-md-6">
-                                <label class="form-label">
-                                    <i class="bi bi-calendar2-event me-1"></i>Tanggal PKP
-                                </label>
-                                {{ form.pkp_date }}
-                                <div class="form-text small hint-sm">
-                                    *Tanggal ini yang masuk Surat Jalan
-                                </div>
-                            </div>
+                    <div class="row g-3">
+                        <div class="col-md-6">
+                            <label class="form-label fw-bold">Tanggal Kirim</label>
+                            {{ form.date }}
                         </div>
-                        <div class="row g-3 mt-1">
-                            <div class="col-md-12">
-                                <label class="form-label">
-                                    <i class="bi bi-shop me-1"></i>Kios Tujuan
-                                </label>
-                                {{ form.kios }}
-                            </div>
+                        <div class="col-md-6">
+                            <label class="form-label fw-bold">Tanggal PKP (Admin)</label>
+                            {{ form.pkp_date }}
                         </div>
-                    </div>
 
-                    <!-- Kios Info Box -->
-                    <div class="col-12 d-none" id="kiosInfoBox">
-                        <div class="kios-info-card">
-                            <div class="d-flex gap-3 align-items-start">
-                                <div class="info-icon">
-                                    <i class="bi bi-shop-window"></i>
-                                </div>
-                                <div class="flex-grow-1">
-                                    <h6 class="mb-1" id="infoKiosName">-</h6>
-                                    <p class="text-muted small mb-0" id="infoKiosAddress">-</p>
-                                </div>
-                                <div class="quota-badges">
-                                    <span class="quota-badge npk" id="badgeNPK">NPK: -</span>
-                                    <span class="quota-badge urea" id="badgeUREA">UREA: -</span>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
+                        <hr class="my-4">
 
-                    <!-- Section 2: Sumber & Distribusi -->
-                    <div class="form-section">
-                        <h6 class="section-title">
-                            <i class="bi bi-box-seam me-2"></i>Sumber & Distribusi
-                        </h6>
-                        <div class="row g-3">
-                            <div class="col-12">
-                                <label class="form-label">
-                                    <i class="bi bi-inbox me-1"></i>Sumber Stok (Sales Order)
-                                </label>
-                                {{ form.sales_order }}
-                                <div class="so-info-text" id="soInfoText">
-                                    <i class="bi bi-info-circle me-1"></i>Pilih SO untuk melihat stok tersedia
-                                </div>
-                                <div class="row g-2 mt-2 bg-light p-2 rounded border">
-                                    <div class="col-md-6">
-                                        <label class="small text-muted">Kecamatan Asal (SO)</label>
-                                        <input type="text" id="auto_district" class="form-control fw-bold bg-white" readonly disabled placeholder="-">
-                                    </div>
-                                    <div class="col-md-6">
-                                        <label class="small text-muted">Sisa Stok (Ton)</label>
-                                        <input type="text" id="auto_stock" class="form-control fw-bold bg-white" readonly disabled placeholder="0">
-                                    </div>
-                                </div>
+                        <div class="col-md-12">
+                            <h6 class="text-success fw-bold">Tujuan Pengiriman</h6>
+                            
+                            <div class="mb-2">
+                                <label class="small text-muted">Filter Kecamatan (Bantu Cari Kios):</label>
+                                <select id="filter_kecamatan" class="form-select form-select-sm w-50">
+                                    <option value="all">-- Semua Kecamatan --</option>
+                                    {% for k in form.fields.kios.queryset %}
+                                    {% endfor %}
+                                </select>
                             </div>
 
-                            <div class="col-md-6">
-                                <label class="form-label">
-                                    <i class="bi bi-truck-front me-1"></i>Armada / Supir
-                                </label>
-                                {{ form.armada }}
-                            </div>
-                            <div class="col-md-6">
-                                <label class="form-label">
-                                    <i class="bi bi-calculator me-1"></i>Tonase Kirim (Ton)
-                                </label>
-                                {{ form.tonnage_sent }}
-                            </div>
+                            <label class="form-label">Pilih Kios</label>
+                            {{ form.kios }}
+                            <div class="form-text">Pilih kecamatan di atas untuk menyaring daftar kios.</div>
                         </div>
+
+                        <hr class="my-4">
+
+                        <div class="col-md-12">
+                            <h6 class="text-success fw-bold">Sumber Barang</h6>
+                        </div>
+
+                        <div class="col-md-6">
+                            <label class="form-label fw-bold">Ambil Stok Dari?</label>
+                            {{ form.source_type }}
+                        </div>
+
+                        <div class="col-md-6" id="wrapper_so">
+                            <label class="form-label fw-bold">Pilih Nomor SO</label>
+                            {{ form.source_so }}
+                            <div class="form-text text-primary">Stok akan dipotong dari Sisa SO Pabrik.</div>
+                        </div>
+
+                        <div class="col-md-6" id="wrapper_pupuk" style="display:none;">
+                            <label class="form-label fw-bold">Jenis Pupuk</label>
+                            {{ form.jenis_pupuk }}
+                            <div class="form-text text-warning">Stok akan dipotong dari Gudang Penyangga.</div>
+                        </div>
+
+                        <div class="col-md-12">
+                            <label class="form-label fw-bold">Jumlah Kirim</label>
+                            <div class="input-group">
+                                {{ form.tonnage }}
+                                <span class="input-group-text">Ton</span>
+                            </div>
+                            {% if form.tonnage.errors %}
+                                <div class="text-danger fw-bold mt-1">{{ form.tonnage.errors }}</div>
+                            {% endif %}
+                            {% if form.non_field_errors %}
+                                <div class="text-danger fw-bold mt-1">{{ form.non_field_errors }}</div>
+                            {% endif %}
+                        </div>
+
+                        <hr class="my-4">
+
+                        <div class="col-md-12">
+                            <label class="form-label fw-bold">Armada Pengirim</label>
+                            {{ form.armada }}
+                        </div>
+
                     </div>
 
-                    <!-- Traffic Light Alert -->
-                    <div class="col-12">
-                        <div id="trafficLight" class="traffic-alert d-none" role="alert"></div>
-                    </div>
-                    
-                    <!-- Section 3: Catatan -->
-                    <div class="form-section">
-                        <h6 class="section-title">
-                            <i class="bi bi-chat-square-text me-2"></i>Catatan Tambahan
-                        </h6>
-                        <div class="row g-3">
-                            <div class="col-12">
-                                <label class="form-label">
-                                    <i class="bi bi-pencil me-1"></i>Catatan (Opsional)
-                                </label>
-                                {{ form.notes }}
-                            </div>
-                        </div>
-                    </div>
-
-                    <!-- Submit Button -->
-                    <div class="col-12 text-center mt-4">
-                        <button type="submit" class="btn-submit" id="btnSubmit">
-                            <i class="bi bi-send-fill me-2"></i>SUBMIT (Cetak SJ &amp; INV)
+                    <div class="d-grid gap-2 mt-4">
+                        <button type="submit" class="btn btn-success btn-lg shadow">
+                            <i class="bi bi-printer me-2"></i>TERBITKAN SURAT JALAN
                         </button>
+                        <a href="{% url 'distribution_list' %}" class="btn btn-light">Batal</a>
                     </div>
                 </form>
-            </div>
-        </div>
-    </div>
-
-    <!-- Guide Column -->
-    <div class="col-lg-5">
-        <div class="card guide-card">
-            <div class="card-header">
-                <div class="d-flex align-items-center gap-2">
-                    <i class="bi bi-lightbulb-fill text-warning"></i>
-                    <h6 class="mb-0 fw-bold">Panduan Traffic Light</h6>
-                </div>
-            </div>
-            <div class="card-body">
-                <div class="guide-list">
-                    <div class="guide-item green">
-                        <div class="guide-icon">
-                            <i class="bi bi-check-circle-fill"></i>
-                        </div>
-                        <div class="guide-content">
-                            <h6 class="mb-1">Aman (Hijau)</h6>
-                            <p class="mb-0">Stok SO cukup & Kuota Kios masih tersedia. Transaksi dapat dilanjutkan.</p>
-                        </div>
-                    </div>
-                    
-                    <div class="guide-item yellow">
-                        <div class="guide-icon">
-                            <i class="bi bi-exclamation-triangle-fill"></i>
-                        </div>
-                        <div class="guide-content">
-                            <h6 class="mb-1">Fluid Allocation (Kuning)</h6>
-                            <p class="mb-0">Kuota Kios habis. Sistem otomatis menggunakan sisa kuota Kecamatan.</p>
-                        </div>
-                    </div>
-                    
-                    <div class="guide-item red">
-                        <div class="guide-icon">
-                            <i class="bi bi-x-circle-fill"></i>
-                        </div>
-                        <div class="guide-content">
-                            <h6 class="mb-1">Blokir (Merah)</h6>
-                            <p class="mb-0">Stok SO habis ATAU Kuota Kecamatan nol. Transaksi tidak dapat dilakukan.</p>
-                        </div>
-                    </div>
-                </div>
-            </div>
-        </div>
-        
-        <!-- Tips Card -->
-        <div class="card tips-card mt-4">
-            <div class="card-body">
-                <div class="tips-icon">
-                    <i class="bi bi-info-circle-fill"></i>
-                </div>
-                <h6 class="mb-2 fw-bold">Tips</h6>
-                <ul class="tips-list mb-0">
-                    <li>Pastikan data kios dan SO sudah benar sebelum input tonase</li>
-                    <li>Perhatikan alert warna untuk status alokasi</li>
-                    <li>Catat nomor surat jalan untuk tracking</li>
-                </ul>
             </div>
         </div>
     </div>
@@ -573,155 +467,82 @@
 </style>
 
 <script>
-    // --- VARIABLE GLOBAL ---
-    let currentKiosData = null;
-    let currentSOType = null;
-    let currentSOStock = 0;
+    document.addEventListener("DOMContentLoaded", function() {
+        // 1. LOGIKA SUMBER STOK (VIRTUAL VS FISIK)
+        const sourceType = document.getElementById('id_source_type');
+        const wrapperSO = document.getElementById('wrapper_so');
+        const wrapperPupuk = document.getElementById('wrapper_pupuk');
+        const inputSO = document.getElementById('id_source_so');
+        const inputPupuk = document.getElementById('id_jenis_pupuk');
 
-    // --- ELEMENTS ---
-    const kiosSelect = document.getElementById('id_kios');
-    const soSelect = document.getElementById('id_sales_order');
-    const tonnageInput = document.getElementById('id_tonnage_kirim'); // Pastikan ID ini sesuai form (id_tonnage atau id_tonnage_kirim)
-    const submitBtn = document.getElementById('btnSubmit');
-    const trafficLight = document.getElementById('trafficLight');
-    
-    // Element Baru (Auto Fill)
-    const autoDistrict = document.getElementById('auto_district');
-    const autoStock = document.getElementById('auto_stock');
-    const soInfoText = document.getElementById('soInfoText'); // Element text lama
-
-    // 1. EVENT: SAAT KIOS DIPILIH (Logic Lama - Tetap Dipertahankan)
-    kiosSelect.addEventListener('change', function() {
-        const kiosId = this.value;
-        if(kiosId) {
-            // Pastikan URL ini sesuai dengan yang ada di urls.py Anda (api_get_kios_info)
-            fetch(`{% url 'api_get_kios_info' %}?kios_id=${kiosId}`)
-                .then(response => response.json())
-                .then(data => {
-                    currentKiosData = data;
-                    
-                    // Tampilkan Info Box Kios (Fitur Lama)
-                    const infoBox = document.getElementById('kiosInfoBox');
-                    if(infoBox) {
-                        infoBox.classList.remove('d-none');
-                        document.getElementById('infoKiosName').innerText = kiosSelect.options[kiosSelect.selectedIndex].text;
-                        
-                        // Handle district jika ada di data response
-                        const dist = data.district || '-';
-                        document.getElementById('infoKiosAddress').innerText = `${data.address} (Kec. ${dist})`;
-                        
-                        // Update Badges
-                        if(document.getElementById('badgeNPK') && data.allocations.NPK) 
-                            document.getElementById('badgeNPK').innerText = `NPK: ${data.allocations.NPK.kios_remaining}`;
-                        if(document.getElementById('badgeUREA') && data.allocations.UREA) 
-                            document.getElementById('badgeUREA').innerText = `UREA: ${data.allocations.UREA.kios_remaining}`;
-                    }
-                    
-                    runTrafficLightCheck(); // Cek ulang lampu
-                });
+        function toggleSource() {
+            if (sourceType.value === 'VIRTUAL') {
+                wrapperSO.style.display = 'block';
+                wrapperPupuk.style.display = 'none';
+                inputSO.required = true;
+                inputPupuk.required = false;
+            } else {
+                wrapperSO.style.display = 'none';
+                wrapperPupuk.style.display = 'block';
+                inputSO.required = false;
+                inputPupuk.required = true;
+                inputSO.value = ""; // Reset SO agar tidak error validasi
+            }
         }
-    });
-
-    // 2. EVENT: SAAT SO DIPILIH (LOGIC GABUNGAN: AutoFill + Traffic Light)
-    soSelect.addEventListener('change', function() {
-        const soId = this.value;
-        if(soId) {
-            // PENTING: Gunakan API 'get_so_details' yang baru kita buat agar dapat data KECAMATAN
-            fetch(`{% url 'get_so_details' %}?so_id=${soId}`)
-                .then(response => response.json())
-                .then(data => {
-                    // Update Global Vars untuk Traffic Light logic lama
-                    currentSOType = data.type;       
-                    currentSOStock = data.remaining; 
-                    
-                    // A. UPDATE FORM BARU (KOTAK PUTIH - Fitur Baru)
-                    if(autoDistrict) autoDistrict.value = data.district;
-                    if(autoStock) autoStock.value = data.remaining;
-
-                    // B. UPDATE TEXT LAMA (Fitur Lama Anda)
-                    if(soInfoText) {
-                         soInfoText.innerHTML = 
-                            `Jenis: <strong>${data.type}</strong> | Stok Tersedia: <strong>${data.remaining} Ton</strong>`;
-                         soInfoText.style.display = 'block';
-                    }
-                    
-                    runTrafficLightCheck();
-                })
-                .catch(err => console.error("Error fetching SO:", err));
-        } else {
-            // Reset form jika kosong
-            if(autoDistrict) autoDistrict.value = '';
-            if(autoStock) autoStock.value = '';
-            currentSOType = null;
-            currentSOStock = 0;
-            if(soInfoText) soInfoText.innerHTML = '<i class="bi bi-info-circle me-1"></i>Pilih SO untuk melihat stok';
-        }
-    });
-
-    // 3. EVENT: SAAT INPUT TONASE (Logic Lama - Tetap)
-    if(tonnageInput) {
-        tonnageInput.addEventListener('input', runTrafficLightCheck);
-    }
-
-    // --- FUNGSI UTAMA TRAFFIC LIGHT (Logic Lama - Tetap) ---
-    function runTrafficLightCheck() {
-        // Cek input value, jika input tidak ada pakai 0
-        const inputVal = tonnageInput ? (parseFloat(tonnageInput.value) || 0) : 0;
         
-        // Reset State
-        if(trafficLight) {
-            trafficLight.classList.add('d-none');
-            // Hapus class alert spesifik agar tidak menumpuk
-            trafficLight.classList.remove('traffic-alert', 'alert-success', 'alert-warning', 'alert-danger');
-            trafficLight.classList.add('traffic-alert'); // Pasang base class
-        }
-        if(submitBtn) submitBtn.disabled = false;
+        sourceType.addEventListener('change', toggleSource);
+        toggleSource(); // Run on load
 
-        // Validasi Dasar
-        if (inputVal <= 0 || !currentKiosData || !currentSOType) return;
+        // 2. LOGIKA FILTER KIOS (KECAMATAN -> KIOS)
+        const kiosSelect = document.getElementById('id_kios');
+        const filterKec = document.getElementById('filter_kecamatan');
+        
+        // Ambil semua opsi kios dan ekstrak nama kecamatannya
+        // Format teks dropdown biasanya: "Nama Kios (Nama Kecamatan)"
+        // Kita parse teks tersebut.
+        const options = Array.from(kiosSelect.options);
+        const kecamatanSet = new Set();
+        
+        // Simpan data asli di atribut
+        options.forEach(opt => {
+            if (opt.value) {
+                // Regex untuk ambil teks dalam kurung terakhir: "Kios A (Bancak)" -> "Bancak"
+                const match = opt.text.match(/\(([^)]+)\)$/); 
+                if (match) {
+                    const kecName = match[1];
+                    opt.dataset.kecamatan = kecName;
+                    kecamatanSet.add(kecName);
+                } else {
+                    opt.dataset.kecamatan = "Lainnya";
+                }
+            }
+        });
 
-        // CEK 1: STOK SO CUKUP?
-        if (inputVal > currentSOStock) {
-            showAlert('danger', '🛑 STOK GUDANG KURANG! Permintaan melebihi sisa stok SO.');
-            if(submitBtn) submitBtn.disabled = true;
-            return;
-        }
+        // Isi Dropdown Filter Kecamatan
+        kecamatanSet.forEach(kec => {
+            const opt = document.createElement('option');
+            opt.value = kec;
+            opt.textContent = kec;
+            filterKec.appendChild(opt);
+        });
 
-        // Ambil Data Kuota yang relevan (NPK/UREA)
-        if(currentKiosData.allocations && currentKiosData.allocations[currentSOType]) {
-            const relevantQuota = currentKiosData.allocations[currentSOType];
+        // Event Listener Filter
+        filterKec.addEventListener('change', function() {
+            const selectedKec = this.value;
             
-            // CEK 2: KUOTA KECAMATAN HABIS? (RED LIGHT)
-            if (inputVal > relevantQuota.district_remaining) {
-                showAlert('danger', `🛑 GAGAL SALUR! Kuota Kecamatan ${currentKiosData.district} untuk ${currentSOType} tidak mencukupi. Sisa Kec: ${relevantQuota.district_remaining}`);
-                if(submitBtn) submitBtn.disabled = true;
-                return;
-            }
+            // Reset pilihan kios
+            kiosSelect.value = "";
 
-            // CEK 3: KUOTA KIOS KURANG? (YELLOW LIGHT / FLUID ALLOCATION)
-            if (inputVal > relevantQuota.kios_remaining) {
-                showAlert('warning', `⚠️ FLUID ALLOCATION: Kuota Kios habis. Menggunakan sisa kuota Kecamatan (${currentKiosData.district}).`);
-                return; // Masih boleh submit
-            }
-        }
-
-        // JIKA LOLOS SEMUA -> HIJAU
-        showAlert('success', '✅ ALOKASI AMAN. Stok & Kuota tersedia.');
-    }
-
-    function showAlert(type, message) {
-        if(!trafficLight) return;
-        
-        trafficLight.classList.remove('d-none');
-        // Pastikan styling class ditambahkan
-        trafficLight.classList.add(`alert-${type}`);
-        
-        let icon = '';
-        if (type === 'success') icon = '<i class="bi bi-check-circle-fill me-2"></i>';
-        else if (type === 'warning') icon = '<i class="bi bi-exclamation-triangle-fill me-2"></i>';
-        else if (type === 'danger') icon = '<i class="bi bi-x-circle-fill me-2"></i>';
-        
-        trafficLight.innerHTML = icon + message;
-    }
+            options.forEach(opt => {
+                if (!opt.value) return; // Skip placeholder
+                
+                if (selectedKec === 'all' || opt.dataset.kecamatan === selectedKec) {
+                    opt.style.display = 'block';
+                } else {
+                    opt.style.display = 'none';
+                }
+            });
+        });
+    });
 </script>
 {% endblock %}

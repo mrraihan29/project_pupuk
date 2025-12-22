@@ -5,4 +5,5 @@ class GudangConfig(AppConfig):
     name = 'gudang'
 
     def ready(self):
-        import gudang.signals # <-- Baris ini yang mengaktifkan sensor
+        # Import signals agar aktif saat aplikasi berjalan
+        import gudang.signals

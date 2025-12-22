@@ -3,33 +3,36 @@ from django.contrib import messages
 from django.contrib.auth.decorators import login_required
 from django.db.models import Sum, Prefetch
 from datetime import date
-
-from .models import Kios, Armada, FertilizerPrice
-from .forms import KiosForm, KiosAllocationFormSet, ArmadaForm, HargaPupukForm
-from gudang.models import SalesOrder, Distribution
-from keuangan.models import Invoice, BiayaOperasional
 import csv
 from django.http import HttpResponse
 
+# Import Models Baru
+from .models import Kios, Armada, FertilizerPrice, JenisPupuk, Kecamatan, KiosAllocation
+from .forms import KiosForm, KiosAllocationFormSet, ArmadaForm, HargaPupukForm
+from gudang.models import SalesOrder, SalesOrderAllocation, Distribution, StockCard
+from keuangan.models import Invoice, BiayaOperasional
+
 # 1. READ (Daftar Kios)
+@login_required
 def kios_list(request):
-    kios_data = Kios.objects.all().order_by('-created_at')
+    # Select related kecamatan agar query efisien
+    kios_data = Kios.objects.select_related('kecamatan').all().order_by('-created_at')
     return render(request, 'core/kios_list.html', {'kios_data': kios_data})
 
 # 2. CREATE (Tambah Kios Baru)
+@login_required
 def kios_create(request):
     if request.method == 'POST':
         form = KiosForm(request.POST)
         formset = KiosAllocationFormSet(request.POST)
         
         if form.is_valid() and formset.is_valid():
-            kios = form.save() # Simpan Induk (Kios)
+            kios = form.save()
             
-            # Simpan Anak (Alokasi)
             allocations = formset.save(commit=False)
             for allocation in allocations:
-                allocation.kios = kios # Sambungkan anak ke induk
-                allocation.quota_remaining = allocation.quota_original # Set sisa = awal
+                allocation.kios = kios
+                allocation.quota_remaining = allocation.quota_original
                 allocation.save()
             
             messages.success(request, f"Kios {kios.name} berhasil dibuat!")
@@ -45,6 +48,7 @@ def kios_create(request):
     })
 
 # 3. UPDATE (Edit Kios)
+@login_required
 def kios_update(request, pk):
     kios = get_object_or_404(Kios, pk=pk)
     
@@ -54,7 +58,7 @@ def kios_update(request, pk):
         
         if form.is_valid() and formset.is_valid():
             form.save()
-            formset.save() # Otomatis update karena sudah ada instance
+            formset.save()
             messages.success(request, "Data Kios berhasil diperbarui.")
             return redirect('kios_list')
     else:
@@ -68,6 +72,7 @@ def kios_update(request, pk):
     })
 
 # 4. DELETE (Hapus Kios)
+@login_required
 def kios_delete(request, pk):
     kios = get_object_or_404(Kios, pk=pk)
     if request.method == 'POST':
@@ -82,40 +87,20 @@ def kios_delete(request, pk):
 def dashboard(request):
     today = date.today()
     
-    # --- 1. KEY METRICS (KARTU ATAS) ---
-    
-    # A. Total Piutang (Uang di luar)
-    # Filter: Status UNPAID atau PARTIAL
-    total_piutang = Invoice.objects.filter(
-        status__in=['UNPAID', 'PARTIAL']
-    ).aggregate(Sum('remaining_balance'))['remaining_balance__sum'] or 0
+    # Key Metrics
+    total_piutang = Invoice.objects.filter(status__in=['UNPAID', 'PARTIAL']).aggregate(Sum('remaining_balance'))['remaining_balance__sum'] or 0
 
-    # B. Permintaan Belum Ditebus (Gap Alokasi vs SO)
-    # Logika: Kita asumsikan target penebusan ideal adalah 100% Alokasi. 
-    # Karena Alokasi ada di Kios, kita perlu agregat manual atau simplifikasi stok gudang saat ini.
-    # Untuk dashboard ini, kita pakai "Total Stok Tersedia" sebagai indikator kesiapan.
-    stok_npk = SalesOrder.objects.filter(fertilizer_type='NPK', is_closed=False).aggregate(Sum('tonnage_current'))['tonnage_current__sum'] or 0
-    stok_urea = SalesOrder.objects.filter(fertilizer_type='UREA', is_closed=False).aggregate(Sum('tonnage_current'))['tonnage_current__sum'] or 0
+    # Total Stok (Virtual + Fisik sebenarnya, tapi kita ambil dari SO yg belum close)
+    # Perhatikan: Filter menggunakan 'jenis_pupuk__name' bukan 'fertilizer_type'
+    stok_npk = SalesOrder.objects.filter(jenis_pupuk__name='NPK', is_closed=False).aggregate(total=Sum('allocations__tonnage'))['total'] or 0
+    stok_urea = SalesOrder.objects.filter(jenis_pupuk__name='UREA', is_closed=False).aggregate(total=Sum('allocations__tonnage'))['total'] or 0
     total_stok = stok_npk + stok_urea
 
-    # C. Tagihan Jatuh Tempo (Risk Warning)
-    # Invoice yang belum lunas DAN due_date <= hari ini
-    invoice_overdue_count = Invoice.objects.filter(
-        status__in=['UNPAID', 'PARTIAL'], 
-        due_date__lte=today
-    ).count()
+    invoice_overdue_count = Invoice.objects.filter(status__in=['UNPAID', 'PARTIAL'], due_date__lte=today).count()
+    invoices_list = Invoice.objects.filter(status__in=['UNPAID', 'PARTIAL']).select_related('distribution__kios').order_by('due_date')[:10]
 
-    # --- 2. TABEL UTAMA (Sesuai Sketsa: No Inv, Kec, Kios, Piutang, Jatuh Tempo) ---
-    # Kita ambil 10 Invoice yang belum lunas, urutkan dari yang paling tua (danger)
-    invoices_list = Invoice.objects.filter(
-        status__in=['UNPAID', 'PARTIAL']
-    ).select_related('distribution__kios').order_by('due_date')[:10]
-
-    # --- 3. SO JATUH TEMPO TERDEKAT (Sesuai Sketsa) ---
-    # Sales Order yang stoknya masih ada (is_closed=False) tapi tanggal maturity sudah dekat
-    so_expiring = SalesOrder.objects.filter(
-        is_closed=False
-    ).order_by('maturity_date')[:5] # Ambil 5 teratas
+    # SO yang belum selesai
+    so_expiring = SalesOrder.objects.filter(is_closed=False).order_by('date')[:5]
 
     context = {
         'total_piutang': total_piutang,
@@ -131,50 +116,46 @@ def dashboard(request):
     return render(request, 'dashboard.html', context)
 
 
+@login_required
 def raport_kios(request):
     """
-    Laporan Kinerja Kios: Alokasi vs Realisasi Penyaluran.
+    Laporan Kinerja Kios: Alokasi vs Realisasi.
     """
     current_year = date.today().year
-    # Ambil semua Kios yang aktif beserta alokasi dan distribusi untuk menghindari query berulang
-    kios_data = Kios.objects.filter(is_active=True).prefetch_related(
-        'allocations',
-        Prefetch('distributions', queryset=Distribution.objects.select_related('sales_order')),
-    )
-
+    kios_data = Kios.objects.filter(is_active=True).prefetch_related('allocations', 'kecamatan')
     report_data = []
 
     for k in kios_data:
-        # Hitung per Kios
-        # 1. Alokasi (Target)
-        alloc_npk = k.allocations.filter(fertilizer_type='NPK', year=current_year).aggregate(Sum('quota_original'))['quota_original__sum'] or 0
-        alloc_urea = k.allocations.filter(fertilizer_type='UREA', year=current_year).aggregate(Sum('quota_original'))['quota_original__sum'] or 0
+        # Alokasi (Target) - Menggunakan relation ke JenisPupuk
+        alloc_npk = k.allocations.filter(jenis_pupuk__name='NPK', year=current_year).aggregate(Sum('quota_original'))['quota_original__sum'] or 0
+        alloc_urea = k.allocations.filter(jenis_pupuk__name='UREA', year=current_year).aggregate(Sum('quota_original'))['quota_original__sum'] or 0
 
-        # 2. Realisasi Salur (Actual Distribution)
-        # Kita cari distribusi ke kios ini di tahun 2025
-        salur_npk = k.distributions.filter(sales_order__fertilizer_type='NPK', transaction_date__year=current_year).aggregate(Sum('tonnage_sent'))['tonnage_sent__sum'] or 0
-        salur_urea = k.distributions.filter(sales_order__fertilizer_type='UREA', transaction_date__year=current_year).aggregate(Sum('tonnage_sent'))['tonnage_sent__sum'] or 0
+        # Realisasi (Actual) - Menggunakan relation Distribution -> JenisPupuk
+        # Perhatikan path filter: distribution -> jenis_pupuk__name
+        dist_npk = Distribution.objects.filter(kios=k, jenis_pupuk__name='NPK', date__year=current_year).aggregate(Sum('tonnage'))['tonnage__sum'] or 0
+        dist_urea = Distribution.objects.filter(kios=k, jenis_pupuk__name='UREA', date__year=current_year).aggregate(Sum('tonnage'))['tonnage__sum'] or 0
 
-        # 3. Hitung % Capaian
-        persen_npk = (salur_npk / alloc_npk * 100) if alloc_npk > 0 else 0
-        persen_urea = (salur_urea / alloc_urea * 100) if alloc_urea > 0 else 0
+        persen_npk = (dist_npk / alloc_npk * 100) if alloc_npk > 0 else 0
+        persen_urea = (dist_urea / alloc_urea * 100) if alloc_urea > 0 else 0
 
         report_data.append({
             'name': k.name,
-            'district': k.district,
-            'npk': {'target': alloc_npk, 'real': salur_npk, 'persen': persen_npk},
-            'urea': {'target': alloc_urea, 'real': salur_urea, 'persen': persen_urea},
+            'district': k.kecamatan.name, # Ambil dari relation
+            'npk': {'target': alloc_npk, 'real': dist_npk, 'persen': persen_npk},
+            'urea': {'target': alloc_urea, 'real': dist_urea, 'persen': persen_urea},
         })
 
     return render(request, 'core/raport_kios.html', {'report': report_data})
 
+@login_required
 def armada_list(request):
     armada = Armada.objects.all()
     return render(request, 'core/armada_list.html', {'armada': armada})
 
+@login_required
 def armada_create(request):
     if request.method == 'POST':
-        form = ArmadaForm(request.POST)
+        form = ArmadaForm(request.POST, request.FILES) # request.FILES for photo
         if form.is_valid():
             form.save()
             messages.success(request, "Armada berhasil ditambahkan.")
@@ -185,20 +166,29 @@ def armada_create(request):
 
 @login_required
 def master_harga(request):
-    # Kita asumsikan hanya ada 2 baris data di database: NPK dan UREA
-    # Jika belum ada, kita create dulu (Safety logic)
-    # Harga disimpan per ton (bukan per kg) untuk hindari faktor 1000 di perhitungan
-    npk_obj, _ = FertilizerPrice.objects.get_or_create(
-        fertilizer_type='NPK', defaults={'price_buy': 2300000, 'price_sell': 2350000}
+    """
+    Halaman Setting Harga.
+    Logic Baru: Pastikan JenisPupuk ada dulu, baru buat Harga.
+    """
+    # 1. Pastikan Master Jenis Pupuk tersedia (Init Data)
+    pupuk_npk, _ = JenisPupuk.objects.get_or_create(
+        name='NPK', defaults={'code': 'NPK', 'color': 'danger'}
     )
-    urea_obj, _ = FertilizerPrice.objects.get_or_create(
-        fertilizer_type='UREA', defaults={'price_buy': 2200000, 'price_sell': 2250000}
+    pupuk_urea, _ = JenisPupuk.objects.get_or_create(
+        name='UREA', defaults={'code': 'UREA', 'color': 'primary'}
+    )
+
+    # 2. Ambil/Buat Data Harga
+    harga_npk, _ = FertilizerPrice.objects.get_or_create(
+        jenis_pupuk=pupuk_npk, defaults={'price_buy': 2300000, 'price_sell': 2350000}
+    )
+    harga_urea, _ = FertilizerPrice.objects.get_or_create(
+        jenis_pupuk=pupuk_urea, defaults={'price_buy': 2200000, 'price_sell': 2250000}
     )
 
     if request.method == 'POST':
-        # Kita handle 2 form dalam 1 halaman (Prefix digunakan agar input tidak bentrok)
-        form_npk = HargaPupukForm(request.POST, instance=npk_obj, prefix='npk')
-        form_urea = HargaPupukForm(request.POST, instance=urea_obj, prefix='urea')
+        form_npk = HargaPupukForm(request.POST, instance=harga_npk, prefix='npk')
+        form_urea = HargaPupukForm(request.POST, instance=harga_urea, prefix='urea')
         
         if form_npk.is_valid() and form_urea.is_valid():
             form_npk.save()
@@ -206,81 +196,25 @@ def master_harga(request):
             messages.success(request, "Harga Pupuk Berhasil Diupdate!")
             return redirect('master_harga')
     else:
-        form_npk = HargaPupukForm(instance=npk_obj, prefix='npk')
-        form_urea = HargaPupukForm(instance=urea_obj, prefix='urea')
+        form_npk = HargaPupukForm(instance=harga_npk, prefix='npk')
+        form_urea = HargaPupukForm(instance=harga_urea, prefix='urea')
 
     return render(request, 'core/master_harga.html', {
         'form_npk': form_npk,
         'form_urea': form_urea
     })
-    
-# --- FUNGSI BANTUAN: EXPORT KE CSV/EXCEL ---
-def export_laporan_xls(start_date, end_date, data):
-    """
-    Fungsi khusus untuk generate file CSV yang bisa dibuka Excel.
-    """
-    response = HttpResponse(content_type='text/csv')
-    # Nama file dinamis sesuai tanggal
-    filename = f"Laporan_Keuangan_{start_date}_sd_{end_date}.csv"
-    response['Content-Disposition'] = f'attachment; filename="{filename}"'
 
-    writer = csv.writer(response)
-    
-    # HEADER
-    writer.writerow(['LAPORAN KEUANGAN & LABA RUGI (SIM BADA TANI)'])
-    writer.writerow([f'Periode: {start_date} s/d {end_date}'])
-    writer.writerow([]) # Baris kosong
-
-    # BODY LAPORAN
-    writer.writerow(['URAIAN', 'DETAIL', 'NILAI (Rp)'])
-    
-    # 1. PENDAPATAN (OMZET)
-    writer.writerow(['1. OMZET PENJUALAN (Penyaluran)'])
-    writer.writerow(['', 'NPK', data['omzet_npk']])
-    writer.writerow(['', 'UREA', data['omzet_urea']])
-    writer.writerow(['', 'TOTAL OMZET', data['total_omzet']])
-    writer.writerow([])
-
-    # 2. PENGELUARAN POKOK (MODAL BELI)
-    writer.writerow(['2. HARGA POKOK PENEBUSAN (Modal)'])
-    writer.writerow(['', 'NPK', data['modal_npk']])
-    writer.writerow(['', 'UREA', data['modal_urea']])
-    writer.writerow(['', 'TOTAL MODAL', data['total_modal']])
-    writer.writerow([])
-    
-    # LABA KOTOR
-    writer.writerow(['LABA KOTOR (Omzet - Modal)', '', data['gross_profit']])
-    writer.writerow([])
-    
-    # 3. BIAYA OPERASIONAL
-    writer.writerow(['3. BIAYA OPERASIONAL'])
-    writer.writerow(['', 'Biaya Armada (Bensin/Servis/Tol)', data['ops_armada']])
-    writer.writerow(['', 'Biaya Kantor (Gaji/Listrik/Makan/Lainnya)', data['ops_kantor']])
-    writer.writerow(['', 'TOTAL BIAYA', data['total_ops']])
-    writer.writerow([])
-
-    # 4. HASIL AKHIR
-    writer.writerow(['LABA BERSIH (NET PROFIT)', '', data['net_profit']])
-    writer.writerow([])
-    writer.writerow([])
-
-    # 5. INFO TAMBAHAN (VALUASI ASET)
-    writer.writerow(['INFO: VALUASI SISA STOK GUDANG (ASET)'])
-    writer.writerow(['', 'Estimasi Nilai Stok NPK', data['aset_npk']])
-    writer.writerow(['', 'Estimasi Nilai Stok UREA', data['aset_urea']])
-    writer.writerow(['', 'TOTAL ASET', data['total_aset']])
-
-    return response
-
-# --- VIEW UTAMA: HALAMAN LAPORAN ---
+# ==========================================
+# VIEW LAPORAN KEUANGAN (THE CORE LOGIC)
+# ==========================================
 @login_required
 def laporan_keuangan(request):
-    def _normalize_price(p):
-        """Pastikan harga per ton; jika nilai terlalu kecil (kemungkinan per kg), skalakan 1000x."""
-        scale = 1000 if p < 10000 else 1
-        return p * scale
-
-    # 1. SETUP TANGGAL (Default: Tanggal 1 bulan ini s/d Hari Ini)
+    """
+    Laporan Laba Rugi (Profit & Loss Statement).
+    Menghitung: Omzet - HPP - Biaya Ops = Laba Bersih.
+    """
+    
+    # 1. SETUP TANGGAL (Default: Awal Bulan s/d Hari Ini)
     today = date.today()
     default_start = today.replace(day=1).strftime('%Y-%m-%d')
     default_end = today.strftime('%Y-%m-%d')
@@ -288,123 +222,157 @@ def laporan_keuangan(request):
     start_date = request.GET.get('start', default_start)
     end_date = request.GET.get('end', default_end)
 
-    # 2. AMBIL MASTER HARGA (Sebagai Acuan Valuasi)
-    # Gunakan get_or_create agar tidak error jika data kosong
-    # Harga disimpan per ton
+    # 2. SIAPKAN HARGA ACUAN (Master Price)
+    # Digunakan untuk valuasi stok dan estimasi nilai
     harga_npk, _ = FertilizerPrice.objects.get_or_create(
-        fertilizer_type='NPK', defaults={'price_buy': 2300000, 'price_sell': 2350000}
+        jenis_pupuk__name='NPK', 
+        defaults={'price_buy': 2300, 'price_sell': 2350} # Default dummy jika kosong
     )
     harga_urea, _ = FertilizerPrice.objects.get_or_create(
-        fertilizer_type='UREA', defaults={'price_buy': 2200000, 'price_sell': 2250000}
+        jenis_pupuk__name='UREA', 
+        defaults={'price_buy': 2200, 'price_sell': 2250}
     )
 
-    # 3. HITUNG MODAL (PENEBUSAN / BELI)
-    # Logic: Berapa ton kita beli (SalesOrder) dalam periode ini?
-    # Filter: entry_date
-    qty_beli_npk = SalesOrder.objects.filter(
-        entry_date__range=[start_date, end_date], 
-        fertilizer_type='NPK'
-    ).aggregate(total=Sum('tonnage_initial'))['total'] or 0
+    # 3. HITUNG MODAL PENEBUSAN (HPP / COGS)
+    # Logic: Total Tonase dari 'SalesOrderAllocation' dalam periode ini
+    # Kita menggunakan Allocation karena SO Header tidak menyimpan total tonase secara langsung di DB (hanya property)
     
-    qty_beli_urea = SalesOrder.objects.filter(
-        entry_date__range=[start_date, end_date], 
-        fertilizer_type='UREA'
-    ).aggregate(total=Sum('tonnage_initial'))['total'] or 0
+    # -- NPK --
+    qty_beli_npk = SalesOrderAllocation.objects.filter(
+        sales_order__date__range=[start_date, end_date], 
+        sales_order__jenis_pupuk__name='NPK'
+    ).aggregate(total=Coalesce(Sum('tonnage'), Decimal('0')))['total']
 
-    price_buy_npk = _normalize_price(harga_npk.price_buy)
-    price_buy_urea = _normalize_price(harga_urea.price_buy)
-    price_sell_npk = _normalize_price(harga_npk.price_sell)
-    price_sell_urea = _normalize_price(harga_urea.price_sell)
+    # -- UREA --
+    qty_beli_urea = SalesOrderAllocation.objects.filter(
+        sales_order__date__range=[start_date, end_date], 
+        sales_order__jenis_pupuk__name='UREA'
+    ).aggregate(total=Coalesce(Sum('tonnage'), Decimal('0')))['total']
 
-    modal_npk = qty_beli_npk * price_buy_npk
-    modal_urea = qty_beli_urea * price_buy_urea
+    # Hitung Nilai Rupiah Modal
+    modal_npk = qty_beli_npk * harga_npk.price_buy
+    modal_urea = qty_beli_urea * harga_urea.price_buy
     total_modal = modal_npk + modal_urea
 
-    # 4. HITUNG OMZET (PENYALURAN / JUAL)
-    # Logic: Berapa ton kita jual (Distribution) dalam periode ini?
-    # Filter: transaction_date
+    # 4. HITUNG OMZET PENJUALAN (REVENUE)
+    # Logic: Total Tonase dari 'Distribution' dalam periode ini
+    
+    # -- NPK --
     qty_jual_npk = Distribution.objects.filter(
-        transaction_date__range=[start_date, end_date],
-        sales_order__fertilizer_type='NPK'
-    ).aggregate(total=Sum('tonnage_sent'))['total'] or 0
+        date__range=[start_date, end_date],
+        jenis_pupuk__name='NPK'
+    ).aggregate(total=Coalesce(Sum('tonnage'), Decimal('0')))['total']
 
+    # -- UREA --
     qty_jual_urea = Distribution.objects.filter(
-        transaction_date__range=[start_date, end_date],
-        sales_order__fertilizer_type='UREA'
-    ).aggregate(total=Sum('tonnage_sent'))['total'] or 0
+        date__range=[start_date, end_date],
+        jenis_pupuk__name='UREA'
+    ).aggregate(total=Coalesce(Sum('tonnage'), Decimal('0')))['total']
 
-    omzet_npk = qty_jual_npk * price_sell_npk
-    omzet_urea = qty_jual_urea * price_sell_urea
+    # Hitung Nilai Rupiah Omzet (Menggunakan Harga Jual saat ini)
+    # Note: Jika ingin super akurat, harusnya 'Distribution' menyimpan harga saat transaksi (snapshot).
+    # Di Phase 1 ini kita gunakan Master Harga Jual.
+    omzet_npk = qty_jual_npk * harga_npk.price_sell
+    omzet_urea = qty_jual_urea * harga_urea.price_sell
     total_omzet = omzet_npk + omzet_urea
 
-# 5. HITUNG BIAYA OPERASIONAL (UPDATE LOGIC BARU)
+    # 5. HITUNG BIAYA OPERASIONAL
+    # Logic: Sum Nominal dari BiayaOperasional group by Kategori Utama
     
-    # Logic Lama: Filter berdasarkan 'kategori__in' (Nama field lama)
-    # Logic Baru: Filter berdasarkan 'kategori_utama' (Nama field baru)
-    
-    # Biaya Armada (Langsung filter kategori_utama='ARMADA')
     biaya_armada = BiayaOperasional.objects.filter(
         tanggal__range=[start_date, end_date],
-        kategori_utama='ARMADA'  # Field Baru
-    ).aggregate(total=Sum('nominal'))['total'] or 0
+        kategori_utama='ARMADA'
+    ).aggregate(total=Coalesce(Sum('nominal'), Decimal('0')))['total']
 
-    # Biaya Kantor (Langsung filter kategori_utama='KANTOR')
     biaya_kantor = BiayaOperasional.objects.filter(
         tanggal__range=[start_date, end_date],
-        kategori_utama='KANTOR'  # Field Baru
-    ).aggregate(total=Sum('nominal'))['total'] or 0
+        kategori_utama='KANTOR'
+    ).aggregate(total=Coalesce(Sum('nominal'), Decimal('0')))['total']
     
-    total_ops = biaya_armada + biaya_kantor
+    # Biaya Lainnya (Opsional)
+    biaya_lain = BiayaOperasional.objects.filter(
+        tanggal__range=[start_date, end_date],
+        kategori_utama='LAINNYA'
+    ).aggregate(total=Coalesce(Sum('nominal'), Decimal('0')))['total']
 
-    # 6. HITUNG PROFIT
-    gross_profit = total_omzet - total_modal
-    net_profit = gross_profit - total_ops
+    total_ops = biaya_armada + biaya_kantor + biaya_lain
 
-    # 7. VALUASI ASET (SISA STOK GUDANG SAAT INI)
-    # Ini stok real-time, tidak terpengaruh filter tanggal (snapshot hari ini)
-    stok_sisa_npk = SalesOrder.objects.filter(is_closed=False, fertilizer_type='NPK').aggregate(total=Sum('tonnage_current'))['total'] or 0
-    stok_sisa_urea = SalesOrder.objects.filter(is_closed=False, fertilizer_type='UREA').aggregate(total=Sum('tonnage_current'))['total'] or 0
+    # 6. KALKULASI PROFIT
+    gross_profit = total_omzet - total_modal # Laba Kotor
+    net_profit = gross_profit - total_ops    # Laba Bersih
 
-    aset_npk = stok_sisa_npk * price_buy_npk
-    aset_urea = stok_sisa_urea * price_buy_urea
+    # 7. VALUASI ASET (SISA STOK REAL-TIME)
+    # Menggunakan StockCard sebagai 'Single Source of Truth'
+    # Rumus: (Total Masuk - Total Keluar) sampai hari ini
+    
+    def get_stock_balance(pupuk_name):
+        agg = StockCard.objects.filter(
+            date__lte=end_date, # Saldo per tanggal akhir laporan
+            jenis_pupuk__name=pupuk_name
+        ).aggregate(
+            masuk=Coalesce(Sum('qty_in'), Decimal('0')),
+            keluar=Coalesce(Sum('qty_out'), Decimal('0'))
+        )
+        return agg['masuk'] - agg['keluar']
+
+    stok_sisa_npk = get_stock_balance('NPK')
+    stok_sisa_urea = get_stock_balance('UREA')
+
+    aset_npk = stok_sisa_npk * harga_npk.price_buy
+    aset_urea = stok_sisa_urea * harga_urea.price_buy
     total_aset = aset_npk + aset_urea
 
     # --- BUNGKUS DATA (CONTEXT) ---
-    context_data = {
-        # Data Omzet
+    context = {
+        # Filter
+        'start_date': start_date,
+        'end_date': end_date,
+        
+        # Pendapatan
         'omzet_npk': omzet_npk,
         'omzet_urea': omzet_urea,
         'total_omzet': total_omzet,
+        'qty_jual_npk': qty_jual_npk,
+        'qty_jual_urea': qty_jual_urea,
         
-        # Data Modal
+        # Pengeluaran (HPP)
         'modal_npk': modal_npk,
         'modal_urea': modal_urea,
         'total_modal': total_modal,
+        'qty_beli_npk': qty_beli_npk,
+        'qty_beli_urea': qty_beli_urea,
         
-        # Profitability
-        'gross_profit': gross_profit,
-        
-        # Operasional
+        # Biaya Ops
         'ops_armada': biaya_armada,
         'ops_kantor': biaya_kantor,
+        'ops_lain': biaya_lain,
         'total_ops': total_ops,
         
-        # Final
+        # Hasil Akhir
+        'gross_profit': gross_profit,
         'net_profit': net_profit,
         
         # Aset
         'aset_npk': aset_npk,
         'aset_urea': aset_urea,
         'total_aset': total_aset,
-        
-        # Filter Info
-        'start_date': start_date,
-        'end_date': end_date
+        'stok_sisa_npk': stok_sisa_npk,
+        'stok_sisa_urea': stok_sisa_urea,
     }
 
-    # --- LOGIC EXPORT ---
+    # --- EXPORT EXCEL LOGIC ---
     if request.GET.get('export') == 'xls':
-        return export_laporan_xls(start_date, end_date, context_data)
+        return export_laporan_xls(start_date, end_date, context)
 
-    # --- RENDER HTML ---
-    return render(request, 'core/laporan_keuangan.html', context_data)
+    return render(request, 'core/laporan_keuangan.html', context)
+
+# --- FUNGSI BANTUAN: EXPORT EXCEL (Tetap sama, sesuaikan field jika perlu) ---
+def export_laporan_xls(start, end, data):
+    response = HttpResponse(content_type='text/csv')
+    response['Content-Disposition'] = f'attachment; filename="Laporan_Keuangan_{start}_{end}.csv"'
+    writer = csv.writer(response)
+    # (Isi CSV bisa disesuaikan dengan data context di atas)
+    writer.writerow(['LAPORAN KEUANGAN SIM BADA TANI'])
+    writer.writerow([f'Periode: {start} s/d {end}'])
+    writer.writerow(['LABA BERSIH', data['net_profit']])
+    return response

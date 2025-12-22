@@ -1,46 +1,189 @@
 {% extends 'base.html' %}
-{% block page_title %}Penebusan (Stok Masuk){% endblock %}
+{% load humanize %}
 
 {% block content %}
 <div class="row justify-content-center">
-    <div class="col-md-5">
-        <div class="card p-4 shadow-sm border-primary">
-            <h5 class="fw-bold mb-3 text-primary">Form Penebusan</h5>
-            <form method="post">
-                {% csrf_token %}
-                
-                <div class="mb-3">
-                    <label class="fw-bold">Input Kode SO</label>
-                    {{ form.so_code }}
-                </div>
-
-                <div class="mb-3">
-                    <label class="fw-bold">Tgl Ngisi (Entry)</label>
-                    {{ form.entry_date }}
-                </div>
-
-                <div class="mb-3">
-                    <label class="fw-bold">Alokasi Kecamatan</label>
-                    {{ form.district }}
-                    <div class="form-text">Stok ini ditebus khusus untuk kecamatan mana?</div>
-                </div>
-
-                <div class="mb-3">
-                    <label class="fw-bold">Tonase</label>
-                    <div class="input-group">
-                        {{ form.tonnage_initial }}
-                        <span class="input-group-text">Ton</span>
+    <div class="col-md-10">
+        <div class="card shadow-sm border-0">
+            <div class="card-header bg-primary text-white d-flex justify-content-between align-items-center">
+                <h5 class="mb-0"><i class="bi bi-cart-plus me-2"></i>Input Penebusan Baru (SO)</h5>
+                <span class="badge bg-white text-primary fs-6">Total: <span id="total_display">0</span> Ton</span>
+            </div>
+            
+            <div class="card-body p-4">
+                <form method="post" enctype="multipart/form-data" id="soForm">
+                    {% csrf_token %}
+                    
+                    <h6 class="text-primary fw-bold mb-3">Informasi Dokumen</h6>
+                    <div class="row g-3 mb-4">
+                        <div class="col-md-4">
+                            <label class="form-label">Nomor SO Pabrik</label>
+                            {{ form.so_number }}
+                        </div>
+                        <div class="col-md-4">
+                            <label class="form-label">Tanggal Penebusan</label>
+                            {{ form.date }}
+                        </div>
+                        <div class="col-md-4">
+                            <label class="form-label">Jenis Pupuk</label>
+                            {{ form.jenis_pupuk }}
+                        </div>
+                        <div class="col-md-12">
+                            <label class="form-label">Upload Bukti DO/SO (PDF/Foto)</label>
+                            {{ form.file_upload }}
+                        </div>
                     </div>
-                </div>
 
-                <div class="alert alert-info py-2 small">
-                    <i class="bi bi-info-circle me-1"></i>
-                    Jatuh Tempo Gudang: <strong>Otomatis +21 Hari</strong> dari Tgl Ngisi.
-                </div>
+                    <hr class="my-4">
 
-                <button type="submit" class="btn btn-primary w-100 mt-2">Simpan Stok</button>
-            </form>
+                    <div class="d-flex justify-content-between align-items-center mb-3">
+                        <h6 class="text-primary fw-bold mb-0">Rincian Alokasi Per Kecamatan</h6>
+                        <button type="button" id="add-form" class="btn btn-sm btn-outline-success">
+                            <i class="bi bi-plus-lg"></i> Tambah Kecamatan
+                        </button>
+                    </div>
+
+                    {{ formset.management_form }}
+                    
+                    <div id="allocation-form-list">
+                        {% for form in formset %}
+                        <div class="allocation-item row g-2 align-items-end mb-2">
+                            <div class="col-md-7">
+                                {{ form.kecamatan }}
+                            </div>
+                            <div class="col-md-4">
+                                <div class="input-group">
+                                    {{ form.tonnage }}
+                                    <span class="input-group-text">Ton</span>
+                                </div>
+                            </div>
+                            <div class="col-md-1 text-center">
+                                {% if formset.can_delete %}
+                                    <div class="form-check d-none">
+                                        {{ form.DELETE }}
+                                    </div>
+                                    <button type="button" class="btn btn-danger btn-sm remove-form" title="Hapus Baris">
+                                        <i class="bi bi-trash"></i>
+                                    </button>
+                                {% endif %}
+                            </div>
+                            {% for hidden in form.hidden_fields %}
+                                {{ hidden }}
+                            {% endfor %}
+                            
+                            {% if form.errors %}
+                                <div class="col-12 text-danger small">
+                                    {{ form.errors }}
+                                </div>
+                            {% endif %}
+                        </div>
+                        {% endfor %}
+                    </div>
+
+                    {% if form.errors or formset.non_form_errors %}
+                        <div class="alert alert-danger mt-3">
+                            <b>Gagal Simpan:</b>
+                            {{ form.errors }}
+                            {{ formset.non_form_errors }}
+                        </div>
+                    {% endif %}
+
+                    <div class="d-grid gap-2 mt-4">
+                        <button type="submit" class="btn btn-primary btn-lg">
+                            <i class="bi bi-save me-2"></i>SIMPAN DATA PENEBUSAN
+                        </button>
+                        <a href="{% url 'so_list' %}" class="btn btn-light text-muted">Batal</a>
+                    </div>
+                </form>
+            </div>
         </div>
     </div>
 </div>
+
+<script>
+    document.addEventListener('DOMContentLoaded', function() {
+        const addBtn = document.getElementById('add-form');
+        const formList = document.getElementById('allocation-form-list');
+        const totalDisplay = document.getElementById('total_display');
+        const totalFormsInput = document.getElementById('id_allocations-TOTAL_FORMS'); // Django default prefix
+        
+        // 1. CLONE FORM BARU
+        addBtn.addEventListener('click', function() {
+            const forms = formList.getElementsByClassName('allocation-item');
+            const currentFormCount = forms.length;
+            const newForm = forms[0].cloneNode(true); // Clone baris pertama
+            
+            // Reset nilai input di clone
+            const inputs = newForm.querySelectorAll('input, select');
+            inputs.forEach(input => {
+                input.value = '';
+                // Update ID dan Name agar unik (django requirements: allocations-0-..., allocations-1-...)
+                if(input.name) {
+                    input.name = input.name.replace(/-\d+-/, `-${currentFormCount}-`);
+                    input.id = input.id.replace(/-\d+-/, `-${currentFormCount}-`);
+                }
+            });
+
+            // Tambahkan ke list
+            formList.appendChild(newForm);
+            totalFormsInput.value = currentFormCount + 1;
+            
+            // Re-attach event listener untuk tombol hapus & hitung total
+            attachEvents();
+        });
+
+        // 2. FUNGSI HITUNG TOTAL
+        function calculateTotal() {
+            let total = 0;
+            const inputs = document.querySelectorAll('input[name$="-tonnage"]');
+            inputs.forEach(input => {
+                const val = parseFloat(input.value) || 0;
+                // Cek apakah baris ini dihapus (hidden delete checkbox checked?)
+                const parentRow = input.closest('.allocation-item');
+                const deleteCheck = parentRow.querySelector('input[name$="-DELETE"]');
+                if (!deleteCheck || !deleteCheck.checked) {
+                    total += val;
+                }
+            });
+            totalDisplay.innerText = total.toFixed(2);
+        }
+
+        // 3. EVENT LISTENER GLOBAL
+        function attachEvents() {
+            // Hapus Baris
+            document.querySelectorAll('.remove-form').forEach(btn => {
+                btn.onclick = function() {
+                    const row = this.closest('.allocation-item');
+                    const allRows = formList.getElementsByClassName('allocation-item');
+                    
+                    if (allRows.length > 1) {
+                        // Jika sudah disimpan di DB, tandai DELETE checkbox
+                        const deleteCheck = row.querySelector('input[name$="-DELETE"]');
+                        if (deleteCheck) {
+                            deleteCheck.checked = true;
+                            row.style.display = 'none'; // Sembunyikan visual
+                        } else {
+                            // Jika baris baru (belum save), hapus elemen DOM
+                            row.remove();
+                            // Update TOTAL_FORMS count
+                            totalFormsInput.value = formList.getElementsByClassName('allocation-item').length;
+                        }
+                        calculateTotal();
+                    } else {
+                        alert("Minimal harus ada 1 alokasi kecamatan!");
+                    }
+                };
+            });
+
+            // Hitung Total saat ketik angka
+            document.querySelectorAll('input[name$="-tonnage"]').forEach(input => {
+                input.addEventListener('input', calculateTotal);
+            });
+        }
+
+        // Init pertama kali
+        attachEvents();
+        calculateTotal();
+    });
+</script>
 {% endblock %}

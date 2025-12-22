@@ -1,5 +1,12 @@
 from django.contrib import admin
-from .models import Invoice, Payment, BiayaOperasional
+from .models import BiayaOperasional, Invoice, Payment
+
+@admin.register(BiayaOperasional)
+class BiayaOperasionalAdmin(admin.ModelAdmin):
+    list_display = ('tanggal', 'kategori_utama', 'deskripsi', 'nominal')
+    list_filter = ('kategori_utama', 'tanggal') # Update list_filter
+    search_fields = ('deskripsi',)
+    date_hierarchy = 'tanggal'
 
 class PaymentInline(admin.TabularInline):
     model = Payment
@@ -7,17 +14,12 @@ class PaymentInline(admin.TabularInline):
 
 @admin.register(Invoice)
 class InvoiceAdmin(admin.ModelAdmin):
-    list_display = ('invoice_no', 'kios_name', 'total_amount', 'remaining_balance', 'status', 'due_date')
-    list_filter = ('status', 'due_date')
-    search_fields = ('invoice_no', 'distribution__kios__name')
-    inlines = [PaymentInline] # Bisa input bayar langsung di detail invoice
+    list_display = ('inv_number', 'distribution', 'issue_date', 'total_amount', 'status')
+    list_filter = ('status', 'issue_date')
+    search_fields = ('inv_number', 'distribution__kios__name')
+    inlines = [PaymentInline]
+    readonly_fields = ('inv_number', 'total_amount', 'total_paid', 'status')
 
-    @admin.display(description='Kios')
-    def kios_name(self, obj):
-        return obj.distribution.kios.name
-
-@admin.register(BiayaOperasional)
-class OpsAdmin(admin.ModelAdmin):
-    list_display = ('tanggal', 'kategori_utama', 'jenis_biaya', 'nominal', 'status')
-    list_filter = ('kategori_utama', 'urgensi', 'status')
-    search_fields = ('description',)
+@admin.register(Payment)
+class PaymentAdmin(admin.ModelAdmin):
+    list_display = ('invoice', 'date', 'amount', 'method')

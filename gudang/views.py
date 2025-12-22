@@ -1,258 +1,168 @@
-from django.shortcuts import render, redirect
-from django.utils import timezone
-from django.http import JsonResponse, HttpResponse
+from django.shortcuts import render, redirect, get_object_or_404
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
-from django.db.models import Sum, Q
 from django.db import transaction
-from django.conf import settings
-from core.models import Kios, KiosAllocation, FertilizerPrice
-from .models import SalesOrder, Distribution, StockAdjustment, StockCard
-from .forms import DistributionForm, StockAdjustmentForm, SalesOrderForm
-from django.template.loader import get_template
-from xhtml2pdf import pisa
-from core.decorators import owner_required
+from django.db.models import Sum, Prefetch
 
-# --- VIEW UTAMA ---
+# Import Models & Forms Baru
+from .models import SalesOrder, SalesOrderAllocation, Distribution, WarehouseTransfer, StockCard
+from .forms import (
+    SalesOrderForm, AllocationFormSet, 
+    DistributionForm, WarehouseTransferForm, 
+    StockOpnameForm
+)
+
+# ==========================================
+# 1. MODUL PENEBUSAN (SO)
+# ==========================================
+@login_required
+def so_list(request):
+    """
+    Daftar Sales Order (Stok Virtual).
+    Menggunakan prefetch_related untuk mengambil detail alokasi dalam 1 query efisien.
+    """
+    orders = SalesOrder.objects.select_related('jenis_pupuk') \
+                            .prefetch_related('allocations__kecamatan') \
+                            .order_by('-date')
+    
+    return render(request, 'gudang/so_list.html', {'orders': orders})
+
+@login_required
+def so_create(request):
+    """
+    Input SO Baru dengan Multi-Kecamatan (Dynamic Formset).
+    Menggunakan Atomic Transaction untuk keamanan data.
+    """
+    if request.method == 'POST':
+        form = SalesOrderForm(request.POST, request.FILES)
+        formset = AllocationFormSet(request.POST)
+        
+        if form.is_valid() and formset.is_valid():
+            try:
+                with transaction.atomic(): # === TITIK KRITIKAL KEAMANAN DATA ===
+                    # 1. Simpan Header SO
+                    so = form.save()
+                    
+                    # 2. Simpan Detail Alokasi
+                    allocations = formset.save(commit=False)
+                    for alloc in allocations:
+                        alloc.sales_order = so
+                        alloc.save()
+                    
+                    # (Signal di gudang/signals.py akan otomatis mencatat Kartu Stok)
+                    
+                    messages.success(request, f"Penebusan SO {so.so_number} berhasil disimpan!")
+                    return redirect('so_list')
+                    
+            except Exception as e:
+                # Tangkap error database jika ada
+                messages.error(request, f"Terjadi kesalahan database: {e}")
+        else:
+            messages.error(request, "Gagal menyimpan. Periksa inputan bertanda merah.")
+    else:
+        form = SalesOrderForm()
+        formset = AllocationFormSet()
+    
+    return render(request, 'gudang/so_form.html', {
+        'form': form,
+        'formset': formset,
+        'title': 'Input Penebusan (SO)'
+    })
+
+# ==========================================
+# 2. MODUL TRANSFER (TARIK KE GUDANG)
+# ==========================================
+@login_required
+def transfer_list(request):
+    """Riwayat Perpindahan Stok (Virtual -> Fisik)"""
+    transfers = WarehouseTransfer.objects.select_related('source_so__jenis_pupuk') \
+                                         .order_by('-date')
+    return render(request, 'gudang/transfer_list.html', {'transfers': transfers})
+
+@login_required
+def transfer_create(request):
+    """Form menarik stok dari Virtual SO ke Fisik Gudang"""
+    if request.method == 'POST':
+        form = WarehouseTransferForm(request.POST)
+        if form.is_valid():
+            try:
+                # Validasi logika (Cukup stok kah?) sudah ditangani di models.py clean()
+                # Form.is_valid() otomatis memanggil clean() tersebut.
+                form.save()
+                
+                messages.success(request, "Stok berhasil ditarik ke Gudang Fisik!")
+                return redirect('transfer_list') # Redirect ke list transfer
+            except Exception as e:
+                messages.error(request, f"Error: {e}")
+        else:
+            # Error validasi (misal: stok kurang) akan muncul otomatis di template via {{ form.errors }}
+            messages.error(request, "Gagal menarik stok. Periksa pesan error di bawah.")
+    else:
+        form = WarehouseTransferForm()
+    
+    return render(request, 'gudang/transfer_form.html', {'form': form, 'title': 'Tarik Stok ke Gudang'})
+
+# ==========================================
+# 3. MODUL DISTRIBUSI (SURAT JALAN)
+# ==========================================
+@login_required
+def distribution_list(request):
+    """Daftar Surat Jalan"""
+    # Optimasi Query: Ambil data Kios, Armada, dan SO sekaligus
+    dist_list = Distribution.objects.select_related('kios', 'armada', 'source_so', 'jenis_pupuk') \
+                                    .order_by('-date', '-created_at')
+    
+    return render(request, 'gudang/distribution_list.html', {'dist_list': dist_list})
+
 @login_required
 def distribution_create(request):
     if request.method == 'POST':
         form = DistributionForm(request.POST)
         if form.is_valid():
-            dist = form.save()
-            messages.success(request, f"Penyaluran Berhasil! Surat Jalan: {dist.surat_jalan_no}")
-            return redirect('distribution_list') # Nanti kita arahkan ke list distribusi
+            try:
+                dist = form.save()
+                messages.success(request, f"Surat Jalan {dist.no_surat_jalan} berhasil diterbitkan.")
+                return redirect('distribution_list')
+            except Exception as e:
+                messages.error(request, f"Gagal Simpan: {e}")
+        else:
+            messages.error(request, "Form tidak valid. Cek apakah Stok Cukup?")
     else:
         form = DistributionForm()
 
     return render(request, 'gudang/distribution_form.html', {'form': form})
 
-# --- API HELPER (Untuk AJAX JavaScript) ---
-@login_required
-def get_kios_info(request):
-    """
-    API ini dipanggil saat Admin memilih Kios di dropdown.
-    Mengembalikan data: Alamat, PIC, Sisa Kuota Kios, & Sisa Kuota Kecamatan.
-    """
-    kios_id = request.GET.get('kios_id')
-    current_year = timezone.now().year
-    
-    try:
-        kios = Kios.objects.get(id=kios_id)
-        
-        # Hitung Kuota per Jenis
-        # Format return: { 'NPK': {'kios': 10, 'district': 50}, 'UREA': ... }
-        allocations = {}
-        for f_type in ['NPK', 'UREA']:
-            # 1. Kuota Kios Ini
-            try:
-                kios_alloc = KiosAllocation.objects.get(kios=kios, fertilizer_type=f_type, year=current_year)
-                k_rem = kios_alloc.quota_remaining
-            except KiosAllocation.DoesNotExist:
-                k_rem = 0
-            
-            # 2. Kuota Satu Kecamatan (Untuk Fluid Allocation)
-            d_rem = KiosAllocation.objects.filter(
-                kios__district=kios.district,
-                fertilizer_type=f_type,
-                year=current_year
-            ).aggregate(Sum('quota_remaining'))['quota_remaining__sum'] or 0
-            
-            allocations[f_type] = {
-                'kios_remaining': str(k_rem),
-                'district_remaining': str(d_rem)
-            }
-
-        data = {
-            'address': kios.address,
-            'district': kios.district,
-            'pic': kios.pic_name,
-            'allocations': allocations
-        }
-        return JsonResponse(data)
-        
-    except Kios.DoesNotExist:
-        return JsonResponse({'error': 'Kios not found'}, status=404)
-
-@login_required
-def get_so_info(request):
-    """
-    API untuk mengambil data stok & jenis pupuk dari SO yang dipilih
-    """
-    so_id = request.GET.get('so_id')
-    try:
-        so = SalesOrder.objects.get(id=so_id)
-        return JsonResponse({
-            'fertilizer_type': so.fertilizer_type,
-            'current_stock': str(so.tonnage_current)
-        })
-    except SalesOrder.DoesNotExist:
-        return JsonResponse({'error': 'SO not found'}, status=404)
-
-
-@login_required
-def get_so_details(request):
-    """API detail SO untuk kebutuhan auto-fill form distribusi."""
-    so_id = request.GET.get('so_id')
-    if not so_id:
-        return JsonResponse({'error': 'Missing so_id'}, status=400)
-
-    try:
-        so = SalesOrder.objects.get(id=so_id)
-    except SalesOrder.DoesNotExist:
-        return JsonResponse({'error': 'SO not found'}, status=404)
-
-    return JsonResponse({
-        'id': so.id,
-        'code': so.so_code,
-        'type': so.fertilizer_type,
-        'remaining': str(so.tonnage_current),
-        'district': so.district,
-        'is_closed': so.is_closed,
-    })
-    
-# --- LIST PENYALURAN (History) ---
-@login_required
-def distribution_list(request):
-    dist_data = Distribution.objects.all().select_related('kios', 'sales_order', 'armada').order_by('-transaction_date')
-    return render(request, 'gudang/distribution_list.html', {'dist_data': dist_data})
-
-# --- PDF GENERATOR ---
-@login_required
-def print_document(request, pk, doc_type):
-    """
-    doc_type: 'sj' (Surat Jalan) atau 'inv' (Invoice)
-    """
-    dist = Distribution.objects.get(pk=pk)
-    
-    # Gunakan harga yang sudah difiksasi di Invoice bila ada, supaya dokumen historis konsisten
-    invoice = getattr(dist, 'invoice', None)
-    if invoice:
-        price_per_ton = invoice.total_amount / dist.tonnage_sent if dist.tonnage_sent else 0
-        total_price = invoice.total_amount
-    else:
-        try:
-            price_obj = FertilizerPrice.objects.get(fertilizer_type=dist.sales_order.fertilizer_type)
-            price_per_ton = price_obj.price_sell
-        except FertilizerPrice.DoesNotExist:
-            price_per_ton = 0
-        total_price = dist.tonnage_sent * price_per_ton
-
-    context = {
-        'dist': dist,
-        'tanggal_dokumen': dist.pkp_date,
-        'price_per_ton': price_per_ton,
-        'total_price': total_price,
-        'doc_type': doc_type,
-        'company': {
-            'name': getattr(settings, 'COMPANY_NAME', 'CV SEMBADA TANI'),
-            'address': getattr(settings, 'COMPANY_ADDRESS', 'Jl. Raya Pertanian No. 1, Semarang'),
-            'phone': getattr(settings, 'COMPANY_PHONE', '(024) 12345678'),
-        }
-    }
-
-    # Pilih Template HTML berdasarkan tipe dokumen
-    if doc_type == 'sj':
-        template_path = 'gudang/pdf_surat_jalan.html'
-        filename = f"SJ_{dist.surat_jalan_no.replace('/', '-')}.pdf"
-    else:
-        template_path = 'gudang/pdf_invoice.html'
-        filename = f"INV_{dist.surat_jalan_no.replace('/', '-')}.pdf"
-
-    # Render HTML ke PDF
-    response = HttpResponse(content_type='application/pdf')
-    response['Content-Disposition'] = f'inline; filename="{filename}"' # 'inline' agar terbuka di browser, 'attachment' untuk auto-download
-
-    template = get_template(template_path)
-    html = template.render(context)
-    
-    # Create PDF
-    pisa_status = pisa.CreatePDF(html, dest=response)
-
-    if pisa_status.err:
-        return HttpResponse('We had some errors <pre>' + html + '</pre>')
-    return response
-
-@login_required
-@owner_required # Security Layer: Hanya Owner/Superuser
-def stock_opname(request):
-    if request.method == 'POST':
-        form = StockAdjustmentForm(request.POST)
-        if form.is_valid():
-            adjustment = form.save(commit=False)
-            adjustment.executor = request.user # Auto-detect siapa yang login
-            
-            try:
-                adjustment.save() # Trigger logic atomic transaction di models.py
-                messages.success(request, f"✅ Stock Opname Berhasil. Stok SO {adjustment.sales_order.so_code} kini menjadi {adjustment.actual_stock} Ton.")
-                return redirect('dashboard') # Atau redirect ke log list
-            except Exception as e:
-                messages.error(request, f"Terjadi Kesalahan Sistem: {e}")
-    else:
-        form = StockAdjustmentForm()
-
-    return render(request, 'gudang/stock_opname.html', {'form': form})
-
-@login_required
-def so_list(request):
-    # Tampilkan SO yang belum closed (masih ada stok)
-    so_data = SalesOrder.objects.all().order_by('-entry_date')
-    return render(request, 'gudang/so_list.html', {'so_data': so_data})
-
-@login_required
-def so_create(request):
-    if request.method == 'POST':
-        form = SalesOrderForm(request.POST)
-        if form.is_valid():
-            form.save() # Logic auto-detect NPK/Urea ada di models.py
-            messages.success(request, "Penebusan berhasil dicatat!")
-            return redirect('so_list')
-    else:
-        form = SalesOrderForm()
-    return render(request, 'gudang/so_form.html', {'form': form})
-
-# --- KARTU STOK ---
+# ==========================================
+# 4. MODUL KARTU STOK & OPNAME
+# ==========================================
 @login_required
 def stock_card_list(request):
-    # Ambil parameter filter jenis pupuk (Default NPK)
-    jenis = request.GET.get('jenis', 'NPK') 
+    """
+    Laporan Kartu Stok (Ledger) - Single Source of Truth
+    """
+    stocks = StockCard.objects.select_related('jenis_pupuk') \
+                            .order_by('-date', '-created_at')
     
-    # 1. Ambil semua log transaksi untuk jenis pupuk tersebut
-    # Urutkan dari yang TERLAMA ke TERBARU agar perhitungan saldo nyambung (Running Balance)
-    logs = StockCard.objects.filter(
-        sales_order__fertilizer_type=jenis
-    ).select_related('sales_order').order_by('date', 'id')
+    # Filter sederhana (Opsional, bisa dikembangkan)
+    jenis_filter = request.GET.get('jenis')
+    if jenis_filter:
+        stocks = stocks.filter(jenis_pupuk__id=jenis_filter)
 
-    # 2. Hitung Saldo Berjalan (Kumulatif)
-    running_balance = 0
-    report_data = []
+    return render(request, 'gudang/stock_card_list.html', {'stocks': stocks})
 
-    for log in logs:
-        # Tentukan Masuk/Keluar
-        masuk = log.qty_change if log.trx_type == 'IN' else 0
-        keluar = log.qty_change if log.trx_type == 'OUT' else 0
-        
-        # Matematika Kumulatif
-        if log.trx_type == 'IN':
-            running_balance += log.qty_change
-        else:
-            running_balance -= log.qty_change
-            
-        report_data.append({
-            'date': log.date,
-            'so_code': log.sales_order.so_code,
-            'reference': log.reference_number, # Bisa nama Kios atau Keterangan Adjustment
-            'masuk': masuk,
-            'keluar': keluar,
-            'saldo': running_balance, # INI YANG DIMINTA WIREFRAME
-        })
-
-    # Balik urutan agar yang terbaru muncul di atas (Opsional, tapi biasanya user suka lihat yg baru dulu)
-    # Tapi kalau mau persis buku tabungan, biarkan urut tanggal. 
-    # Sesuai gambar, sepertinya urut tanggal (Stok Awal -> Nov 1). Jadi kita biarkan urut lama ke baru.
+@login_required
+def stock_opname(request):
+    """
+    Input Penyesuaian Stok Manual (Placeholder)
+    Fitur ini akan dikembangkan lebih lanjut nanti.
+    """
+    if request.method == 'POST':
+        form = StockOpnameForm(request.POST)
+        if form.is_valid():
+            # TODO: Implementasi logika Opname (Hitung selisih -> Buat Transaksi Adjustment)
+            messages.info(request, "Fitur Opname sedang dalam pengembangan logic balance.")
+            return redirect('stock_card_list')
+    else:
+        form = StockOpnameForm()
     
-    context = {
-        'report_data': report_data,
-        'current_jenis': jenis
-    }
-    return render(request, 'gudang/stock_card_list.html', context)
+    return render(request, 'gudang/stock_opname.html', {'form': form})

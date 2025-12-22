@@ -1,0 +1,50 @@
+{% extends 'base.html' %}
+
+{% block content %}
+<div class="card shadow-sm border-0">
+    <div class="card-header bg-white py-3 d-flex justify-content-between align-items-center">
+        <h5 class="mb-0 fw-bold text-dark">Riwayat Masuk Gudang (Fisik)</h5>
+        <a href="{% url 'transfer_create' %}" class="btn btn-warning text-dark fw-bold">
+            <i class="bi bi-plus-lg me-2"></i>Tarik Stok Baru
+        </a>
+    </div>
+    <div class="table-responsive">
+        <table class="table table-hover align-middle mb-0">
+            <thead class="table-light">
+                <tr>
+                    <th>TANGGAL</th>
+                    <th>DARI SO</th>
+                    <th>JENIS PUPUK</th>
+                    <th>REF. PABRIK</th>
+                    <th>TONASE</th>
+                    <th>CATATAN</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for item in transfers %}
+                <tr>
+                    <td>{{ item.date|date:"d M Y" }}</td>
+                    <td>
+                        <span class="badge bg-primary">{{ item.source_so.so_number }}</span>
+                    </td>
+                    <td>
+                        <span class="badge bg-{{ item.source_so.jenis_pupuk.color }}">
+                            {{ item.source_so.jenis_pupuk.code }}
+                        </span>
+                    </td>
+                    <td>{{ item.reference_code|default:"-" }}</td>
+                    <td class="fw-bold text-success">+{{ item.tonnage }} Ton</td>
+                    <td class="text-muted small">{{ item.notes|default:"-" }}</td>
+                </tr>
+                {% empty %}
+                <tr>
+                    <td colspan="6" class="text-center py-5 text-muted">
+                        Belum ada stok yang ditarik ke gudang fisik.
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+{% endblock %}

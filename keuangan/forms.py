@@ -1,42 +1,48 @@
 from django import forms
 from .models import Payment, BiayaOperasional
 
+# ==========================================
+# 1. FORM PEMBAYARAN (INVOICE)
+# ==========================================
 class PaymentForm(forms.ModelForm):
     class Meta:
         model = Payment
-        # HAPUS 'payment_method' DARI SINI:
-        fields = ['amount', 'payment_date', 'proof_image', 'notes'] 
-        
+        fields = ['date', 'amount', 'method', 'proof', 'notes']
         widgets = {
-            'amount': forms.NumberInput(attrs={'class': 'form-control', 'placeholder': 'Rp'}),
-            'payment_date': forms.DateInput(attrs={'type': 'date', 'class': 'form-control'}),
-            'proof_image': forms.FileInput(attrs={'class': 'form-control'}),
-            'notes': forms.Textarea(attrs={'class': 'form-control', 'rows': 2, 'placeholder': 'Bank / Keterangan'}),
+            'date': forms.DateInput(attrs={'class': 'form-control', 'type': 'date'}),
+            'amount': forms.NumberInput(attrs={'class': 'form-control', 'placeholder': 'Rp ...'}),
+            'method': forms.TextInput(attrs={'class': 'form-control', 'placeholder': 'Transfer BCA / Tunai'}),
+            'proof': forms.FileInput(attrs={'class': 'form-control'}),
+            'notes': forms.Textarea(attrs={'class': 'form-control', 'rows': 2, 'placeholder': 'Catatan tambahan...'}),
         }
 
+    def __init__(self, *args, **kwargs):
+        self.invoice_obj = kwargs.pop('invoice', None) # Terima invoice dari view
+        super().__init__(*args, **kwargs)
+
+    def clean_amount(self):
+        amount = self.cleaned_data['amount']
+        # Validasi tambahan di level form agar pesan error lebih enak dibaca
+        if self.invoice_obj:
+            remaining = self.invoice_obj.remaining_balance
+            if self.instance.pk: # Jika edit, tambahkan amount lama
+                remaining += self.instance.amount
+                
+            if amount > remaining:
+                raise forms.ValidationError(f"Jumlah melebihi sisa tagihan (Sisa: Rp {remaining:,.0f})")
+        return amount
+
+# ==========================================
+# 2. FORM BIAYA OPERASIONAL
+# ==========================================
 class BiayaOperasionalForm(forms.ModelForm):
     class Meta:
         model = BiayaOperasional
-        # KITA PAKAI NAMA FIELD BARU SESUAI MODELS.PY
-        fields = [
-            'tanggal', 
-            'kategori_utama',  # Dulu: kategori
-            'jenis_biaya',     # Baru
-            'armada', 
-            'nominal', 
-            'urgensi',         # Baru
-            'status',          # Baru
-            'description',     # Dulu: keterangan
-            'bukti_foto'       # Dulu: foto_bukti
-        ]
+        fields = ['tanggal', 'kategori_utama', 'deskripsi', 'nominal', 'bukti_foto']
         widgets = {
-            'tanggal': forms.DateInput(attrs={'type': 'date', 'class': 'form-control'}),
-            'kategori_utama': forms.Select(attrs={'class': 'form-select', 'id': 'id_kategori_utama'}),
-            'jenis_biaya': forms.Select(attrs={'class': 'form-select'}),
-            'armada': forms.Select(attrs={'class': 'form-select', 'id': 'id_armada_container'}),
-            'nominal': forms.NumberInput(attrs={'class': 'form-control'}),
-            'urgensi': forms.Select(attrs={'class': 'form-select'}),
-            'status': forms.Select(attrs={'class': 'form-select'}),
-            'description': forms.Textarea(attrs={'class': 'form-control', 'rows': 2, 'placeholder': 'Jelaskan detail pengeluaran...'}),
+            'tanggal': forms.DateInput(attrs={'class': 'form-control', 'type': 'date'}),
+            'kategori_utama': forms.Select(attrs={'class': 'form-select'}),
+            'deskripsi': forms.TextInput(attrs={'class': 'form-control', 'placeholder': 'Contoh: Bensin Truk Nopol H-1234'}),
+            'nominal': forms.NumberInput(attrs={'class': 'form-control', 'placeholder': 'Rp ...'}),
             'bukti_foto': forms.FileInput(attrs={'class': 'form-control'}),
         }
