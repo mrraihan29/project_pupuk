@@ -11,6 +11,7 @@ from .forms import (
     DistributionForm, WarehouseTransferForm, 
     StockOpnameForm
 )
+from core.models import CompanyProfile
 
 # ==========================================
 # 1. MODUL PENEBUSAN (SO)
@@ -166,3 +167,23 @@ def stock_opname(request):
         form = StockOpnameForm()
     
     return render(request, 'gudang/stock_opname.html', {'form': form})
+
+# ==========================================
+# 5. FITUR CETAK DOKUMEN (PRINT)
+# ==========================================
+@login_required
+def print_surat_jalan(request, pk):
+    """
+    View khusus untuk mencetak Surat Jalan (Mode Print Browser).
+    Mengambil data perusahaan dinamis untuk Kop Surat.
+    """
+    dist = get_object_or_404(Distribution, pk=pk)
+    company = CompanyProfile.objects.first() # Ambil profil perusahaan
+    
+    context = {
+        'dist': dist,
+        'company': company,
+        'title': f"SJ_{dist.no_surat_jalan}"
+    }
+    # Kita gunakan template khusus print yang bersih dari sidebar
+    return render(request, 'gudang/print_surat_jalan.html', context)

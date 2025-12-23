@@ -1,150 +1,119 @@
 from django.shortcuts import render, redirect, get_object_or_404
 from django.contrib import messages
+from django.contrib.auth.decorators import login_required
+from django.db import transaction
 from django.db.models import Sum
 from django.http import JsonResponse
-from django.contrib.auth.decorators import login_required
 
-# IMPORT MODELS
-from core.models import Armada
+# Import Models & Forms
 from .models import Invoice, Payment, BiayaOperasional
 from .forms import PaymentForm, BiayaOperasionalForm
+from core.models import Armada, CompanyProfile
 
-# IMPORT DECORATOR
-# Pastikan core/decorators.py ada, jika tidak, hapus baris ini dan @owner_required
-from core.decorators import owner_required 
+# Decorator Custom (Pastikan Anda punya file ini, jika tidak, hapus baris ini)
+from core.decorators import owner_required
 
 # ==========================================
-# 1. MODUL INVOICE & PEMBAYARAN
+# 1. INVOICE & PAYMENT (PIUTANG)
 # ==========================================
-
 @login_required
 def invoice_list(request):
-    """Menampilkan daftar tagihan ke Kios (AR)"""
-    # Urutkan: Yang belum lunas (UNPAID/PARTIAL) paling atas
-    invoices = Invoice.objects.all().select_related('distribution__kios').order_by('status', 'due_date')
+    invoices = Invoice.objects.select_related('distribution__kios').order_by('status', 'due_date')
+    total_piutang = Invoice.objects.filter(status__in=['UNPAID', 'PARTIAL']).aggregate(Sum('total_amount'), Sum('total_paid'))
     
-    # Hitung Total Piutang (Uang yang masih di luar)
-    total_piutang = Invoice.objects.filter(status__in=['UNPAID', 'PARTIAL']).aggregate(Sum('remaining_balance'))['remaining_balance__sum'] or 0
-    
+    # Hitung manual sisa
+    sisa_piutang = 0
+    if total_piutang['total_amount__sum']:
+        sisa_piutang = total_piutang['total_amount__sum'] - (total_piutang['total_paid__sum'] or 0)
+
     return render(request, 'keuangan/invoice_list.html', {
         'invoices': invoices,
-        'total_piutang': total_piutang
+        'total_piutang': sisa_piutang
     })
 
 @login_required
-def payment_create(request, invoice_id):
-    """Mencatat pembayaran cicilan dari Kios"""
-    invoice = get_object_or_404(Invoice, pk=invoice_id)
-    
+def payment_create(request, pk):
+    invoice = get_object_or_404(Invoice, pk=pk)
     if request.method == 'POST':
-        form = PaymentForm(request.POST, request.FILES) # request.FILES wajib untuk bukti transfer
+        form = PaymentForm(request.POST, request.FILES, invoice=invoice)
         if form.is_valid():
-            payment = form.save(commit=False)
-            payment.invoice = invoice
-            
-            # Validasi: Jangan bayar lebih dari sisa hutang
-            if payment.amount > invoice.remaining_balance:
-                messages.error(request, f"Gagal! Nominal Rp {payment.amount:,.0f} melebihi sisa hutang Rp {invoice.remaining_balance:,.0f}")
-            else:
-                payment.save()
-                # Rehitung total bayar dan status invoice
-                invoice.amount_paid = invoice.payments.aggregate(total=Sum('amount'))['total'] or 0
+            with transaction.atomic():
+                pay = form.save(commit=False)
+                pay.invoice = invoice
+                pay.save()
+                
+                invoice.total_paid += pay.amount
+                invoice.update_status()
                 invoice.save()
-                messages.success(request, "Pembayaran berhasil dicatat.")
-                return redirect('invoice_list')
+            messages.success(request, "Pembayaran berhasil dicatat.")
+            return redirect('invoice_list')
     else:
-        form = PaymentForm()
-
-    return render(request, 'keuangan/payment_form.html', {
-        'form': form,
-        'invoice': invoice
-    })
-
+        form = PaymentForm(invoice=invoice)
+    return render(request, 'keuangan/payment_form.html', {'form': form, 'invoice': invoice})
 
 # ==========================================
-# 2. MODUL BIAYA OPERASIONAL (OPEX)
+# 2. BIAYA OPERASIONAL (PENGELUARAN)
 # ==========================================
-
 @login_required
 def ops_list(request):
-    """Daftar semua pengeluaran (Armada & Kantor)"""
-    # Ambil semua data, urutkan dari tanggal terbaru
-    ops_costs = BiayaOperasional.objects.all().select_related('armada').order_by('-tanggal')
-    return render(request, 'keuangan/ops_list.html', {'ops_costs': ops_costs})
+    ops = BiayaOperasional.objects.select_related('armada').order_by('-tanggal')
+    return render(request, 'keuangan/ops_list.html', {'ops': ops})
 
 @login_required
 def ops_create(request):
-    """Form Input Pengeluaran Baru"""
     if request.method == 'POST':
         form = BiayaOperasionalForm(request.POST, request.FILES)
         if form.is_valid():
             ops = form.save(commit=False)
             
-            # --- FIX BUG AUTO-APPROVE ---
-            # Kita paksa status jadi 'PROSES' agar tombol Approve muncul di tabel
-            ops.status = 'PROSES' 
-            
-            # --- VALIDASI TAMBAHAN ---
-            # Jika user pilih Kategori ARMADA tapi lupa pilih Mobil, kita tolak!
+            # Validasi Logic: Jika kategori ARMADA, wajib pilih mobil
             if ops.kategori_utama == 'ARMADA' and not ops.armada:
-                messages.error(request, "Wajib memilih Armada/Mobil jika kategori adalah Biaya Armada!")
+                messages.error(request, "Wajib memilih Armada jika kategori adalah Biaya Armada!")
                 return render(request, 'keuangan/ops_form.html', {'form': form})
-
-            ops.save()
             
-            messages.success(request, "Biaya operasional berhasil diajukan (Menunggu Approval).")
+            ops.status = 'PROSES' # Default status
+            ops.save()
+            messages.success(request, "Biaya berhasil diajukan (Menunggu Approval).")
             return redirect('ops_list')
     else:
         form = BiayaOperasionalForm()
-    
     return render(request, 'keuangan/ops_form.html', {'form': form})
 
-
 # ==========================================
-# 3. FITUR APPROVAL & ACTION (OWNER ONLY)
+# 3. ACTION OWNER (APPROVE & DELETE)
 # ==========================================
-
 @owner_required
 def ops_approve(request, pk):
-    """Tombol 'Setujui' mengubah status menjadi SELESAI"""
     ops = get_object_or_404(BiayaOperasional, pk=pk)
-    
-    # Update status menjadi SELESAI
     ops.status = 'SELESAI'
-    ops.save() # Tanggal selesai otomatis terisi di models.py save() method
-    
-    messages.success(request, f"Biaya {ops.get_kategori_utama_display()} berhasil disetujui/diselesaikan.")
+    ops.save()
+    messages.success(request, "Biaya disetujui.")
     return redirect('ops_list')
 
 @owner_required
 def ops_delete(request, pk):
-    """Hapus data pengeluaran"""
     ops = get_object_or_404(BiayaOperasional, pk=pk)
     ops.delete()
-    messages.warning(request, "Data pengeluaran berhasil dihapus.")
+    messages.warning(request, "Data dihapus.")
     return redirect('ops_list')
 
-
 # ==========================================
-# 4. FITUR KARTU KONTROL ARMADA (SERVICE LOG)
+# 4. KARTU KONTROL & API
 # ==========================================
-
 @login_required
 def kartu_kontrol_armada(request):
-    """Halaman khusus riwayat service per mobil"""
+    """Riwayat Service per Mobil"""
     armada_list = Armada.objects.all()
-    selected_armada_id = request.GET.get('armada_id')
-    
-    logs = []
     selected_armada = None
+    logs = []
     
-    if selected_armada_id:
-        selected_armada = get_object_or_404(Armada, pk=selected_armada_id)
-        
-        # Filter: Hanya kategori ARMADA dan ID Mobil yang dipilih
+    armada_id = request.GET.get('armada_id')
+    if armada_id:
+        selected_armada = get_object_or_404(Armada, pk=armada_id)
+        # Filter biaya kategori ARMADA untuk mobil ini
         logs = BiayaOperasional.objects.filter(
-            kategori_utama='ARMADA',
-            armada_id=selected_armada_id
+            kategori_utama='ARMADA', 
+            armada=selected_armada
         ).order_by('-tanggal')
 
     return render(request, 'keuangan/kartu_kontrol.html', {
@@ -153,35 +122,38 @@ def kartu_kontrol_armada(request):
         'logs': logs
     })
 
-
-# ==========================================
-# 5. API AJAX (ANTI FRAUD / HELPER)
-# ==========================================
-
 @login_required
 def get_armada_history(request):
-    """
-    API untuk mengambil 5 riwayat terakhir via AJAX.
-    Digunakan di form ops_create untuk mencegah double input service.
-    """
+    """API AJAX untuk mencegah double input service"""
     armada_id = request.GET.get('armada_id')
     if not armada_id:
         return JsonResponse({'error': 'No ID'}, status=400)
 
-    # Ambil 5 pengeluaran terakhir mobil ini
     history = BiayaOperasional.objects.filter(
         kategori_utama='ARMADA', 
         armada_id=armada_id
     ).order_by('-tanggal')[:5]
     
-    data = []
-    for h in history:
-        data.append({
-            'tanggal': h.tanggal.strftime('%d/%m/%Y'),
-            'kategori': h.get_jenis_biaya_display(), # Pakai display name (e.g. "Ganti Ban")
-            'keterangan': h.description,             # Field baru: description
-            'nominal': float(h.nominal),
-            'status': h.status                       # Field baru: status
-        })
+    data = [{
+        'tanggal': h.tanggal.strftime('%d/%m/%Y'),
+        'keterangan': h.deskripsi,
+        'nominal': float(h.nominal),
+        'status': h.status
+    } for h in history]
     
     return JsonResponse({'history': data})
+
+@login_required
+def print_invoice(request, pk):
+    """
+    View khusus cetak Invoice.
+    """
+    inv = get_object_or_404(Invoice, pk=pk)
+    company = CompanyProfile.objects.first()
+    
+    context = {
+        'inv': inv,
+        'company': company,
+        'title': f"INV_{inv.inv_number}"
+    }
+    return render(request, 'keuangan/print_invoice.html', context)

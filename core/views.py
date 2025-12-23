@@ -1,7 +1,7 @@
 from django.shortcuts import render, redirect, get_object_or_404
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
-from django.db.models import Sum, Prefetch
+from django.db.models import Sum, Prefetch, F
 from datetime import date
 import csv
 from django.http import HttpResponse
@@ -82,24 +82,40 @@ def kios_delete(request, pk):
     
     return render(request, 'core/kios_confirm_delete.html', {'kios': kios})
 
-# 5. DASHBOARD VIEW
+# ==========================================
+# DASHBOARD VIEW (FIXED)
+# ==========================================
 @login_required
 def dashboard(request):
     today = date.today()
     
-    # Key Metrics
-    total_piutang = Invoice.objects.filter(status__in=['UNPAID', 'PARTIAL']).aggregate(Sum('remaining_balance'))['remaining_balance__sum'] or 0
+    # 1. FIX LOGIC TOTAL PIUTANG
+    # Masalah Dulu: aggregate(Sum('remaining_balance')) -> Error karena property python
+    # Solusi Baru: aggregate(Sum(Total - Bayar)) -> Menggunakan database calculation (F)
+    
+    piutang_data = Invoice.objects.filter(status__in=['UNPAID', 'PARTIAL']).aggregate(
+        total_sisa=Sum(F('total_amount') - F('total_paid'))
+    )
+    total_piutang = piutang_data['total_sisa'] or 0
 
-    # Total Stok (Virtual + Fisik sebenarnya, tapi kita ambil dari SO yg belum close)
-    # Perhatikan: Filter menggunakan 'jenis_pupuk__name' bukan 'fertilizer_type'
+    # 2. Total Stok (Virtual + Fisik)
+    # Kita ambil dari SO yang masih aktif (belum closed)
     stok_npk = SalesOrder.objects.filter(jenis_pupuk__name='NPK', is_closed=False).aggregate(total=Sum('allocations__tonnage'))['total'] or 0
     stok_urea = SalesOrder.objects.filter(jenis_pupuk__name='UREA', is_closed=False).aggregate(total=Sum('allocations__tonnage'))['total'] or 0
     total_stok = stok_npk + stok_urea
 
-    invoice_overdue_count = Invoice.objects.filter(status__in=['UNPAID', 'PARTIAL'], due_date__lte=today).count()
-    invoices_list = Invoice.objects.filter(status__in=['UNPAID', 'PARTIAL']).select_related('distribution__kios').order_by('due_date')[:10]
+    # 3. Invoice Jatuh Tempo (Overdue)
+    invoice_overdue_count = Invoice.objects.filter(
+        status__in=['UNPAID', 'PARTIAL'], 
+        due_date__lte=today
+    ).count()
 
-    # SO yang belum selesai
+    # 4. List Invoice Jatuh Tempo Terdekat (Top 5)
+    invoices_list = Invoice.objects.filter(status__in=['UNPAID', 'PARTIAL']) \
+                                    .select_related('distribution__kios') \
+                                    .order_by('due_date')[:5]
+
+    # 5. SO yang akan expired/tua (Opsional)
     so_expiring = SalesOrder.objects.filter(is_closed=False).order_by('date')[:5]
 
     context = {

@@ -1,0 +1,123 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <title>{{ title }}</title>
+    <style>
+        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; font-size: 14px; color: #333; }
+        .container { width: 100%; max-width: 210mm; margin: 0 auto; padding: 20px; background: white; }
+        
+        /* KOP SURAT */
+        header { border-bottom: 2px solid #000; padding-bottom: 15px; margin-bottom: 25px; text-align: center; }
+        .company-name { font-size: 26px; font-weight: 800; text-transform: uppercase; margin: 0; color: #000; letter-spacing: 1px; }
+        .company-info { font-size: 13px; margin-top: 5px; color: #555; }
+
+        /* JUDUL & INFO */
+        .doc-title { text-align: center; font-weight: bold; text-decoration: underline; font-size: 18px; margin-bottom: 25px; text-transform: uppercase; }
+        .info-grid { display: flex; justify-content: space-between; margin-bottom: 20px; }
+        .info-col { width: 48%; }
+        .info-table td { padding: 3px 0; vertical-align: top; }
+        .label { font-weight: bold; width: 120px; display: inline-block; }
+
+        /* TABEL BARANG */
+        .content-table { width: 100%; border-collapse: collapse; margin-bottom: 40px; margin-top: 10px; }
+        .content-table th, .content-table td { border: 1px solid #000; padding: 12px; text-align: center; }
+        .content-table th { background-color: #f2f2f2; font-weight: bold; text-transform: uppercase; font-size: 12px; }
+        .content-table td { font-size: 14px; }
+
+        /* TANDA TANGAN */
+        .ttd-wrapper { display: flex; justify-content: space-between; margin-top: 60px; padding: 0 20px; }
+        .ttd-box { text-align: center; width: 30%; }
+        .ttd-line { margin-top: 80px; border-bottom: 1px solid #000; display: block; width: 80%; margin-left: auto; margin-right: auto; }
+        .ttd-role { font-weight: bold; margin-bottom: 5px; }
+
+        /* TOMBOL CETAK (Screen Only) */
+        .no-print { text-align: right; margin-bottom: 20px; padding: 20px; background: #f8f9fa; border-bottom: 1px solid #ddd; }
+        .btn-print { background: #0d6efd; color: white; border: none; padding: 10px 25px; border-radius: 5px; cursor: pointer; font-weight: bold; font-size: 14px; transition: 0.3s; }
+        .btn-print:hover { background: #0b5ed7; }
+
+        /* PRINT SETTINGS */
+        @media print {
+            @page { size: A4; margin: 1.5cm; }
+            body { margin: 0; -webkit-print-color-adjust: exact; }
+            .no-print { display: none; }
+            .container { width: 100%; max-width: none; padding: 0; }
+        }
+    </style>
+</head>
+<body>
+    <div class="no-print">
+        <button onclick="window.print()" class="btn-print">🖨️ CETAK DOKUMEN</button>
+    </div>
+
+    <div class="container">
+        <header>
+            <h1 class="company-name">{{ company.name|default:"NAMA PERUSAHAAN ANDA" }}</h1>
+            <div class="company-info">
+                {{ company.address|default:"Alamat Perusahaan Belum Diisi di Database" }}<br>
+                Telp: {{ company.phone }} | Email: {{ company.email }}
+            </div>
+        </header>
+
+        <div class="doc-title">SURAT JALAN / DELIVERY ORDER</div>
+
+        <div class="info-grid">
+            <div class="info-col">
+                <table class="info-table">
+                    <tr><td><span class="label">Nomor Surat</span> : {{ dist.no_surat_jalan }}</td></tr>
+                    <tr><td><span class="label">Tanggal</span> : {{ dist.date|date:"d F Y" }}</td></tr>
+                    <tr><td><span class="label">Armada</span> : {{ dist.armada.plate_number }}</td></tr>
+                    <tr><td><span class="label">Pengemudi</span> : {{ dist.armada.driver_name }}</td></tr>
+                </table>
+            </div>
+            <div class="info-col">
+                <table class="info-table">
+                    <tr><td><span class="label">Kepada Yth.</span> : <strong>{{ dist.kios.name }}</strong></td></tr>
+                    <tr><td><span class="label">Alamat</span> : {{ dist.kios.address }}</td></tr>
+                    <tr><td><span class="label">Kecamatan</span> : {{ dist.kios.kecamatan.name }}</td></tr>
+                </table>
+            </div>
+        </div>
+
+        <table class="content-table">
+            <thead>
+                <tr>
+                    <th width="10%">No</th>
+                    <th>Deskripsi Barang</th>
+                    <th width="20%">Satuan</th>
+                    <th width="20%">Jumlah (QTY)</th>
+                </tr>
+            </thead>
+            <tbody>
+                <tr>
+                    <td>1</td>
+                    <td style="text-align: left; padding-left: 20px;">
+                        <strong>PUPUK {{ dist.jenis_pupuk.name }}</strong> ({{ dist.jenis_pupuk.code }})
+                        <br><small style="color: #666;">Sumber: {% if dist.source_type == 'VIRTUAL' %}Pabrik (DO: {{ dist.source_so.so_number }}){% else %}Gudang Penyangga{% endif %}</small>
+                    </td>
+                    <td>TON</td>
+                    <td style="font-weight: bold; font-size: 16px;">{{ dist.tonnage }}</td>
+                </tr>
+            </tbody>
+        </table>
+
+        <div class="ttd-wrapper">
+            <div class="ttd-box">
+                <p class="ttd-role">Penerima</p>
+                <span class="ttd-line"></span>
+                <p>{{ dist.kios.pic_name }}</p>
+            </div>
+            <div class="ttd-box">
+                <p class="ttd-role">Pengirim / Supir</p>
+                <span class="ttd-line"></span>
+                <p>{{ dist.armada.driver_name }}</p>
+            </div>
+            <div class="ttd-box">
+                <p class="ttd-role">Hormat Kami,</p>
+                <span class="ttd-line"></span>
+                <p>Admin Gudang</p>
+            </div>
+        </div>
+    </div>
+</body>
+</html>

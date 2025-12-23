@@ -1,76 +1,68 @@
 {% extends 'base.html' %}
-{% block page_title %}Monitoring Tagihan (AR){% endblock %}
+{% load humanize %}
 
 {% block content %}
-<div class="row">
-    <div class="col-md-12 mb-4">
-        <div class="card bg-danger text-white p-3">
-            <div class="d-flex justify-content-between align-items-center">
-                <div>
-                    <h6 class="text-white-50 text-uppercase mb-1">Total Piutang Belum Lunas</h6>
-                    <h2 class="fw-bold mb-0">Rp {{ total_piutang|floatformat:0 }}</h2>
-                </div>
-                <i class="bi bi-wallet2 fs-1 opacity-50"></i>
-            </div>
+<div class="card shadow-sm border-0">
+    <div class="card-header bg-white py-3 d-flex justify-content-between align-items-center">
+        <h5 class="mb-0 fw-bold text-primary"><i class="bi bi-receipt me-2"></i>Daftar Tagihan (Piutang)</h5>
+        <div class="text-end">
+            <small class="text-muted d-block">Sisa Piutang (Belum Lunas)</small>
+            <h4 class="fw-bold text-danger mb-0">Rp {{ total_piutang|intcomma }}</h4>
         </div>
     </div>
-
-    <div class="col-md-12">
-        <div class="card p-4">
-            <h5 class="fw-bold mb-3">Daftar Invoice</h5>
-            <div class="table-responsive">
-                <table class="table table-hover align-middle">
-                    <thead class="table-light">
-                        <tr>
-                            <th>No Invoice</th>
-                            <th>Kios</th>
-                            <th>Jatuh Tempo</th>
-                            <th>Total Tagihan</th>
-                            <th>Sisa Hutang</th>
-                            <th>Status</th>
-                            <th>Aksi</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        {% for inv in invoices %}
-                        <tr>
-                            <td class="fw-bold text-primary">{{ inv.invoice_no }}</td>
-                            <td>{{ inv.distribution.kios.name }}</td>
-                            <td>
-                                {{ inv.due_date|date:"d M Y" }}
-                                {% now "Y-m-d" as todays_date %}
-                                {% if inv.due_date|date:"Y-m-d" < todays_date and inv.status != 'PAID' %}
-                                    <span class="badge bg-danger ms-1">OVERDUE</span>
-                                {% endif %}
-                            </td>
-                            <td>Rp {{ inv.total_amount|floatformat:0 }}</td>
-                            <td class="fw-bold text-danger">Rp {{ inv.remaining_balance|floatformat:0 }}</td>
-                            <td>
-                                {% if inv.status == 'UNPAID' %}
-                                    <span class="badge bg-danger">Belum Lunas</span>
-                                {% elif inv.status == 'PARTIAL' %}
-                                    <span class="badge bg-warning text-dark">Cicilan</span>
-                                {% else %}
-                                    <span class="badge bg-success">Lunas</span>
-                                {% endif %}
-                            </td>
-                            <td>
-                                {% if inv.status != 'PAID' %}
-                                <a href="{% url 'payment_create' inv.id %}" class="btn btn-sm btn-success">
-                                    <i class="bi bi-cash-stack me-1"></i>Bayar
-                                </a>
-                                {% else %}
-                                <button class="btn btn-sm btn-light border" disabled>Lunas</button>
-                                {% endif %}
-                            </td>
-                        </tr>
-                        {% empty %}
-                        <tr><td colspan="7" class="text-center py-5">Semua tagihan lunas!</td></tr>
-                        {% endfor %}
-                    </tbody>
-                </table>
-            </div>
-        </div>
+    <div class="table-responsive">
+        <table class="table table-hover align-middle mb-0">
+            <thead class="table-light">
+                <tr>
+                    <th>NO. INVOICE</th>
+                    <th>KIOS</th>
+                    <th>JATUH TEMPO</th>
+                    <th class="text-end">TOTAL TAGIHAN</th>
+                    <th class="text-end">SUDAH BAYAR</th>
+                    <th class="text-center">STATUS</th>
+                    <th class="text-center">AKSI</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for inv in invoices %}
+                <tr>
+                    <td class="fw-bold">{{ inv.inv_number }}</td>
+                    <td>
+                        {{ inv.distribution.kios.name }}<br>
+                        <small class="text-muted">{{ inv.distribution.kios.district }}</small>
+                    </td>
+                    <td>
+                        {{ inv.due_date|date:"d M Y" }}
+                        {% if inv.status != 'PAID' and inv.due_date < today %}
+                            <span class="badge bg-danger ms-1">Overdue</span>
+                        {% endif %}
+                    </td>
+                    <td class="text-end fw-bold">Rp {{ inv.total_amount|intcomma }}</td>
+                    <td class="text-end text-success">Rp {{ inv.total_paid|intcomma }}</td>
+                    <td class="text-center">
+                        {% if inv.status == 'PAID' %}
+                            <span class="badge bg-success">LUNAS</span>
+                        {% elif inv.status == 'PARTIAL' %}
+                            <span class="badge bg-warning text-dark">CICILAN</span>
+                        {% else %}
+                            <span class="badge bg-danger">BELUM BAYAR</span>
+                        {% endif %}
+                    </td>
+                    <td class="text-center">
+                        {% if inv.status != 'PAID' %}
+                        <a href="{% url 'payment_create' inv.id %}" class="btn btn-sm btn-primary">
+                            <i class="bi bi-cash-stack me-1"></i>Bayar
+                        </a>
+                        {% else %}
+                        <button class="btn btn-sm btn-secondary" disabled><i class="bi bi-check-circle"></i> Selesai</button>
+                        {% endif %}
+                    </td>
+                </tr>
+                {% empty %}
+                <tr><td colspan="7" class="text-center py-4">Belum ada data tagihan.</td></tr>
+                {% endfor %}
+            </tbody>
+        </table>
     </div>
 </div>
 {% endblock %}

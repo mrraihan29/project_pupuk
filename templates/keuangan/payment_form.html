@@ -1,40 +1,51 @@
 {% extends 'base.html' %}
-{% block page_title %}Input Pembayaran{% endblock %}
+{% load humanize %}
 
 {% block content %}
 <div class="row justify-content-center">
     <div class="col-md-6">
-        <div class="card p-4">
-            <div class="alert alert-info d-flex justify-content-between">
-                <span>Total Hutang:</span>
-                <strong class="fs-5">Rp {{ invoice.remaining_balance|floatformat:0 }}</strong>
+        <div class="card shadow border-0">
+            <div class="card-header bg-primary text-white">
+                <h5 class="mb-0">Input Pembayaran</h5>
             </div>
-            
-            <form method="post" enctype="multipart/form-data"> {% csrf_token %}
-                <h6 class="fw-bold mb-3">Form Pembayaran {{ invoice.invoice_no }}</h6>
-                
-                <div class="mb-3">
-                    <label>Nominal Bayar (Rp)</label>
-                    {{ form.amount }}
-                </div>
-                <div class="mb-3">
-                    <label>Tanggal Transfer</label>
-                    {{ form.payment_date }}
-                </div>
-                <div class="mb-3">
-                    <label>Bukti Transfer (Foto/Screenshot)</label>
-                    {{ form.proof_image }}
-                </div>
-                <div class="mb-3">
-                    <label>Catatan</label>
-                    {{ form.notes }}
+            <div class="card-body p-4">
+                <div class="alert alert-info">
+                    <strong>Invoice: {{ invoice.inv_number }}</strong><br>
+                    Total Tagihan: Rp {{ invoice.total_amount|intcomma }}<br>
+                    Sudah Bayar: Rp {{ invoice.total_paid|intcomma }}<br>
+                    <hr class="my-1">
+                    <strong class="text-danger">Sisa Hutang: Rp {{ invoice.remaining_balance|intcomma }}</strong>
                 </div>
 
-                <div class="d-flex justify-content-end gap-2 mt-4">
-                    <a href="{% url 'invoice_list' %}" class="btn btn-light border">Batal</a>
-                    <button type="submit" class="btn btn-success px-4">Simpan Pembayaran</button>
-                </div>
-            </form>
+                <form method="post" enctype="multipart/form-data">
+                    {% csrf_token %}
+                    <div class="mb-3">
+                        <label class="form-label fw-bold">Tanggal Bayar</label>
+                        {{ form.date }}
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label fw-bold">Nominal Bayar (Rp)</label>
+                        {{ form.amount }}
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Metode Pembayaran</label>
+                        {{ form.method }}
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Bukti Transfer (Foto)</label>
+                        {{ form.proof }}
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Catatan</label>
+                        {{ form.notes }}
+                    </div>
+                    
+                    <div class="d-grid gap-2">
+                        <button type="submit" class="btn btn-primary btn-lg">Simpan Pembayaran</button>
+                        <a href="{% url 'invoice_list' %}" class="btn btn-light">Batal</a>
+                    </div>
+                </form>
+            </div>
         </div>
     </div>
 </div>

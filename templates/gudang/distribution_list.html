@@ -45,10 +45,10 @@
                         <div class="small text-muted">{{ d.armada.plate_number }}</div>
                     </td>
                     <td class="text-end">
-                        <a href="{% url 'print_document' d.pk 'sj' %}" target="_blank" class="btn btn-sm btn-outline-dark me-1" title="Cetak Surat Jalan">
+                        <a href="{% url 'print_surat_jalan' item.id %}" target="_blank" class="btn btn-sm btn-outline-dark me-1" title="Cetak Surat Jalan">
                             <i class="bi bi-printer"></i> SJ
                         </a>
-                        <a href="{% url 'print_document' d.pk 'inv' %}" target="_blank" class="btn btn-sm btn-outline-warning" title="Cetak Invoice">
+                        <a href="{% url 'print_invoice' inv.id %}" target="_blank" class="btn btn-sm btn-outline-warning" title="Cetak Invoice">
                             <i class="bi bi-receipt"></i> INV
                         </a>
                     </td>

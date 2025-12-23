@@ -19,7 +19,8 @@ urlpatterns = [
     # ==========================
     path('distribution/', views.distribution_list, name='distribution_list'),
     path('distribution/create/', views.distribution_create, name='distribution_create'),
-
+    path('distribution/<int:pk>/print/', views.print_surat_jalan, name='print_surat_jalan'),
+    
     # ==========================
     # 4. MONITORING STOK (LEDGER)
     # ==========================
