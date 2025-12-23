@@ -1,63 +1,78 @@
 {% extends 'base.html' %}
-{% block page_title %}Riwayat Penyaluran{% endblock %}
+{% load humanize %}
 
 {% block content %}
-<div class="card p-4">
-    <div class="d-flex justify-content-between align-items-center mb-4">
-        <h5 class="fw-bold mb-0">Log Distribusi</h5>
-        <a href="{% url 'distribution_create' %}" class="btn btn-success">
+<div class="card shadow-sm border-0">
+    <div class="card-header bg-white py-3 d-flex justify-content-between align-items-center">
+        <h5 class="mb-0 fw-bold">Riwayat Penyaluran</h5>
+        <a href="{% url 'distribution_create' %}" class="btn btn-success fw-bold">
             <i class="bi bi-plus-lg me-2"></i>Buat Surat Jalan Baru
         </a>
     </div>
-
-    <div class="table-responsive">
-        <table class="table table-hover align-middle">
-            <thead class="table-light">
-                <tr>
-                    <th>Tanggal</th>
-                    <th>No. Surat Jalan</th>
-                    <th>Tujuan (Kios)</th>
-                    <th>Barang</th>
-                    <th>Tonase</th>
-                    <th>Armada</th>
-                    <th class="text-end">Cetak Dokumen</th>
-                </tr>
-            </thead>
-            <tbody>
-                {% for d in dist_data %}
-                <tr>
-                    <td>{{ d.transaction_date|date:"d M Y" }}</td>
-                    <td class="fw-bold text-primary">{{ d.surat_jalan_no }}</td>
-                    <td>
-                        <div class="fw-bold">{{ d.kios.name }}</div>
-                        <div class="small text-muted">{{ d.kios.district }}</div>
-                    </td>
-                    <td>
-                        {% if d.sales_order.fertilizer_type == 'NPK' %}
-                            <span class="badge bg-danger">NPK</span>
-                        {% else %}
-                            <span class="badge bg-info">UREA</span>
-                        {% endif %}
-                    </td>
-                    <td class="fw-bold">{{ d.tonnage_sent }} Ton</td>
-                    <td>
-                        <div class="small">{{ d.armada.vehicle_type }}</div>
-                        <div class="small text-muted">{{ d.armada.plate_number }}</div>
-                    </td>
-                    <td class="text-end">
-                        <a href="{% url 'print_surat_jalan' item.id %}" target="_blank" class="btn btn-sm btn-outline-dark me-1" title="Cetak Surat Jalan">
-                            <i class="bi bi-printer"></i> SJ
-                        </a>
-                        <a href="{% url 'print_invoice' inv.id %}" target="_blank" class="btn btn-sm btn-outline-warning" title="Cetak Invoice">
-                            <i class="bi bi-receipt"></i> INV
-                        </a>
-                    </td>
-                </tr>
-                {% empty %}
-                <tr><td colspan="7" class="text-center py-5">Belum ada data penyaluran.</td></tr>
-                {% endfor %}
-            </tbody>
-        </table>
+    
+    <div class="card-body p-0">
+        <div class="table-responsive">
+            <table class="table table-hover align-middle mb-0">
+                <thead class="table-light">
+                    <tr>
+                        <th class="ps-4">Tanggal</th>
+                        <th>No. Surat Jalan</th>
+                        <th>Tujuan (Kios)</th>
+                        <th>Barang</th>
+                        <th>Tonase</th>
+                        <th>Armada</th>
+                        <th>Cetak Dokumen</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for item in dist_list %}
+                    <tr>
+                        <td class="ps-4">{{ item.date|date:"d M Y" }}</td>
+                        <td class="fw-bold text-success">{{ item.no_surat_jalan }}</td>
+                        <td>
+                            {{ item.kios.name }}
+                            <br><small class="text-muted">{{ item.kios.kecamatan.name }}</small>
+                        </td>
+                        <td>
+                            {% if item.source_type == 'VIRTUAL' %}
+                                <span class="badge bg-primary">Pabrik</span>
+                            {% else %}
+                                <span class="badge bg-warning text-dark">Gudang</span>
+                            {% endif %}
+                            <span class="d-block small mt-1">
+                                {{ item.jenis_pupuk.name }} ({{ item.jenis_pupuk.code }})
+                            </span>
+                        </td>
+                        <td class="fw-bold">{{ item.tonnage }} Ton</td>
+                        <td>
+                            {{ item.armada.plate_number }}
+                            <br><small class="text-muted">{{ item.armada.driver_name }}</small>
+                        </td>
+                        <td class="text-center">
+                            <div class="btn-group" role="group">
+                                <a href="{% url 'print_surat_jalan' item.id %}" target="_blank" class="btn btn-sm btn-outline-dark" title="Cetak Surat Jalan">
+                                    <i class="bi bi-file-earmark-text"></i> SJ
+                                </a>
+                                
+                                {% if item.invoice %}
+                                    <a href="{% url 'print_invoice' item.invoice.id %}" target="_blank" class="btn btn-sm btn-outline-success" title="Cetak Invoice Tagihan">
+                                        <i class="bi bi-cash-coin"></i> INV
+                                    </a>
+                                {% endif %}
+                            </div>
+                        </td>
+                    </tr>
+                    {% empty %}
+                    <tr>
+                        <td colspan="7" class="text-center py-5 text-muted">
+                            <i class="bi bi-truck display-4 d-block mb-3"></i>
+                            Belum ada data penyaluran.
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
     </div>
 </div>
 {% endblock %}

@@ -1,65 +1,83 @@
 {% extends 'base.html' %}
-{% block page_title %}Kartu Stok (Ledger){% endblock %}
+{% load humanize %}
 
 {% block content %}
-<div class="card p-4">
-    <div class="d-flex justify-content-between align-items-center mb-4">
-        <div>
-            <h5 class="fw-bold mb-0">Kartu Stok Kumulatif</h5>
-            <small class="text-muted">Mutasi stok global berdasarkan jenis pupuk.</small>
-        </div>
-        
-        <div class="btn-group">
-            <a href="?jenis=NPK" class="btn {% if current_jenis == 'NPK' %}btn-danger{% else %}btn-outline-danger{% endif %}">
-                NPK
-            </a>
-            <a href="?jenis=UREA" class="btn {% if current_jenis == 'UREA' %}btn-primary{% else %}btn-outline-primary{% endif %}">
-                UREA
-            </a>
-        </div>
+<div class="card shadow-sm border-0">
+    <div class="card-header bg-white py-3 d-flex justify-content-between align-items-center">
+        <h5 class="mb-0 fw-bold">Kartu Stok (Ledger)</h5>
+        <span class="badge bg-dark fs-6">Sisa Saldo: {{ saldo_akhir|floatformat:2 }} Ton</span>
     </div>
+    
+    <div class="card-body">
+        <ul class="nav nav-pills mb-3">
+            <li class="nav-item">
+                <a class="nav-link {% if jenis_selected == 'NPK' %}active{% endif %}" href="?jenis=NPK">NPK</a>
+            </li>
+            <li class="nav-item">
+                <a class="nav-link {% if jenis_selected == 'UREA' %}active{% endif %}" href="?jenis=UREA">UREA</a>
+            </li>
+        </ul>
 
-    <div class="table-responsive">
-        <table class="table table-bordered table-hover align-middle text-center">
-            <thead class="table-light fw-bold">
-                <tr>
-                    <th style="width: 15%">TGL</th>
-                    <th style="width: 20%">KODE SO</th>
-                    <th style="width: 25%">KETERANGAN</th> <th style="width: 10%" class="text-success">MASUK</th> <th style="width: 10%" class="text-danger">KELUAR</th>
-                    <th style="width: 20%" class="bg-light">STOK AKHIR</th> </tr>
-            </thead>
-            <tbody>
-                {% for row in report_data %}
-                <tr>
-                    <td class="text-muted small">{{ row.date|date:"d M Y" }}</td>
-                    <td class="fw-bold">{{ row.so_code }}</td>
-                    <td class="text-start small">{{ row.reference }}</td>
-                    
-                    <td>
-                        {% if row.masuk > 0 %}
-                            <span class="text-success fw-bold">+{{ row.masuk }}</span>
-                        {% else %} - {% endif %}
-                    </td>
+        <div class="table-responsive">
+            <table class="table table-hover align-middle table-striped">
+                <thead class="table-dark">
+                    <tr>
+                        <th>TANGGAL</th>
+                        <th>TIPE STOK</th>
+                        <th>TRANSAKSI</th>
+                        <th>REF (SO/SJ)</th>
+                        <th class="text-end text-success">MASUK</th>
+                        <th class="text-end text-danger">KELUAR</th>
+                        <th class="text-end fw-bold">SALDO</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for card in cards %}
+                    <tr>
+                        <td>{{ card.date|date:"d M Y" }}</td>
+                        <td>
+                            {% if card.stock_type == 'VIRTUAL' %}
+                                <span class="badge bg-info text-dark">VIRTUAL (Pabrik)</span>
+                            {% else %}
+                                <span class="badge bg-warning text-dark">FISIK (Gudang)</span>
+                            {% endif %}
+                        </td>
+                        <td>
+                            {{ card.get_transaction_type_display }}
+                        </td>
+                        <td class="fw-bold">{{ card.reference_number }}</td>
+                        
+                        <td class="text-end">
+                            {% if card.qty_in > 0 %}
+                                <span class="text-success fw-bold">+{{ card.qty_in|floatformat:2 }}</span>
+                            {% else %}
+                                -
+                            {% endif %}
+                        </td>
+                        
+                        <td class="text-end">
+                            {% if card.qty_out > 0 %}
+                                <span class="text-danger fw-bold">-{{ card.qty_out|floatformat:2 }}</span>
+                            {% else %}
+                                -
+                            {% endif %}
+                        </td>
 
-                    <td>
-                        {% if row.keluar > 0 %}
-                            <span class="text-danger fw-bold">-{{ row.keluar }}</span>
-                        {% else %} - {% endif %}
-                    </td>
-
-                    <td class="fw-bold bg-light fs-6">
-                        {{ row.saldo }} Ton
-                    </td>
-                </tr>
-                {% empty %}
-                <tr>
-                    <td colspan="6" class="text-center py-5 text-muted">
-                        Belum ada transaksi untuk pupuk {{ current_jenis }}.
-                    </td>
-                </tr>
-                {% endfor %}
-            </tbody>
-        </table>
+                        <td class="text-end fw-bold bg-light">
+                            {{ card.current_balance|floatformat:2 }}
+                        </td>
+                    </tr>
+                    {% empty %}
+                    <tr>
+                        <td colspan="7" class="text-center py-5 text-muted">
+                            <i class="bi bi-journal-x display-4 d-block mb-3"></i>
+                            Belum ada transaksi untuk pupuk {{ jenis_selected }}.
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
     </div>
 </div>
 {% endblock %}

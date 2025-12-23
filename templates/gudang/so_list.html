@@ -1,42 +1,70 @@
 {% extends 'base.html' %}
-{% block page_title %}Data Penebusan (SO){% endblock %}
+{% load humanize %}
+
 {% block content %}
-<div class="card p-4">
-    <div class="d-flex justify-content-between mb-4">
-        <h5 class="fw-bold">Stok Gudang (Batch SO)</h5>
-        <a href="{% url 'so_create' %}" class="btn btn-primary"><i class="bi bi-plus-lg me-2"></i>Input Penebusan</a>
+<div class="card shadow-sm border-0">
+    <div class="card-header bg-white py-3 d-flex justify-content-between align-items-center">
+        <h5 class="mb-0 fw-bold">Stok Gudang (Batch SO)</h5>
+        <a href="{% url 'so_create' %}" class="btn btn-primary fw-bold">
+            <i class="bi bi-plus-lg me-2"></i>Input Penebusan
+        </a>
     </div>
-    <table class="table table-hover align-middle">
-        <thead class="table-light">
-            <tr>
-                <th>Tanggal</th>
-                <th>Kode SO</th>
-                <th>Jenis</th>
-                <th>Awal</th>
-                <th>Sisa Stok</th>
-                <th>Jatuh Tempo</th>
-                <th>Status</th>
-            </tr>
-        </thead>
-        <tbody>
-            {% for so in so_data %}
-            <tr>
-                <td>{{ so.entry_date|date:"d/m/Y" }}</td>
-                <td class="fw-bold">{{ so.so_code }}</td>
-                <td>
-                    {% if so.fertilizer_type == 'NPK' %}<span class="badge bg-danger">NPK</span>
-                    {% else %}<span class="badge bg-info">UREA</span>{% endif %}
-                </td>
-                <td>{{ so.tonnage_initial }}</td>
-                <td class="fw-bold">{{ so.tonnage_current }}</td>
-                <td>{{ so.maturity_date|date:"d/m/Y" }}</td>
-                <td>
-                    {% if so.is_closed %}<span class="badge bg-secondary">Habis</span>
-                    {% else %}<span class="badge bg-success">Tersedia</span>{% endif %}
-                </td>
-            </tr>
-            {% endfor %}
-        </tbody>
-    </table>
+    <div class="card-body p-0">
+        <div class="table-responsive">
+            <table class="table table-hover align-middle mb-0">
+                <thead class="table-light">
+                    <tr>
+                        <th class="ps-4">Tanggal</th>
+                        <th>Kode SO</th>
+                        <th>Jenis</th>
+                        <th>Awal (Ton)</th>
+                        <th>Sisa Stok (Ton)</th>
+                        <th>Jatuh Tempo</th>
+                        <th>Status</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for item in orders %}
+                    <tr>
+                        <td class="ps-4">{{ item.date|date:"d M Y" }}</td>
+                        <td class="fw-bold text-primary">{{ item.so_number }}</td>
+                        <td>
+                            <span class="badge" style="background-color: #e9ecef; color: #333; border: 1px solid #ddd;">
+                                {{ item.jenis_pupuk.code }}
+                            </span>
+                        </td>
+                        <td class="fw-bold">{{ item.total_tonnage|floatformat:2 }}</td>
+                        
+                        <td>
+                            {% if item.is_closed %}
+                                <span class="text-muted">0 (Habis)</span>
+                            {% else %}
+                                <span class="text-success fw-bold">{{ item.total_tonnage|floatformat:2 }}</span>
+                                <small class="text-muted d-block" style="font-size: 10px;">(Virtual)</small>
+                            {% endif %}
+                        </td>
+                        
+                        <td>{{ item.date|date:"d M Y" }}</td> 
+                        
+                        <td>
+                            {% if item.is_closed %}
+                                <span class="badge bg-secondary">Selesai</span>
+                            {% else %}
+                                <span class="badge bg-success">Aktif</span>
+                            {% endif %}
+                        </td>
+                    </tr>
+                    {% empty %}
+                    <tr>
+                        <td colspan="7" class="text-center py-5 text-muted">
+                            <i class="bi bi-inbox display-4 d-block mb-3"></i>
+                            Belum ada data penebusan SO.
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
 </div>
 {% endblock %}

@@ -11,7 +11,7 @@ from .forms import (
     DistributionForm, WarehouseTransferForm, 
     StockOpnameForm
 )
-from core.models import CompanyProfile
+from core.models import CompanyProfile, JenisPupuk
 
 # ==========================================
 # 1. MODUL PENEBUSAN (SO)
@@ -19,11 +19,11 @@ from core.models import CompanyProfile
 @login_required
 def so_list(request):
     """
-    Daftar Sales Order (Stok Virtual).
-    Menggunakan prefetch_related untuk mengambil detail alokasi dalam 1 query efisien.
+    Daftar Sales Order (Penebusan).
     """
+    # Ambil semua data SO, urutkan dari yang terbaru
     orders = SalesOrder.objects.select_related('jenis_pupuk') \
-                            .prefetch_related('allocations__kecamatan') \
+                            .prefetch_related('allocations') \
                             .order_by('-date')
     
     return render(request, 'gudang/so_list.html', {'orders': orders})
@@ -108,12 +108,15 @@ def transfer_create(request):
 # ==========================================
 @login_required
 def distribution_list(request):
-    """Daftar Surat Jalan"""
-    # Optimasi Query: Ambil data Kios, Armada, dan SO sekaligus
-    dist_list = Distribution.objects.select_related('kios', 'armada', 'source_so', 'jenis_pupuk') \
-                                    .order_by('-date', '-created_at')
+    # Tambahkan 'invoice' di select_related/prefetch agar efisien
+    # Note: Karena Invoice one-to-one ke Distribution, kita akses via reverse relationship
+    data_surat_jalan = Distribution.objects.select_related(
+        'kios', 'armada', 'jenis_pupuk', 'source_so', 'invoice' 
+    ).order_by('-date', '-created_at')
     
-    return render(request, 'gudang/distribution_list.html', {'dist_list': dist_list})
+    return render(request, 'gudang/distribution_list.html', {
+        'dist_list': data_surat_jalan 
+    })
 
 @login_required
 def distribution_create(request):
@@ -139,17 +142,44 @@ def distribution_create(request):
 @login_required
 def stock_card_list(request):
     """
-    Laporan Kartu Stok (Ledger) - Single Source of Truth
+    Kartu Stok (Ledger) dengan Running Balance.
+    Versi Anti-Error UnboundLocal.
     """
-    stocks = StockCard.objects.select_related('jenis_pupuk') \
-                            .order_by('-date', '-created_at')
+    # 1. SETUP DEFAULT VARIABLE (Wajib di paling atas)
+    cards = []
+    saldo_akhir = 0
+    jenis_pupuk = None # Inisialisasi awal supaya tidak UnboundLocalError
     
-    # Filter sederhana (Opsional, bisa dikembangkan)
-    jenis_filter = request.GET.get('jenis')
-    if jenis_filter:
-        stocks = stocks.filter(jenis_pupuk__id=jenis_filter)
-
-    return render(request, 'gudang/stock_card_list.html', {'stocks': stocks})
+    # 2. Ambil Parameter URL
+    jenis_code = request.GET.get('jenis', 'NPK') 
+    
+    # 3. Cari Object Jenis Pupuk (Safe Query)
+    # Gunakan filter().first() -> Return Object atau None (Tidak akan error crash)
+    jenis_pupuk = JenisPupuk.objects.filter(name__iexact=jenis_code).first()
+    
+    # 4. Logic Data (Hanya jalan jika jenis_pupuk DITEMUKAN)
+    if jenis_pupuk:
+        # Ambil Transaksi (Urut dari lama ke baru untuk hitung saldo)
+        raw_cards = StockCard.objects.filter(jenis_pupuk=jenis_pupuk).order_by('date', 'created_at')
+        
+        # Hitung Running Balance
+        for card in raw_cards:
+            saldo_akhir += card.qty_in   # Masuk menambah
+            saldo_akhir -= card.qty_out  # Keluar mengurangi
+            
+            # Tempelkan hasil ke object sementara
+            card.current_balance = saldo_akhir
+            cards.append(card)
+            
+        # Balik urutan agar yang terbaru muncul di atas (DESC)
+        cards.reverse()
+    
+    # 5. Render Template
+    return render(request, 'gudang/stock_card_list.html', {
+        'cards': cards,
+        'jenis_selected': jenis_code, # Kirim string kode (NPK/UREA) ke template
+        'saldo_akhir': saldo_akhir
+    })
 
 @login_required
 def stock_opname(request):

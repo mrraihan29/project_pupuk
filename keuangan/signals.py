@@ -22,7 +22,7 @@ def create_invoice_automatis(sender, instance, created, **kwargs):
             
             # Konversi Harga: Di Master Harga per KG, di sini Tonase
             # 1 Ton = 1000 KG
-            harga_per_ton = harga_obj.price_sell * 1000
+            harga_per_ton = harga_obj.price_sell
             
         except FertilizerPrice.DoesNotExist:
             harga_per_ton = 0

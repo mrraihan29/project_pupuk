@@ -51,6 +51,19 @@ AllocationFormSet = inlineformset_factory(
 # 2. FORM DISTRIBUSI (SURAT JALAN)
 # ==========================================
 class DistributionForm(forms.ModelForm):
+    # Set required=False agar tidak error saat hidden
+    jenis_pupuk = forms.ModelChoiceField(
+        queryset=JenisPupuk.objects.filter(is_active=True),
+        required=False, 
+        widget=forms.Select(attrs={'class': 'form-select', 'id': 'id_jenis_pupuk'})
+    )
+    
+    source_so = forms.ModelChoiceField(
+        queryset=SalesOrder.objects.filter(is_closed=False),
+        required=False,
+        widget=forms.Select(attrs={'class': 'form-select', 'id': 'id_source_so'})
+    )
+
     class Meta:
         model = Distribution
         fields = ['date', 'pkp_date', 'kios', 'armada', 'source_type', 'source_so', 'jenis_pupuk', 'tonnage']
@@ -59,22 +72,36 @@ class DistributionForm(forms.ModelForm):
             'pkp_date': forms.DateInput(attrs={'class': 'form-control', 'type': 'date'}),
             'kios': forms.Select(attrs={'class': 'form-select'}),
             'armada': forms.Select(attrs={'class': 'form-select'}),
-            
-            # ID Khusus untuk JavaScript (Smart Dropdown)
             'source_type': forms.Select(attrs={'class': 'form-select', 'id': 'id_source_type'}),
-            'source_so': forms.Select(attrs={'class': 'form-select', 'id': 'id_source_so'}),
-            'jenis_pupuk': forms.Select(attrs={'class': 'form-select', 'id': 'id_jenis_pupuk'}),
-            
             'tonnage': forms.NumberInput(attrs={'class': 'form-control', 'placeholder': 'Ton'}),
         }
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        # FILTER PENTING: Jangan tampilkan Armada yang sudah non-aktif (rusak/dijual)
         self.fields['armada'].queryset = Armada.objects.filter(is_active=True)
-        # Jangan tampilkan Kios yang tutup permanen
         self.fields['kios'].queryset = Kios.objects.filter(is_active=True)
 
+    def clean(self):
+        cleaned_data = super().clean()
+        source_type = cleaned_data.get('source_type')
+        source_so = cleaned_data.get('source_so')
+        jenis_pupuk = cleaned_data.get('jenis_pupuk')
+        
+        # LOGIC CERDAS:
+        if source_type == 'VIRTUAL':
+            # Jika ambil dari Pabrik, WAJIB pilih SO
+            if not source_so:
+                self.add_error('source_so', 'Wajib memilih Nomor SO untuk transaksi Pabrik.')
+            else:
+                # OTOMATIS ISI JENIS PUPUK DARI SO (Mengatasi Error "Nothing Happens")
+                cleaned_data['jenis_pupuk'] = source_so.jenis_pupuk
+                
+        elif source_type == 'PHYSICAL':
+            # Jika ambil dari Gudang, WAJIB pilih Jenis Pupuk manual
+            if not jenis_pupuk:
+                self.add_error('jenis_pupuk', 'Wajib memilih Jenis Pupuk untuk transaksi Gudang.')
+        
+        return cleaned_data
 # ==========================================
 # 3. FORM TRANSFER GUDANG (TARIK STOK)
 # ==========================================
