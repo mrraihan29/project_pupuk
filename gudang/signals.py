@@ -1,4 +1,4 @@
-from django.db.models.signals import post_save, post_delete
+from django.db.models.signals import post_save, post_delete, pre_save
 from django.dispatch import receiver
 from django.db import transaction
 from django.db.models import Sum
@@ -9,6 +9,41 @@ from .models import (
     WarehouseTransfer, Distribution, 
     StockCard
 )
+from core.models import KiosAllocation
+
+
+def recompute_stock_balance(jenis_id, stock_type):
+    """Re-hit total saldo per jenis & tipe stok sehingga field balance tidak misleading."""
+    if not jenis_id or not stock_type:
+        return
+    with transaction.atomic():
+        cards = list(
+            StockCard.objects.select_for_update()
+            .filter(jenis_pupuk_id=jenis_id, stock_type=stock_type)
+            .order_by('date', 'created_at', 'id')
+        )
+
+        running = Decimal('0')
+        for card in cards:
+            running += (card.qty_in or Decimal('0')) - (card.qty_out or Decimal('0'))
+            if card.balance != running:
+                StockCard.objects.filter(pk=card.pk).update(balance=running)
+
+
+def update_so_closure(so):
+    """Auto-close/open SO berdasar saldo virtual aktual."""
+    if not so:
+        return
+    try:
+        with transaction.atomic():
+            so_ref = SalesOrder.objects.select_for_update().get(pk=so.pk)
+            balance = so_ref.get_virtual_balance()
+            should_close = balance <= Decimal('0')
+            if so_ref.is_closed != should_close:
+                so_ref.is_closed = should_close
+                so_ref.save(update_fields=['is_closed'])
+    except SalesOrder.DoesNotExist:
+        return
 
 # ==========================================
 # A. OTOMATISASI PENEBUSAN (SO) -> STOK VIRTUAL MASUK
@@ -52,6 +87,9 @@ def update_stock_from_allocation(sender, instance, **kwargs):
             card.jenis_pupuk = so.jenis_pupuk # Jaga-jaga kalau SO ganti jenis
             card.save()
 
+    recompute_stock_balance(so.jenis_pupuk_id, 'VIRTUAL')
+    update_so_closure(so)
+
 # ==========================================
 # B. OTOMATISASI TRANSFER -> VIRTUAL OUT & FISIK IN
 # ==========================================
@@ -93,10 +131,17 @@ def update_stock_from_transfer(sender, instance, created, **kwargs):
             }
         )
 
+    recompute_stock_balance(instance.source_so.jenis_pupuk_id, 'VIRTUAL')
+    recompute_stock_balance(instance.source_so.jenis_pupuk_id, 'PHYSICAL')
+    update_so_closure(instance.source_so)
+
 @receiver(post_delete, sender=WarehouseTransfer)
 def delete_stock_from_transfer(sender, instance, **kwargs):
     """Jika data transfer dihapus, hapus juga kartu stoknya"""
     StockCard.objects.filter(reference_number__startswith=f"TRF-{instance.id}-").delete()
+    recompute_stock_balance(instance.source_so.jenis_pupuk_id, 'VIRTUAL')
+    recompute_stock_balance(instance.source_so.jenis_pupuk_id, 'PHYSICAL')
+    update_so_closure(instance.source_so)
 
 # ==========================================
 # C. OTOMATISASI DISTRIBUSI -> STOK KELUAR
@@ -133,6 +178,72 @@ def update_stock_from_distribution(sender, instance, created, **kwargs):
         }
     )
 
+    prev = getattr(instance, '_old_dist_state', None)
+    if prev:
+        recompute_stock_balance(prev['jenis_id'], prev['stock_type'])
+        if prev['source_type'] == 'VIRTUAL' and prev['source_so_id']:
+            update_so_closure(SalesOrder.objects.filter(pk=prev['source_so_id']).first())
+
+    recompute_stock_balance(instance.jenis_pupuk_id, stk_type)
+    if instance.source_type == 'VIRTUAL' and instance.source_so:
+        update_so_closure(instance.source_so)
+
+    # Update kuota kios (kurangi sesuai tonase)
+    def adjust_quota(kios_id, jenis_id, year, delta):
+        alloc = KiosAllocation.objects.select_for_update().filter(
+            kios_id=kios_id, jenis_pupuk_id=jenis_id, year=year
+        ).first()
+        if not alloc:
+            raise ValueError("Alokasi kios tidak ditemukan saat update distribusi")
+        alloc.quota_remaining += delta
+        if alloc.quota_remaining < 0:
+            raise ValueError("Kuota kios menjadi negatif, batalkan transaksi")
+        alloc.save(update_fields=['quota_remaining'])
+
+    with transaction.atomic():
+        prev = getattr(instance, '_old_dist_state', None)
+        # Jika update, kembalikan tonase lama ke alokasi sebelumnya
+        if prev:
+            adjust_quota(prev['kios_id'], prev['jenis_id'], prev['year'], prev['tonnage'])
+        # Kurangi kuota pada alokasi baru
+        adjust_quota(instance.kios_id, instance.jenis_pupuk_id, instance.date.year, -instance.tonnage)
+
 @receiver(post_delete, sender=Distribution)
 def delete_stock_from_distribution(sender, instance, **kwargs):
     StockCard.objects.filter(reference_number=f"SJ-{instance.id}").delete()
+    # Kembalikan kuota jika distribusi dihapus
+    try:
+        with transaction.atomic():
+            alloc = KiosAllocation.objects.select_for_update().filter(
+                kios=instance.kios,
+                jenis_pupuk=instance.jenis_pupuk,
+                year=instance.date.year
+            ).first()
+            if alloc:
+                alloc.quota_remaining += instance.tonnage
+                alloc.save(update_fields=['quota_remaining'])
+    except Exception:
+        pass
+
+    recompute_stock_balance(instance.jenis_pupuk_id, 'PHYSICAL' if instance.source_type == 'PHYSICAL' else 'VIRTUAL')
+    if instance.source_type == 'VIRTUAL' and instance.source_so:
+        update_so_closure(instance.source_so)
+
+
+@receiver(pre_save, sender=Distribution)
+def cache_old_distribution(sender, instance, **kwargs):
+    if not instance.pk:
+        return
+    try:
+        old = Distribution.objects.get(pk=instance.pk)
+        instance._old_dist_state = {
+            'kios_id': old.kios_id,
+            'jenis_id': old.jenis_pupuk_id,
+            'year': old.date.year,
+            'tonnage': old.tonnage,
+            'stock_type': 'PHYSICAL' if old.source_type == 'PHYSICAL' else 'VIRTUAL',
+            'source_type': old.source_type,
+            'source_so_id': old.source_so_id,
+        }
+    except Distribution.DoesNotExist:
+        instance._old_dist_state = None

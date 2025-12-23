@@ -292,16 +292,14 @@ def laporan_keuangan(request):
     start_date = request.GET.get('start', default_start)
     end_date = request.GET.get('end', default_end)
 
-    # 2. SIAPKAN HARGA ACUAN (Master Price)
-    # Digunakan untuk valuasi stok dan estimasi nilai
-    harga_npk, _ = FertilizerPrice.objects.get_or_create(
-        jenis_pupuk__name='NPK', 
-        defaults={'price_buy': 2300, 'price_sell': 2350} # Default dummy jika kosong
-    )
-    harga_urea, _ = FertilizerPrice.objects.get_or_create(
-        jenis_pupuk__name='UREA', 
-        defaults={'price_buy': 2200, 'price_sell': 2250}
-    )
+    # 2. SIAPKAN HARGA ACUAN (Master Price) - gunakan FK langsung
+    harga_npk = FertilizerPrice.objects.select_related('jenis_pupuk').filter(jenis_pupuk__code='NPK').first()
+    harga_urea = FertilizerPrice.objects.select_related('jenis_pupuk').filter(jenis_pupuk__code='UREA').first()
+
+    # Jika harga tidak ditemukan, lemparkan info agar pengguna mengisi master harga
+    if not harga_npk or not harga_urea:
+        messages.error(request, "Harga pupuk belum dikonfigurasi. Silakan set di Master Harga.")
+        return redirect('master_harga')
 
     # 3. HITUNG MODAL PENEBUSAN (HPP / COGS)
     # Logic: Total Tonase dari 'SalesOrderAllocation' dalam periode ini
@@ -320,8 +318,8 @@ def laporan_keuangan(request):
     ).aggregate(total=Coalesce(Sum('tonnage'), Decimal('0')))['total']
 
     # Hitung Nilai Rupiah Modal
-    modal_npk = qty_beli_npk * harga_npk.price_buy
-    modal_urea = qty_beli_urea * harga_urea.price_buy
+    modal_npk = qty_beli_npk * harga_npk.price_buy / Decimal('1000')
+    modal_urea = qty_beli_urea * harga_urea.price_buy / Decimal('1000')
     total_modal = modal_npk + modal_urea
 
     # 4. HITUNG OMZET PENJUALAN (REVENUE)
@@ -342,8 +340,8 @@ def laporan_keuangan(request):
     # Hitung Nilai Rupiah Omzet (Menggunakan Harga Jual saat ini)
     # Note: Jika ingin super akurat, harusnya 'Distribution' menyimpan harga saat transaksi (snapshot).
     # Di Phase 1 ini kita gunakan Master Harga Jual.
-    omzet_npk = qty_jual_npk * harga_npk.price_sell
-    omzet_urea = qty_jual_urea * harga_urea.price_sell
+    omzet_npk = qty_jual_npk * harga_npk.price_sell / Decimal('1000')
+    omzet_urea = qty_jual_urea * harga_urea.price_sell / Decimal('1000')
     total_omzet = omzet_npk + omzet_urea
 
     # 5. HITUNG BIAYA OPERASIONAL
@@ -391,8 +389,8 @@ def laporan_keuangan(request):
     stok_sisa_npk = get_stock_balance('NPK')
     stok_sisa_urea = get_stock_balance('UREA')
 
-    aset_npk = stok_sisa_npk * harga_npk.price_buy
-    aset_urea = stok_sisa_urea * harga_urea.price_buy
+    aset_npk = stok_sisa_npk * harga_npk.price_buy / Decimal('1000')
+    aset_urea = stok_sisa_urea * harga_urea.price_buy / Decimal('1000')
     total_aset = aset_npk + aset_urea
 
     # --- BUNGKUS DATA (CONTEXT) ---

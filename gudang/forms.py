@@ -144,7 +144,8 @@ class StockOpnameForm(forms.Form):
     )
     actual_qty = forms.DecimalField(
         label="Stok Fisik Real (Ton)",
-        widget=forms.NumberInput(attrs={'class': 'form-control', 'step': '0.01'})
+        min_value=0,
+        widget=forms.NumberInput(attrs={'class': 'form-control', 'step': '0.01', 'min': '0'})
     )
     notes = forms.CharField(
         label="Catatan / Alasan Selisih",

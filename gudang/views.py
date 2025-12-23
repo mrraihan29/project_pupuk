@@ -1,11 +1,14 @@
+from decimal import Decimal
 from django.shortcuts import render, redirect, get_object_or_404
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
 from django.db import transaction
 from django.db.models import Sum, Prefetch
+from django.utils import timezone
 
 # Import Models & Forms Baru
 from .models import SalesOrder, SalesOrderAllocation, Distribution, WarehouseTransfer, StockCard
+from .signals import recompute_stock_balance
 from .forms import (
     SalesOrderForm, AllocationFormSet, 
     DistributionForm, WarehouseTransferForm, 
@@ -184,14 +187,54 @@ def stock_card_list(request):
 @login_required
 def stock_opname(request):
     """
-    Input Penyesuaian Stok Manual (Placeholder)
-    Fitur ini akan dikembangkan lebih lanjut nanti.
+    Input penyesuaian stok manual (ADJUST) dari hasil opname fisik.
     """
     if request.method == 'POST':
         form = StockOpnameForm(request.POST)
         if form.is_valid():
-            # TODO: Implementasi logika Opname (Hitung selisih -> Buat Transaksi Adjustment)
-            messages.info(request, "Fitur Opname sedang dalam pengembangan logic balance.")
+            data = form.cleaned_data
+            jenis = data['jenis_pupuk']
+            stock_type = data['stock_type']
+            actual_qty = data['actual_qty']
+            opname_date = data['date']
+            notes = data['notes'] or 'Penyesuaian stok fisik (Stock Opname)'
+
+            agg = StockCard.objects.filter(jenis_pupuk=jenis, stock_type=stock_type).aggregate(
+                total_in=Sum('qty_in'),
+                total_out=Sum('qty_out')
+            )
+            current_balance = (agg['total_in'] or Decimal('0')) - (agg['total_out'] or Decimal('0'))
+            diff = actual_qty - current_balance
+
+            if diff == 0:
+                messages.info(request, "Tidak ada selisih antara stok sistem dan hasil fisik.")
+                return redirect('stock_card_list')
+
+            qty_in = diff if diff > 0 else Decimal('0')
+            qty_out = -diff if diff < 0 else Decimal('0')
+            reference_number = f"ADJ-{timezone.now().strftime('%Y%m%d%H%M%S')}"
+            description = f"Stock Opname {stock_type.title()} {jenis.code}" if hasattr(jenis, 'code') else "Stock Opname"
+            if notes:
+                description = f"{description} - {notes}"
+
+            with transaction.atomic():
+                StockCard.objects.create(
+                    date=opname_date,
+                    jenis_pupuk=jenis,
+                    stock_type=stock_type,
+                    transaction_type='ADJUST',
+                    reference_number=reference_number,
+                    description=description[:255],
+                    qty_in=qty_in,
+                    qty_out=qty_out,
+                )
+
+                recompute_stock_balance(jenis.id, stock_type)
+
+            messages.success(
+                request,
+                f"Opname disimpan. Selisih {diff:+,.2f} Ton dicatat sebagai ADJUST ke Kartu Stok."
+            )
             return redirect('stock_card_list')
     else:
         form = StockOpnameForm()

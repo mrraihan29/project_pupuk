@@ -19,12 +19,13 @@ from core.decorators import owner_required
 @login_required
 def invoice_list(request):
     invoices = Invoice.objects.select_related('distribution__kios').order_by('status', 'due_date')
-    total_piutang = Invoice.objects.filter(status__in=['UNPAID', 'PARTIAL']).aggregate(Sum('total_amount'), Sum('total_paid'))
-    
-    # Hitung manual sisa
-    sisa_piutang = 0
-    if total_piutang['total_amount__sum']:
-        sisa_piutang = total_piutang['total_amount__sum'] - (total_piutang['total_paid__sum'] or 0)
+
+    agg = Invoice.objects.filter(status__in=['UNPAID', 'PARTIAL']).aggregate(
+        total_amount=Sum('total_amount'),
+        total_paid=Sum('total_paid')
+    )
+
+    sisa_piutang = (agg['total_amount'] or 0) - (agg['total_paid'] or 0)
 
     return render(request, 'keuangan/invoice_list.html', {
         'invoices': invoices,

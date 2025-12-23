@@ -20,28 +20,37 @@
         <div class="card shadow-sm">
             <div class="card-body p-4">
                 <h5 class="card-title fw-bold mb-4">Input Hasil Opname</h5>
-                
+
                 <form method="post">
                     {% csrf_token %}
-                    
-                    <div class="mb-3">
-                        <label class="form-label fw-bold">1. Pilih Batch / Kode SO</label>
-                        {{ form.sales_order }}
-                        <div class="form-text">Pilih batch pupuk yang sedang dihitung.</div>
-                    </div>
 
-                    <div class="mb-3">
-                        <label class="form-label fw-bold">2. Stok Fisik (Actual)</label>
-                        <div class="input-group">
-                            {{ form.actual_stock }}
-                            <span class="input-group-text fw-bold">Ton</span>
+                    <div class="row g-3">
+                        <div class="col-md-6">
+                            <label class="form-label fw-bold">Tanggal Opname</label>
+                            {{ form.date }}
+                            <div class="form-text">Tanggal berita acara opname fisik.</div>
                         </div>
-                        <div class="form-text text-danger">Masukkan angka riil yang ada di gudang saat ini.</div>
-                    </div>
-
-                    <div class="mb-3">
-                        <label class="form-label fw-bold">3. Keterangan / Berita Acara</label>
-                        {{ form.reason }}
+                        <div class="col-md-6">
+                            <label class="form-label fw-bold">Lokasi Stok</label>
+                            {{ form.stock_type }}
+                            <div class="form-text">Pilih PHYSICAL (Gudang) atau VIRTUAL (SO/Pabrik).</div>
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label fw-bold">Jenis Pupuk</label>
+                            {{ form.jenis_pupuk }}
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label fw-bold">Stok Fisik Aktual</label>
+                            <div class="input-group">
+                                {{ form.actual_qty }}
+                                <span class="input-group-text fw-bold">Ton</span>
+                            </div>
+                            <div class="form-text text-danger">Pastikan angka sudah diverifikasi oleh tim gudang.</div>
+                        </div>
+                        <div class="col-12">
+                            <label class="form-label fw-bold">Keterangan / Berita Acara</label>
+                            {{ form.notes }}
+                        </div>
                     </div>
 
                     <hr class="my-4">

@@ -6,7 +6,7 @@ from django.utils import timezone
 from django.db.models import Sum
 
 # Mengambil Model dari Core yang baru saja kita sepakati
-from core.models import JenisPupuk, Kecamatan, Kios, Armada
+from core.models import JenisPupuk, Kecamatan, Kios, Armada, KiosAllocation
 
 # ==========================================
 # 1. SALES ORDER (PENEBUSAN / STOK VIRTUAL)
@@ -212,7 +212,44 @@ class Distribution(models.Model):
             # Logic Cek Stok Fisik (Agak berat query-nya, kita gunakan helper function dari StockCard nanti)
             # Untuk sekarang kita skip validasi fisik di level Model clean() agar tidak circular import atau query berat.
             # Validasi fisik sebaiknya dilakukan di Form/View.
-            pass
+            agg = StockCard.objects.filter(jenis_pupuk=self.jenis_pupuk, stock_type='PHYSICAL').aggregate(
+                total_in=Sum('qty_in'),
+                total_out=Sum('qty_out'),
+            )
+            physical_remaining = (agg['total_in'] or Decimal('0')) - (agg['total_out'] or Decimal('0'))
+
+            if self.pk:
+                old_record = Distribution.objects.get(pk=self.pk)
+                if old_record.source_type == 'PHYSICAL' and old_record.jenis_pupuk_id == self.jenis_pupuk_id:
+                    physical_remaining += old_record.tonnage
+
+            if self.tonnage and self.tonnage > physical_remaining:
+                raise ValidationError({'tonnage': f"Stok fisik tidak cukup. Sisa {physical_remaining:,.2f} Ton untuk {self.jenis_pupuk.code}."})
+
+        # Validasi 4: Cek kuota kios (alokasi tahunan)
+        alloc = KiosAllocation.objects.filter(
+            kios=self.kios,
+            jenis_pupuk=self.jenis_pupuk,
+            year=self.date.year
+        ).first()
+
+        if not alloc:
+            raise ValidationError({'kios': f"Belum ada alokasi {self.jenis_pupuk.code} untuk tahun {self.date.year} di kios ini."})
+
+        remaining_quota = alloc.quota_remaining
+
+        # Jika edit dan alokasi tidak berubah, kembalikan tonase lama ke sisa saat validasi
+        if self.pk:
+            old = Distribution.objects.get(pk=self.pk)
+            if (
+                old.kios_id == self.kios_id and
+                old.jenis_pupuk_id == self.jenis_pupuk_id and
+                old.date.year == self.date.year
+            ):
+                remaining_quota += old.tonnage
+
+        if self.tonnage and self.tonnage > remaining_quota:
+            raise ValidationError({'tonnage': f"Kuota tersisa {remaining_quota:,.2f} Ton untuk {self.jenis_pupuk.code} tahun {self.date.year}."})
 
     def __str__(self):
         return f"{self.no_surat_jalan} - {self.kios.name}"
