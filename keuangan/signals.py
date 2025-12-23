@@ -1,4 +1,4 @@
-from django.db.models.signals import post_save, post_delete
+from django.db.models.signals import post_save, post_delete, pre_save
 from django.dispatch import receiver
 from datetime import timedelta
 from decimal import Decimal
@@ -49,26 +49,61 @@ def create_invoice_automatis(sender, instance, created, **kwargs):
         )
 
 # ==========================================
-# 2. AUTO-UPDATE STATUS (Saat Ada Pembayaran)
+# 2. SIMPAN STATE LAMA (untuk deteksi perubahan status/nominal)
+# ==========================================
+@receiver(pre_save, sender=Payment)
+def stash_old_payment(sender, instance, **kwargs):
+    if not instance.pk:
+        instance._old_status = None
+        instance._old_amount = None
+        return
+
+    try:
+        old = Payment.objects.get(pk=instance.pk)
+        instance._old_status = old.status
+        instance._old_amount = old.amount
+    except Payment.DoesNotExist:
+        instance._old_status = None
+        instance._old_amount = None
+
+
+# 3. AUTO-UPDATE STATUS (Saat Ada Pembayaran)
 # ==========================================
 @receiver(post_save, sender=Payment)
 def update_invoice_status(sender, instance, created, **kwargs):
+    invoice = instance.invoice
+    old_status = getattr(instance, '_old_status', None)
+    old_amount = getattr(instance, '_old_amount', None)
+
+    delta = Decimal('0')
+
     if created:
-        invoice = instance.invoice
-        # Tambahkan nominal bayar ke Invoice
-        # Field di model baru adalah 'total_paid'
-        invoice.total_paid += instance.amount
-        
-        # Panggil method update_status() di model Invoice untuk cek Lunas/Belum
-        invoice.update_status() 
+        if instance.status == 'APPROVED':
+            delta += instance.amount
+    else:
+        if old_status == 'APPROVED' and instance.status == 'APPROVED':
+            if old_amount is not None and instance.amount != old_amount:
+                delta += instance.amount - old_amount
+        elif old_status == 'APPROVED' and instance.status != 'APPROVED':
+            delta -= old_amount if old_amount is not None else instance.amount
+        elif old_status != 'APPROVED' and instance.status == 'APPROVED':
+            delta += instance.amount
+
+    if delta:
+        invoice.total_paid = max(Decimal('0'), invoice.total_paid + delta)
+        invoice.update_status()
+
 
 # ==========================================
-# 3. ROLLBACK (Saat Pembayaran Dihapus)
+# 4. ROLLBACK (Saat Pembayaran Dihapus)
 # ==========================================
 @receiver(post_delete, sender=Payment)
 def rollback_invoice_status(sender, instance, **kwargs):
+    if instance.status != 'APPROVED':
+        return
+
     invoice = instance.invoice
-    invoice.total_paid -= instance.amount
+    invoice.total_paid = max(Decimal('0'), invoice.total_paid - instance.amount)
     
     # Cek status lagi setelah dikurangi
     if invoice.total_paid <= 0:

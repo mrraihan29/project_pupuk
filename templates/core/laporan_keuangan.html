@@ -1,54 +1,99 @@
 {% extends 'base.html' %}
-{% load humanize %} {% block page_title %}Laporan Keuangan & Laba Rugi{% endblock %}
+{% load humanize %}
+
+{% block page_title %}Laporan Keuangan & Laba Rugi{% endblock %}
 
 {% block content %}
 <div class="card p-4 shadow-sm">
-    <div class="d-flex justify-content-between align-items-center mb-4 pb-3 border-bottom">
+    <div class="d-flex flex-wrap justify-content-between align-items-center mb-4 pb-3 border-bottom gap-3">
         <div>
-            <h5 class="fw-bold mb-0 text-primary">Executive Financial Report</h5>
-            <small class="text-muted">Periode: <strong>{{ start_date|date:"d M Y" }}</strong> s/d <strong>{{ end_date|date:"d M Y" }}</strong></small>
+            <h5 class="fw-bold mb-1 text-primary">Executive Financial Report</h5>
+            <div class="text-muted small">
+                Periode: <strong>{{ start_date|date:"d M Y" }}</strong> s/d <strong>{{ end_date|date:"d M Y" }}</strong>
+                <span class="ms-2">•</span>
+                Satuan: <strong>Rupiah penuh (harga per ton)</strong>
+            </div>
         </div>
-        
-        <div class="d-flex gap-2">
-            <form method="get" class="d-flex gap-2 align-items-center">
-                <div class="input-group">
-                    <span class="input-group-text bg-light border-end-0"><i class="bi bi-calendar3"></i></span>
-                    <input type="date" name="start" class="form-control border-start-0" value="{{ start_date }}">
-                </div>
-                <span class="fw-bold text-muted">-</span>
-                <div class="input-group">
-                    <span class="input-group-text bg-light border-end-0"><i class="bi bi-calendar3"></i></span>
-                    <input type="date" name="end" class="form-control border-start-0" value="{{ end_date }}">
-                </div>
-                
-                <button type="submit" class="btn btn-primary fw-bold">
-                    <i class="bi bi-filter me-1"></i> Filter
-                </button>
-                
-                <button type="submit" name="export" value="xls" class="btn btn-success fw-bold text-nowrap">
-                    <i class="bi bi-file-earmark-excel me-1"></i> Export Excel
-                </button>
-            </form>
-        </div>
+        <form method="get" class="d-flex flex-wrap gap-2 align-items-center">
+            <div class="input-group">
+                <span class="input-group-text bg-light border-end-0"><i class="bi bi-calendar3"></i></span>
+                <input type="date" name="start" class="form-control border-start-0" value="{{ start_date }}">
+            </div>
+            <span class="fw-bold text-muted">-</span>
+            <div class="input-group">
+                <span class="input-group-text bg-light border-end-0"><i class="bi bi-calendar3"></i></span>
+                <input type="date" name="end" class="form-control border-start-0" value="{{ end_date }}">
+            </div>
+            <button type="submit" class="btn btn-primary fw-bold">
+                <i class="bi bi-filter me-1"></i> Filter
+            </button>
+            <button type="submit" name="export" value="xls" class="btn btn-success fw-bold text-nowrap">
+                <i class="bi bi-file-earmark-excel me-1"></i> Export Excel
+            </button>
+        </form>
     </div>
 
-    <div class="row mb-4">
-        <div class="col-md-12">
-            <div class="card card-hero text-white border-0 shadow-sm">
-                <div class="card-body p-4 text-center">
-                    <h6 class="text-uppercase opacity-75 mb-2">Keuntungan Bersih (Net Profit)</h6>
-                    <h1 class="display-4 fw-bold mb-0">Rp {{ net_profit|floatformat:0|intcomma }}</h1>
-                    <small class="opacity-75">Total Omzet dikurangi Modal & Biaya Operasional</small>
+    <div class="row g-3 mb-4">
+        <div class="col-lg-4">
+            <div class="card h-100 border-0 text-white" style="background: linear-gradient(135deg, #0d6efd 0%, #0b5ed7 100%);">
+                <div class="card-body">
+                    <div class="d-flex justify-content-between align-items-start mb-2">
+                        <div>
+                            <div class="text-uppercase small opacity-75">Laba Bersih</div>
+                            <div class="display-6 fw-bold">Rp {{ net_profit|floatformat:0|intcomma }}</div>
+                        </div>
+                        <i class="bi bi-graph-up-arrow fs-2 opacity-75"></i>
+                    </div>
+                    <div class="small opacity-75">Omzet - HPP - Opex</div>
+                </div>
+            </div>
+        </div>
+        <div class="col-lg-2 col-sm-6">
+            <div class="card h-100 border-0 bg-light">
+                <div class="card-body">
+                    <div class="text-muted small">Gross Margin</div>
+                    <div class="h4 fw-bold mb-0">{{ gross_margin_pct|floatformat:1 }}%</div>
+                    <div class="small text-success">Rp {{ gross_profit|floatformat:0|intcomma }}</div>
+                </div>
+            </div>
+        </div>
+        <div class="col-lg-2 col-sm-6">
+            <div class="card h-100 border-0 bg-light">
+                <div class="card-body">
+                    <div class="text-muted small">Opex Ratio</div>
+                    <div class="h4 fw-bold mb-0">{{ opex_ratio_pct|floatformat:1 }}%</div>
+                    <div class="small text-secondary">Rp {{ total_ops|floatformat:0|intcomma }}</div>
+                </div>
+            </div>
+        </div>
+        <div class="col-lg-2 col-sm-6">
+            <div class="card h-100 border-0 bg-light">
+                <div class="card-body">
+                    <div class="text-muted small">Net Margin</div>
+                    <div class="h4 fw-bold mb-0">{{ net_margin_pct|floatformat:1 }}%</div>
+                    <div class="small text-primary">Omzet Rp {{ total_omzet|floatformat:0|intcomma }}</div>
+                </div>
+            </div>
+        </div>
+        <div class="col-lg-2 col-sm-6">
+            <div class="card h-100 border-0 bg-light">
+                <div class="card-body">
+                    <div class="text-muted small">Kas (estimasi periode)</div>
+                    <div class="h5 fw-bold mb-0">Rp {{ cash_estimate|floatformat:0|intcomma }}</div>
+                    <div class="small text-muted">Pembayaran - Opex</div>
                 </div>
             </div>
         </div>
     </div>
 
-    <div class="row g-4">
+    <div class="row g-4 mb-4">
         <div class="col-lg-6">
             <div class="card h-100 border-0 bg-light">
                 <div class="card-body">
-                    <h6 class="fw-bold text-success mb-3"><i class="bi bi-arrow-up-circle me-2"></i>PENDAPATAN (OMZET)</h6>
+                    <div class="d-flex justify-content-between align-items-center mb-3">
+                        <h6 class="fw-bold text-success mb-0"><i class="bi bi-arrow-up-circle me-2"></i>Laba Rugi</h6>
+                        <span class="badge bg-success-subtle text-success">Pendapatan & HPP</span>
+                    </div>
                     <table class="table table-sm table-borderless mb-3 table-kpi">
                         <tr>
                             <td>Penjualan NPK</td>
@@ -64,7 +109,7 @@
                         </tr>
                     </table>
 
-                    <h6 class="fw-bold text-danger mb-3 mt-4"><i class="bi bi-arrow-down-circle me-2"></i>HARGA POKOK (MODAL BELI)</h6>
+                    <h6 class="fw-bold text-danger mt-4 mb-2"><i class="bi bi-arrow-down-circle me-2"></i>HARGA POKOK (HPP)</h6>
                     <table class="table table-sm table-borderless mb-0 table-kpi">
                         <tr>
                             <td>Penebusan NPK</td>
@@ -75,14 +120,14 @@
                             <td class="text-end fw-bold">Rp {{ modal_urea|floatformat:0|intcomma }}</td>
                         </tr>
                         <tr class="table-separator-top">
-                            <td class="fw-bold">TOTAL MODAL</td>
+                            <td class="fw-bold">TOTAL HPP</td>
                             <td class="text-end fw-bold text-danger">Rp {{ total_modal|floatformat:0|intcomma }}</td>
                         </tr>
                     </table>
 
                     <div class="mt-3 box-gross-profit text-center">
-                        <small class="text-muted text-uppercase fw-bold">Laba Kotor (Gross Profit)</small>
-                        <h4 class="fw-bold text-warning mb-0">Rp {{ gross_profit|floatformat:0|intcomma }}</h4>
+                        <small class="text-muted text-uppercase fw-bold">Laba Kotor</small>
+                        <h4 class="fw-bold text-warning mb-0">Rp {{ gross_profit|floatformat:0|intcomma }} ({{ gross_margin_pct|floatformat:1 }}%)</h4>
                     </div>
                 </div>
             </div>
@@ -91,45 +136,174 @@
         <div class="col-lg-6">
             <div class="card h-100 border-0 bg-light">
                 <div class="card-body">
-                    <h6 class="fw-bold text-secondary mb-3"><i class="bi bi-gear me-2"></i>BIAYA OPERASIONAL (OPEX)</h6>
-                    <table class="table table-sm table-borderless mb-4 table-kpi">
+                    <div class="d-flex justify-content-between align-items-center mb-3">
+                        <h6 class="fw-bold text-secondary mb-0"><i class="bi bi-gear me-2"></i>BIAYA OPERASIONAL</h6>
+                        <span class="badge bg-secondary-subtle text-secondary">Opex Ratio {{ opex_ratio_pct|floatformat:1 }}%</span>
+                    </div>
+                    <table class="table table-sm table-borderless mb-3 table-kpi">
                         <tr>
-                            <td>
-                                Biaya Armada <br>
-                                <small class="text-muted fst-italic">(Service, BBM, Ban, Sparepart)</small>
-                            </td>
-                            <td class="text-end fw-bold align-middle">Rp {{ ops_armada|floatformat:0|intcomma }}</td>
+                            <td>Biaya Armada</td>
+                            <td class="text-end fw-bold">Rp {{ ops_armada|floatformat:0|intcomma }}</td>
                         </tr>
                         <tr>
-                            <td>
-                                Biaya Kantor <br>
-                                <small class="text-muted fst-italic">(Gaji, Listrik, Makan, Lainnya)</small>
-                            </td>
-                            <td class="text-end fw-bold align-middle">Rp {{ ops_kantor|floatformat:0|intcomma }}</td>
+                            <td>Biaya Kantor</td>
+                            <td class="text-end fw-bold">Rp {{ ops_kantor|floatformat:0|intcomma }}</td>
+                        </tr>
+                        <tr>
+                            <td>Biaya Lainnya</td>
+                            <td class="text-end fw-bold">Rp {{ ops_lain|floatformat:0|intcomma }}</td>
                         </tr>
                         <tr class="table-separator-top">
-                            <td class="fw-bold">TOTAL BIAYA</td>
+                            <td class="fw-bold">TOTAL OPEX</td>
                             <td class="text-end fw-bold text-secondary">Rp {{ total_ops|floatformat:0|intcomma }}</td>
                         </tr>
                     </table>
 
-                    <hr>
-
-                    <h6 class="fw-bold text-primary mb-3"><i class="bi bi-box-seam me-2"></i>VALUASI ASET (SISA STOK)</h6>
-                    <div class="alert alert-info alert-asset mb-0">
-                        <div class="d-flex justify-content-between mb-1">
-                            <span>Nilai Stok NPK</span>
-                            <span class="fw-bold">Rp {{ aset_npk|floatformat:0|intcomma }}</span>
-                        </div>
+                    <div class="border-top pt-3">
                         <div class="d-flex justify-content-between mb-2">
-                            <span>Nilai Stok UREA</span>
-                            <span class="fw-bold">Rp {{ aset_urea|floatformat:0|intcomma }}</span>
+                            <span class="fw-bold">Laba Bersih</span>
+                            <span class="fw-bold text-primary">Rp {{ net_profit|floatformat:0|intcomma }}</span>
                         </div>
-                        <div class="border-top border-primary pt-2 d-flex justify-content-between">
-                            <strong class="text-uppercase">Total Aset Gudang</strong>
-                            <strong class="fs-5">Rp {{ total_aset|floatformat:0|intcomma }}</strong>
+                        <small class="text-muted">Net Margin {{ net_margin_pct|floatformat:1 }}%</small>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="row g-4 mb-4">
+        <div class="col-lg-6">
+            <div class="card h-100 border-0">
+                <div class="card-body">
+                    <div class="d-flex justify-content-between align-items-center mb-3">
+                        <h6 class="fw-bold mb-0">Per Produk (Unit Economics)</h6>
+                        <span class="badge bg-info-subtle text-info">Harga rata-rata per ton</span>
+                    </div>
+                    <div class="row g-3">
+                        <div class="col-sm-6">
+                            <div class="p-3 rounded border bg-light">
+                                <div class="d-flex justify-content-between align-items-center mb-2">
+                                    <strong>NPK</strong>
+                                    <span class="badge bg-success-subtle text-success">{{ qty_jual_npk|floatformat:2 }} Ton</span>
+                                </div>
+                                <div class="small text-muted">Omzet</div>
+                                <div class="fw-bold">Rp {{ omzet_npk|floatformat:0|intcomma }}</div>
+                                <div class="small text-muted mt-2">HPP</div>
+                                <div class="fw-bold">Rp {{ modal_npk|floatformat:0|intcomma }}</div>
+                                <div class="small text-muted mt-2">Gross Profit</div>
+                                <div class="fw-bold text-success">Rp {{ gp_npk|floatformat:0|intcomma }}</div>
+                                <div class="small text-muted mt-2">Avg Sell / Avg Cost</div>
+                                <div class="fw-bold">Rp {{ avg_sell_npk|floatformat:0|intcomma }} / Rp {{ avg_cost_npk|floatformat:0|intcomma }}</div>
+                            </div>
+                        </div>
+                        <div class="col-sm-6">
+                            <div class="p-3 rounded border bg-light">
+                                <div class="d-flex justify-content-between align-items-center mb-2">
+                                    <strong>UREA</strong>
+                                    <span class="badge bg-primary-subtle text-primary">{{ qty_jual_urea|floatformat:2 }} Ton</span>
+                                </div>
+                                <div class="small text-muted">Omzet</div>
+                                <div class="fw-bold">Rp {{ omzet_urea|floatformat:0|intcomma }}</div>
+                                <div class="small text-muted mt-2">HPP</div>
+                                <div class="fw-bold">Rp {{ modal_urea|floatformat:0|intcomma }}</div>
+                                <div class="small text-muted mt-2">Gross Profit</div>
+                                <div class="fw-bold text-success">Rp {{ gp_urea|floatformat:0|intcomma }}</div>
+                                <div class="small text-muted mt-2">Avg Sell / Avg Cost</div>
+                                <div class="fw-bold">Rp {{ avg_sell_urea|floatformat:0|intcomma }} / Rp {{ avg_cost_urea|floatformat:0|intcomma }}</div>
+                            </div>
                         </div>
                     </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="col-lg-6">
+            <div class="card h-100 border-0">
+                <div class="card-body">
+                    <div class="d-flex justify-content-between align-items-center mb-3">
+                        <h6 class="fw-bold mb-0">Neraca Singkat</h6>
+                        {% if is_balanced %}
+                            <span class="badge bg-success"><i class="bi bi-check-lg me-1"></i>Seimbang</span>
+                        {% else %}
+                            <span class="badge bg-warning text-dark"><i class="bi bi-exclamation-triangle me-1"></i>Periksa</span>
+                        {% endif %}
+                    </div>
+
+                    <div class="row g-3">
+                        <div class="col-sm-6">
+                            <div class="p-3 rounded border bg-light h-100">
+                                <div class="d-flex justify-content-between mb-2">
+                                    <strong>Aset</strong>
+                                    <span class="text-primary">Rp {{ assets_total|floatformat:0|intcomma }}</span>
+                                </div>
+                                <div class="d-flex justify-content-between small mb-1">
+                                    <span>Kas (estimasi)</span>
+                                    <span>Rp {{ cash_estimate|floatformat:0|intcomma }}</span>
+                                </div>
+                                <div class="d-flex justify-content-between small mb-1">
+                                    <span>Piutang</span>
+                                    <span>Rp {{ total_piutang|floatformat:0|intcomma }}</span>
+                                </div>
+                                <div class="d-flex justify-content-between small">
+                                    <span>Persediaan</span>
+                                    <span>Rp {{ total_aset|floatformat:0|intcomma }}</span>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col-sm-6">
+                            <div class="p-3 rounded border bg-light h-100">
+                                <div class="d-flex justify-content-between mb-2">
+                                    <strong>Liabilitas + Ekuitas</strong>
+                                    <span class="text-secondary">Rp {{ liab_equity_total|floatformat:0|intcomma }}</span>
+                                </div>
+                                <div class="d-flex justify-content-between small mb-1">
+                                    <span>Liabilitas</span>
+                                    <span>Rp {{ liabilities_total|floatformat:0|intcomma }}</span>
+                                </div>
+                                <div class="d-flex justify-content-between small">
+                                    <span>Ekuitas (residual)</span>
+                                    <span>Rp {{ equity_total|floatformat:0|intcomma }}</span>
+                                </div>
+                                <div class="mt-2 small text-muted">Gap: Rp {{ balance_gap|floatformat:0|intcomma }}</div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="small text-muted mt-2">Catatan: Liabilitas berasal dari Biaya Operasional berstatus PROSES; ekuitas dihitung residual setelah liabilitas tersebut.</div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="row g-4">
+        <div class="col-lg-6">
+            <div class="card h-100 border-0 bg-light">
+                <div class="card-body">
+                    <h6 class="fw-bold text-primary mb-3"><i class="bi bi-box-seam me-2"></i>Stok & Valuasi</h6>
+                    <div class="d-flex justify-content-between mb-2">
+                        <span>Sisa Stok NPK</span>
+                        <span class="fw-bold">{{ stok_sisa_npk|floatformat:2 }} Ton • Rp {{ aset_npk|floatformat:0|intcomma }}</span>
+                    </div>
+                    <div class="d-flex justify-content-between mb-3">
+                        <span>Sisa Stok UREA</span>
+                        <span class="fw-bold">{{ stok_sisa_urea|floatformat:2 }} Ton • Rp {{ aset_urea|floatformat:0|intcomma }}</span>
+                    </div>
+                    <div class="d-flex justify-content-between border-top pt-2">
+                        <strong>Total Aset Persediaan</strong>
+                        <strong>Rp {{ total_aset|floatformat:0|intcomma }}</strong>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="col-lg-6">
+            <div class="card h-100 border-0">
+                <div class="card-body">
+                    <h6 class="fw-bold mb-2">Catatan & Satuan</h6>
+                    <ul class="text-muted mb-0 small">
+                        <li>Semua angka dalam rupiah penuh; harga pupuk dianggap per ton.</li>
+                        <li>Kas estimasi = total pembayaran disetujui periode - opex disetujui periode.</li>
+                        <li>Liabilitas = total Biaya Operasional berstatus PROSES (belum disetujui/bayar); ekuitas dihitung residual setelahnya.</li>
+                        <li>Gunakan filter tanggal untuk melihat periode lain dan validasi stok dengan kartu stok.</li>
+                    </ul>
                 </div>
             </div>
         </div>

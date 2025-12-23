@@ -1,0 +1,91 @@
+{% extends 'base.html' %}
+{% block page_title %}Manajemen User{% endblock %}
+{% block content %}
+<div class="row g-3">
+  <div class="col-lg-5">
+    <div class="card shadow-sm border-0">
+      <div class="card-header bg-white">
+        <h6 class="mb-0 fw-bold">Tambah User</h6>
+        <small class="text-muted">Admin/Staff (bukan superuser).</small>
+      </div>
+      <div class="card-body">
+        <form method="post" class="row g-3">
+          {% csrf_token %}
+          <div class="col-12">
+            <label class="form-label">Username</label>
+            {{ form.username }}
+          </div>
+          <div class="col-12">
+            <label class="form-label">Email</label>
+            {{ form.email }}
+          </div>
+          <div class="col-12">
+            <label class="form-label">Peran</label>
+            {{ form.role }}
+          </div>
+          <div class="col-md-6">
+            <label class="form-label">Password</label>
+            {{ form.password1 }}
+          </div>
+          <div class="col-md-6">
+            <label class="form-label">Ulangi Password</label>
+            {{ form.password2 }}
+          </div>
+          <div class="col-12">
+            <div class="form-check">
+              {{ form.is_active }}
+              <label class="form-check-label">Aktif</label>
+            </div>
+          </div>
+          <div class="col-12 d-flex justify-content-end gap-2">
+            <button type="submit" class="btn btn-success px-4">Simpan</button>
+          </div>
+        </form>
+      </div>
+    </div>
+  </div>
+
+  <div class="col-lg-7">
+    <div class="table-responsive table-sim-wrapper">
+      <table class="table table-hover align-middle mb-0 table-sim">
+        <thead>
+          <tr>
+            <th>Username</th>
+            <th>Email</th>
+            <th>Peran</th>
+            <th class="text-center">Status</th>
+            <th class="text-center">Aksi</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for u in users %}
+          <tr>
+            <td>{{ u.username }}</td>
+            <td>{{ u.email|default:"-" }}</td>
+            <td>
+              {% if u.groups.first %}
+                <span class="badge bg-light text-dark border">{{ u.groups.first.name }}</span>
+              {% else %}
+                <span class="text-muted">-</span>
+              {% endif %}
+            </td>
+            <td class="text-center">
+              {% if u.is_active %}
+                <span class="badge bg-success bg-opacity-10 text-success">Aktif</span>
+              {% else %}
+                <span class="badge bg-secondary">Nonaktif</span>
+              {% endif %}
+            </td>
+            <td class="text-center">
+              <a href="{% url 'setup_user_set_password' u.id %}" class="btn btn-sm btn-outline-primary">Set Password</a>
+            </td>
+          </tr>
+          {% empty %}
+          <tr><td colspan="5" class="text-center py-4 text-muted">Belum ada user staff.</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+{% endblock %}

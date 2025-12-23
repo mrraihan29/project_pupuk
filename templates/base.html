@@ -50,6 +50,7 @@
 
                 <div class="nav-section">
                     <button class="nav-section-toggle" type="button" data-target="section-gudang" aria-expanded="false">
+                        <i class="bi bi-box-seam me-2"></i>
                         <span>Gudang</span>
                         <i class="bi bi-chevron-right chevron"></i>
                     </button>
@@ -75,6 +76,7 @@
 
                 <div class="nav-section">
                     <button class="nav-section-toggle" type="button" data-target="section-master" aria-expanded="false">
+                        <i class="bi bi-collection me-2"></i>
                         <span>Master Data</span>
                         <i class="bi bi-chevron-right chevron"></i>
                     </button>
@@ -94,8 +96,37 @@
                     </div>
                 </div>
 
+                {% if user.is_staff %}
+                <div class="nav-section">
+                    <button class="nav-section-toggle" type="button" data-target="section-setup" aria-expanded="false">
+                        <i class="bi bi-gear me-2"></i>
+                        <span>Setup</span>
+                        <i class="bi bi-chevron-right chevron"></i>
+                    </button>
+                    <div class="submenu" id="section-setup">
+                        <a class="nav-link{% if current_url == 'setup_company_profile' %} active{% endif %}" href="{% url 'setup_company_profile' %}" title="Profil Perusahaan">
+                            <i class="bi bi-building"></i>
+                            <span>Company Profile</span>
+                        </a>
+                        <a class="nav-link{% if current_url == 'setup_kecamatan' %} active{% endif %}" href="{% url 'setup_kecamatan' %}" title="Master Kecamatan">
+                            <i class="bi bi-geo-alt"></i>
+                            <span>Master Kecamatan</span>
+                        </a>
+                        <a class="nav-link{% if current_url == 'setup_users' %} active{% endif %}" href="{% url 'setup_users' %}" title="User Management">
+                            <i class="bi bi-people"></i>
+                            <span>Manajemen User</span>
+                        </a>
+                        <a class="nav-link" href="{% url 'password_change' %}" title="Ganti Password">
+                            <i class="bi bi-shield-lock"></i>
+                            <span>Ganti Password</span>
+                        </a>
+                    </div>
+                </div>
+                {% endif %}
+
                 <div class="nav-section">
                     <button class="nav-section-toggle" type="button" data-target="section-keuangan" aria-expanded="false">
+                        <i class="bi bi-wallet2 me-2"></i>
                         <span>Keuangan & Ops</span>
                         <i class="bi bi-chevron-right chevron"></i>
                     </button>
@@ -118,6 +149,15 @@
                     </div>
                 </div>
             </nav>
+        </div>
+        <div class="sidebar-footer">
+            <form action="{% url 'logout' %}" method="post" class="d-grid">
+                {% csrf_token %}
+                <button type="submit" class="btn btn-outline-danger">
+                    <i class="bi bi-box-arrow-right"></i>
+                    <span class="btn-label">Logout</span>
+                </button>
+            </form>
         </div>
         {% endwith %}
     </div>
@@ -142,8 +182,10 @@
                     <div class="fw-bold small mb-0">{{ user.username|default:"Guest"|title }}</div>
                     <div class="text-muted text-2xs">Owner / Admin</div>
                 </div>
-                <div class="user-avatar">
-                    {{ user.username|slice:":1"|upper }}
+                <div class="d-flex align-items-center gap-2">
+                    <div class="user-avatar">
+                        {{ user.username|default:""|slice:":1"|upper }}
+                    </div>
                 </div>
             </div>
         </div>

@@ -15,4 +15,12 @@ urlpatterns = [
     
     path('master/harga/', views.master_harga, name='master_harga'),       # Untuk Menu Master Harga
     path('laporan/keuangan/', views.laporan_keuangan, name='laporan_keuangan'), # Untuk Menu Laba Rugi
+
+    # Setup (admin/staff only)
+    path('setup/company-profile/', views.setup_company_profile, name='setup_company_profile'),
+    path('setup/kecamatan/', views.setup_kecamatan, name='setup_kecamatan'),
+    path('setup/kecamatan/<int:pk>/edit/', views.setup_kecamatan_edit, name='setup_kecamatan_edit'),
+    path('setup/kecamatan/<int:pk>/delete/', views.setup_kecamatan_delete, name='setup_kecamatan_delete'),
+    path('setup/users/', views.setup_users, name='setup_users'),
+    path('setup/users/<int:user_id>/password/', views.setup_user_set_password, name='setup_user_set_password'),
 ]

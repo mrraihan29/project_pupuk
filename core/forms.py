@@ -1,7 +1,10 @@
 from django import forms
 from django.forms import inlineformset_factory
+from django.contrib.auth import get_user_model
+from django.contrib.auth.forms import SetPasswordForm
+
 # Import model-model baru
-from .models import Kios, KiosAllocation, Armada, FertilizerPrice, Kecamatan, JenisPupuk
+from .models import Kios, KiosAllocation, Armada, FertilizerPrice, Kecamatan, JenisPupuk, CompanyProfile
 
 # ==========================================
 # FORM KIOS (Update: district -> kecamatan)
@@ -62,3 +65,96 @@ class HargaPupukForm(forms.ModelForm):
             'price_buy': forms.NumberInput(attrs={'class': 'form-control', 'step': '100'}),
             'price_sell': forms.NumberInput(attrs={'class': 'form-control', 'step': '100'}),
         }
+
+
+# ==========================================
+# FORM COMPANY PROFILE (Singleton)
+# ==========================================
+class CompanyProfileForm(forms.ModelForm):
+    class Meta:
+        model = CompanyProfile
+        fields = ['name', 'address', 'phone', 'email', 'logo', 'bank_name', 'bank_account']
+        widgets = {
+            'name': forms.TextInput(attrs={'class': 'form-control'}),
+            'address': forms.Textarea(attrs={'class': 'form-control', 'rows': 3}),
+            'phone': forms.TextInput(attrs={'class': 'form-control'}),
+            'email': forms.EmailInput(attrs={'class': 'form-control'}),
+            'bank_name': forms.TextInput(attrs={'class': 'form-control'}),
+            'bank_account': forms.TextInput(attrs={'class': 'form-control'}),
+            'logo': forms.FileInput(attrs={'class': 'form-control'}),
+        }
+
+
+# ==========================================
+# FORM KECAMATAN (Master Wilayah)
+# ==========================================
+class KecamatanForm(forms.ModelForm):
+    class Meta:
+        model = Kecamatan
+        fields = ['name', 'code', 'target_tonnage']
+        widgets = {
+            'name': forms.TextInput(attrs={'class': 'form-control', 'placeholder': 'Nama Kecamatan'}),
+            'code': forms.TextInput(attrs={'class': 'form-control', 'placeholder': 'Kode (opsional)'}),
+            'target_tonnage': forms.NumberInput(attrs={'class': 'form-control', 'step': '0.01'}),
+        }
+
+
+# ==========================================
+# FORM USER MANAGEMENT (Admin creates staff)
+# ==========================================
+User = get_user_model()
+
+
+class UserCreateForm(forms.ModelForm):
+    role = forms.ChoiceField(
+        choices=(
+            ('admin', 'Admin (akses luas, bukan superuser)'),
+            ('staff', 'Staff (akses terbatas)'),
+        ),
+        widget=forms.Select(attrs={'class': 'form-select'}),
+        label='Peran',
+    )
+
+    password1 = forms.CharField(label='Password', widget=forms.PasswordInput(attrs={'class': 'form-control'}))
+    password2 = forms.CharField(label='Ulangi Password', widget=forms.PasswordInput(attrs={'class': 'form-control'}))
+
+    class Meta:
+        model = User
+        fields = ['username', 'email', 'is_active']
+        widgets = {
+            'username': forms.TextInput(attrs={'class': 'form-control'}),
+            'email': forms.EmailInput(attrs={'class': 'form-control'}),
+        }
+
+    def clean(self):
+        cleaned = super().clean()
+        p1 = cleaned.get('password1')
+        p2 = cleaned.get('password2')
+        if p1 and p2 and p1 != p2:
+            raise forms.ValidationError('Password tidak sama.')
+        return cleaned
+
+    def save(self, commit=True):
+        user = super().save(commit=False)
+        user.is_staff = True
+        user.is_superuser = False
+        if commit:
+            user.set_password(self.cleaned_data['password1'])
+            user.save()
+            self._assign_group(user)
+        return user
+
+    def _assign_group(self, user):
+        from django.contrib.auth.models import Group
+        role = self.cleaned_data.get('role')
+        group_name = 'Admin' if role == 'admin' else 'Staff'
+        group, _ = Group.objects.get_or_create(name=group_name)
+        user.groups.clear()
+        user.groups.add(group)
+
+
+class UserSetPasswordForm(SetPasswordForm):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        for field in self.fields.values():
+            field.widget.attrs.update({'class': 'form-control'})

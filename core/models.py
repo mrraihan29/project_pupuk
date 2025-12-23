@@ -9,6 +9,7 @@ class CompanyProfile(models.Model):
     name = models.CharField("Nama Perusahaan", max_length=100, default="CV. BERKAH TANI")
     address = models.TextField("Alamat Kantor", default="Jl. Raya Salatiga - Semarang KM 5")
     phone = models.CharField("No. Telepon/WA", max_length=50, default="0812-3456-7890")
+    email = models.EmailField("Email", max_length=100, blank=True)
     logo = models.ImageField("Logo Perusahaan", upload_to='company/', blank=True, null=True)
     
     # Info Bank untuk Footer Invoice

@@ -3,6 +3,7 @@ from django.core.exceptions import ValidationError
 from django.utils import timezone
 # Import Armada untuk relasi Kartu Kontrol
 from core.models import Armada 
+from decimal import Decimal
 
 # ==========================================
 # 1. BIAYA OPERASIONAL (PENGELUARAN)
@@ -69,7 +70,10 @@ class Invoice(models.Model):
 
     @property
     def remaining_balance(self):
-        return self.total_amount - self.total_paid
+        # Pastikan tidak ada None agar operasi aman
+        total = self.total_amount or Decimal('0')
+        paid = self.total_paid or Decimal('0')
+        return total - paid
 
     def update_status(self):
         if self.total_paid >= self.total_amount:
@@ -84,12 +88,19 @@ class Invoice(models.Model):
 # 3. PAYMENT (TIDAK ADA PERUBAHAN)
 # ==========================================
 class Payment(models.Model):
+    STATUS_CHOICES = [
+        ('APPROVED', 'Disetujui'),
+        ('PENDING', 'Menunggu'),
+        ('VOID', 'Void / Batal'),
+    ]
+
     invoice = models.ForeignKey(Invoice, on_delete=models.CASCADE, related_name='payments')
     date = models.DateField("Tanggal Bayar", default=timezone.now)
     amount = models.DecimalField("Jumlah Bayar", max_digits=15, decimal_places=2)
     method = models.CharField("Metode", max_length=50, default="Transfer Bank")
     proof = models.ImageField("Bukti Transfer", upload_to='keuangan/payment/', null=True, blank=True)
     notes = models.TextField("Catatan", blank=True, null=True)
+    status = models.CharField(max_length=10, choices=STATUS_CHOICES, default='APPROVED')
     created_at = models.DateTimeField(auto_now_add=True)
 
     def __str__(self):
@@ -105,10 +116,12 @@ class Payment(models.Model):
             return
 
         # Validasi: Tidak boleh bayar melebihi sisa tagihan
-        sisa = self.invoice.remaining_balance
+        sisa = self.invoice.remaining_balance or Decimal('0')
+
         if self.pk:
-            old_amount = Payment.objects.get(pk=self.pk).amount
+            old_amount = Payment.objects.get(pk=self.pk).amount or Decimal('0')
             sisa += old_amount
             
-        if self.amount > sisa:
+        amount = self.amount or Decimal('0')
+        if amount > sisa:
             raise ValidationError(f"Kelebihan bayar! Sisa tagihan hanya Rp {sisa:,.0f}")

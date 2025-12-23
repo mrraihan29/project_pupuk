@@ -5,6 +5,7 @@ from django.db import transaction
 from django.db.models import Sum
 from django.http import JsonResponse
 from datetime import date
+from django.utils import timezone
 # Import Models & Forms
 from .models import Invoice, Payment, BiayaOperasional
 from .forms import PaymentForm, BiayaOperasionalForm
@@ -42,10 +43,6 @@ def payment_create(request, pk):
                 pay = form.save(commit=False)
                 pay.invoice = invoice
                 pay.save()
-                
-                invoice.total_paid += pay.amount
-                invoice.update_status()
-                invoice.save()
             messages.success(request, "Pembayaran berhasil dicatat.")
             return redirect('invoice_list')
     else:
@@ -76,7 +73,7 @@ def ops_create(request):
             # Ini akan memunculkan error di HTML jika ada input salah
             messages.error(request, 'Gagal menyimpan. Periksa form kembali.')
     else:
-        form = BiayaOperasionalForm(initial={'date': date.today()})
+        form = BiayaOperasionalForm(initial={'tanggal': timezone.localdate()})
 
     return render(request, 'keuangan/ops_form.html', {'form': form})
 

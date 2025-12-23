@@ -9,6 +9,22 @@
                 <h5 class="mb-0">Input Pembayaran</h5>
             </div>
             <div class="card-body p-4">
+                {% if form.errors %}
+                    <div class="alert alert-danger">
+                        <div class="fw-bold mb-1">Periksa input:</div>
+                        <ul class="mb-0 small">
+                            {% for field in form %}
+                                {% for err in field.errors %}
+                                    <li>{{ field.label }}: {{ err }}</li>
+                                {% endfor %}
+                            {% endfor %}
+                            {% for err in form.non_field_errors %}
+                                <li>{{ err }}</li>
+                            {% endfor %}
+                        </ul>
+                    </div>
+                {% endif %}
+
                 <div class="alert alert-info">
                     <strong>Invoice: {{ invoice.inv_number }}</strong><br>
                     Total Tagihan: Rp {{ invoice.total_amount|intcomma }}<br>

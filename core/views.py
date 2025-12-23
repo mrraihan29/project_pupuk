@@ -1,6 +1,11 @@
 from django.shortcuts import render, redirect, get_object_or_404
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
+from django.contrib.auth import get_user_model
+from django.contrib.auth.models import Group
+from django.contrib.auth.mixins import LoginRequiredMixin
+from django.views.decorators.http import require_http_methods
+from django.views.decorators.cache import never_cache
 from django.db.models import Sum, Prefetch, F, DecimalField
 from django.db.models.functions import Coalesce
 from decimal import Decimal
@@ -9,10 +14,21 @@ import csv
 from django.http import HttpResponse
 
 # Import Models Baru
-from .models import Kios, Armada, FertilizerPrice, JenisPupuk, Kecamatan, KiosAllocation
-from .forms import KiosForm, KiosAllocationFormSet, ArmadaForm, HargaPupukForm
+from .models import Kios, Armada, FertilizerPrice, JenisPupuk, Kecamatan, KiosAllocation, CompanyProfile
+from .forms import (
+    KiosForm,
+    KiosAllocationFormSet,
+    ArmadaForm,
+    HargaPupukForm,
+    CompanyProfileForm,
+    KecamatanForm,
+    UserCreateForm,
+    UserSetPasswordForm,
+)
+User = get_user_model()
+
 from gudang.models import SalesOrder, SalesOrderAllocation, Distribution, StockCard
-from keuangan.models import Invoice, BiayaOperasional
+from keuangan.models import Invoice, BiayaOperasional, Payment
 
 # 1. READ (Daftar Kios)
 @login_required
@@ -317,9 +333,9 @@ def laporan_keuangan(request):
         sales_order__jenis_pupuk__name='UREA'
     ).aggregate(total=Coalesce(Sum('tonnage'), Decimal('0')))['total']
 
-    # Hitung Nilai Rupiah Modal
-    modal_npk = qty_beli_npk * harga_npk.price_buy / Decimal('1000')
-    modal_urea = qty_beli_urea * harga_urea.price_buy / Decimal('1000')
+    # Hitung Nilai Rupiah Modal (harga per ton, tampilkan penuh tanpa pembagian 1000)
+    modal_npk = qty_beli_npk * harga_npk.price_buy
+    modal_urea = qty_beli_urea * harga_urea.price_buy
     total_modal = modal_npk + modal_urea
 
     # 4. HITUNG OMZET PENJUALAN (REVENUE)
@@ -340,8 +356,8 @@ def laporan_keuangan(request):
     # Hitung Nilai Rupiah Omzet (Menggunakan Harga Jual saat ini)
     # Note: Jika ingin super akurat, harusnya 'Distribution' menyimpan harga saat transaksi (snapshot).
     # Di Phase 1 ini kita gunakan Master Harga Jual.
-    omzet_npk = qty_jual_npk * harga_npk.price_sell / Decimal('1000')
-    omzet_urea = qty_jual_urea * harga_urea.price_sell / Decimal('1000')
+    omzet_npk = qty_jual_npk * harga_npk.price_sell
+    omzet_urea = qty_jual_urea * harga_urea.price_sell
     total_omzet = omzet_npk + omzet_urea
 
     # 5. HITUNG BIAYA OPERASIONAL
@@ -368,9 +384,24 @@ def laporan_keuangan(request):
 
     total_ops = biaya_armada + biaya_kantor + biaya_lain
 
-    # 6. KALKULASI PROFIT
-    gross_profit = total_omzet - total_modal # Laba Kotor
-    net_profit = gross_profit - total_ops    # Laba Bersih
+    # 6. KALKULASI PROFIT & KPI TAMBAHAN
+    def safe_pct(num, denom):
+        return (num / denom * Decimal('100')) if denom else Decimal('0')
+
+    gross_profit = total_omzet - total_modal  # Laba Kotor
+    net_profit = gross_profit - total_ops     # Laba Bersih
+
+    gross_margin_pct = safe_pct(gross_profit, total_omzet)
+    net_margin_pct = safe_pct(net_profit, total_omzet)
+    opex_ratio_pct = safe_pct(total_ops, total_omzet)
+
+    gp_npk = omzet_npk - modal_npk
+    gp_urea = omzet_urea - modal_urea
+
+    avg_sell_npk = omzet_npk / qty_jual_npk if qty_jual_npk else Decimal('0')
+    avg_sell_urea = omzet_urea / qty_jual_urea if qty_jual_urea else Decimal('0')
+    avg_cost_npk = modal_npk / qty_beli_npk if qty_beli_npk else Decimal('0')
+    avg_cost_urea = modal_urea / qty_beli_urea if qty_beli_urea else Decimal('0')
 
     # 7. VALUASI ASET (SISA STOK REAL-TIME)
     # Menggunakan StockCard sebagai 'Single Source of Truth'
@@ -389,9 +420,35 @@ def laporan_keuangan(request):
     stok_sisa_npk = get_stock_balance('NPK')
     stok_sisa_urea = get_stock_balance('UREA')
 
-    aset_npk = stok_sisa_npk * harga_npk.price_buy / Decimal('1000')
-    aset_urea = stok_sisa_urea * harga_urea.price_buy / Decimal('1000')
+    aset_npk = stok_sisa_npk * harga_npk.price_buy
+    aset_urea = stok_sisa_urea * harga_urea.price_buy
     total_aset = aset_npk + aset_urea
+
+    # 8. SNAPSHOT PIUTANG & KAS (periode laporan)
+    piutang_data = Invoice.objects.filter(
+        status__in=['UNPAID', 'PARTIAL'],
+        issue_date__lte=end_date
+    ).aggregate(total_sisa=Coalesce(Sum(F('total_amount') - F('total_paid'), output_field=DecimalField()), Decimal('0')))
+    total_piutang = piutang_data['total_sisa'] or Decimal('0')
+
+    payment_total = Payment.objects.filter(
+        status='APPROVED',
+        date__range=[start_date, end_date]
+    ).aggregate(total=Coalesce(Sum('amount'), Decimal('0')))['total']
+    cash_estimate = payment_total - total_ops
+
+    # 9. NERACA SINGKAT (Aset = Liabilitas + Ekuitas)
+    pending_ops = BiayaOperasional.objects.filter(
+        status='PROSES',
+        tanggal__lte=end_date
+    ).aggregate(total=Coalesce(Sum('nominal'), Decimal('0')))['total']
+
+    liabilities_total = pending_ops
+    assets_total = cash_estimate + total_piutang + total_aset
+    equity_total = assets_total - liabilities_total
+    liab_equity_total = liabilities_total + equity_total
+    balance_gap = assets_total - liab_equity_total
+    is_balanced = abs(balance_gap) <= Decimal('0.01')
 
     # --- BUNGKUS DATA (CONTEXT) ---
     context = {
@@ -422,6 +479,15 @@ def laporan_keuangan(request):
         # Hasil Akhir
         'gross_profit': gross_profit,
         'net_profit': net_profit,
+        'gross_margin_pct': gross_margin_pct,
+        'net_margin_pct': net_margin_pct,
+        'opex_ratio_pct': opex_ratio_pct,
+        'gp_npk': gp_npk,
+        'gp_urea': gp_urea,
+        'avg_sell_npk': avg_sell_npk,
+        'avg_sell_urea': avg_sell_urea,
+        'avg_cost_npk': avg_cost_npk,
+        'avg_cost_urea': avg_cost_urea,
         
         # Aset
         'aset_npk': aset_npk,
@@ -429,6 +495,16 @@ def laporan_keuangan(request):
         'total_aset': total_aset,
         'stok_sisa_npk': stok_sisa_npk,
         'stok_sisa_urea': stok_sisa_urea,
+
+        # Balance Snapshot
+        'cash_estimate': cash_estimate,
+        'total_piutang': total_piutang,
+        'assets_total': assets_total,
+        'liabilities_total': liabilities_total,
+        'equity_total': equity_total,
+        'liab_equity_total': liab_equity_total,
+        'balance_gap': balance_gap,
+        'is_balanced': is_balanced,
     }
 
     # --- EXPORT EXCEL LOGIC ---
@@ -436,6 +512,131 @@ def laporan_keuangan(request):
         return export_laporan_xls(start_date, end_date, context)
 
     return render(request, 'core/laporan_keuangan.html', context)
+
+
+# =========================================================
+# SETUP PAGES (Company Profile, Kecamatan, User Management)
+# =========================================================
+
+def _staff_required(request):
+    return request.user.is_authenticated and request.user.is_staff
+
+
+def setup_forbidden(request):
+    messages.error(request, "Anda tidak memiliki akses ke menu Setup.")
+    return redirect('dashboard')
+
+
+@login_required
+@never_cache
+def setup_company_profile(request):
+    if not _staff_required(request):
+        return setup_forbidden(request)
+
+    profile, _ = CompanyProfile.objects.get_or_create(pk=1)
+    if request.method == 'POST':
+        form = CompanyProfileForm(request.POST, request.FILES, instance=profile)
+        if form.is_valid():
+            form.save()
+            messages.success(request, "Profil perusahaan diperbarui.")
+            return redirect('setup_company_profile')
+        messages.error(request, "Periksa kembali input Anda.")
+    else:
+        form = CompanyProfileForm(instance=profile)
+
+    return render(request, 'setup/company_profile.html', {'form': form})
+
+
+@login_required
+@never_cache
+def setup_kecamatan(request):
+    if not _staff_required(request):
+        return setup_forbidden(request)
+
+    kecamatan_list = Kecamatan.objects.all()
+    form = KecamatanForm(request.POST or None)
+    if request.method == 'POST':
+        if form.is_valid():
+            form.save()
+            messages.success(request, "Kecamatan berhasil disimpan.")
+            return redirect('setup_kecamatan')
+        messages.error(request, "Periksa kembali input Anda.")
+
+    return render(request, 'setup/kecamatan_list.html', {'form': form, 'kecamatan_list': kecamatan_list})
+
+
+@login_required
+@never_cache
+def setup_kecamatan_edit(request, pk):
+    if not _staff_required(request):
+        return setup_forbidden(request)
+
+    kec = get_object_or_404(Kecamatan, pk=pk)
+    form = KecamatanForm(request.POST or None, instance=kec)
+    if request.method == 'POST':
+        if form.is_valid():
+            form.save()
+            messages.success(request, "Kecamatan diperbarui.")
+            return redirect('setup_kecamatan')
+        messages.error(request, "Periksa kembali input Anda.")
+    return render(request, 'setup/kecamatan_form.html', {'form': form, 'obj': kec})
+
+
+@login_required
+@require_http_methods(["POST"])
+def setup_kecamatan_delete(request, pk):
+    if not _staff_required(request):
+        return setup_forbidden(request)
+
+    kec = get_object_or_404(Kecamatan, pk=pk)
+    if kec.kios_list.exists():
+        messages.error(request, "Tidak bisa hapus: kecamatan sudah dipakai di data kios.")
+    else:
+        kec.delete()
+        messages.success(request, "Kecamatan dihapus.")
+    return redirect('setup_kecamatan')
+
+
+def _ensure_default_groups():
+    Group.objects.get_or_create(name='Admin')
+    Group.objects.get_or_create(name='Staff')
+
+
+@login_required
+@never_cache
+def setup_users(request):
+    if not _staff_required(request):
+        return setup_forbidden(request)
+
+    _ensure_default_groups()
+    users = User.objects.filter(is_superuser=False).order_by('username')
+    form = UserCreateForm(request.POST or None)
+    if request.method == 'POST':
+        if form.is_valid():
+            form.save()
+            messages.success(request, "User baru dibuat.")
+            return redirect('setup_users')
+        messages.error(request, "Periksa kembali input Anda.")
+
+    return render(request, 'setup/user_list.html', {'form': form, 'users': users})
+
+
+@login_required
+@never_cache
+def setup_user_set_password(request, user_id):
+    if not _staff_required(request):
+        return setup_forbidden(request)
+
+    user = get_object_or_404(User, pk=user_id, is_superuser=False)
+    form = UserSetPasswordForm(user, request.POST or None)
+    if request.method == 'POST':
+        if form.is_valid():
+            form.save()
+            messages.success(request, "Password diperbarui.")
+            return redirect('setup_users')
+        messages.error(request, "Periksa kembali input Anda.")
+
+    return render(request, 'setup/user_set_password.html', {'form': form, 'target_user': user})
 
 # --- FUNGSI BANTUAN: EXPORT EXCEL (Tetap sama, sesuaikan field jika perlu) ---
 def export_laporan_xls(start, end, data):

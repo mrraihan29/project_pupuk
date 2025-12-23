@@ -1,6 +1,6 @@
 from django import forms
 from .models import Payment, BiayaOperasional
-
+from decimal import Decimal
 # ==========================================
 # 1. FORM PEMBAYARAN (INVOICE)
 # ==========================================
@@ -31,11 +31,11 @@ class PaymentForm(forms.ModelForm):
         amount = self.cleaned_data['amount']
         if self.invoice_obj:
             # Gunakan remaining_balance property
-            remaining = self.invoice_obj.remaining_balance
+            remaining = self.invoice_obj.remaining_balance or Decimal('0')
             
             # Jika sedang edit (pk ada), kembalikan saldo sebelumnya agar hitungan benar
             if self.instance.pk: 
-                remaining += self.instance.amount
+                remaining += self.instance.amount or Decimal('0')
                 
             if amount > remaining:
                 raise forms.ValidationError(f"Jumlah melebihi sisa tagihan (Sisa: Rp {remaining:,.0f})")
