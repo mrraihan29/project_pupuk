@@ -43,7 +43,7 @@
                         {% endif %}
                     </td>
                     <td class="text-center">
-                        {% if item.status == 'PROSES' %}
+                        {% if item.status == 'PROSES' or item.status == 'PENDING' %}
                             <a href="{% url 'ops_approve' item.id %}" class="btn btn-sm btn-success" title="Setujui" onclick="return confirm('Setujui pengeluaran ini?')"><i class="bi bi-check"></i></a>
                             <a href="{% url 'ops_delete' item.id %}" class="btn btn-sm btn-outline-danger" title="Hapus" onclick="return confirm('Hapus data ini?')"><i class="bi bi-trash"></i></a>
                         {% else %}

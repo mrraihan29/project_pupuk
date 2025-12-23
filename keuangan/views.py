@@ -4,7 +4,7 @@ from django.contrib.auth.decorators import login_required
 from django.db import transaction
 from django.db.models import Sum
 from django.http import JsonResponse
-
+from datetime import date
 # Import Models & Forms
 from .models import Invoice, Payment, BiayaOperasional
 from .forms import PaymentForm, BiayaOperasionalForm
@@ -62,21 +62,21 @@ def ops_list(request):
 @login_required
 def ops_create(request):
     if request.method == 'POST':
+        # ===>>> WAJIB ADA: request.FILES <<<===
         form = BiayaOperasionalForm(request.POST, request.FILES)
+        
         if form.is_valid():
-            ops = form.save(commit=False)
-            
-            # Validasi Logic: Jika kategori ARMADA, wajib pilih mobil
-            if ops.kategori_utama == 'ARMADA' and not ops.armada:
-                messages.error(request, "Wajib memilih Armada jika kategori adalah Biaya Armada!")
-                return render(request, 'keuangan/ops_form.html', {'form': form})
-            
-            ops.status = 'PROSES' # Default status
-            ops.save()
-            messages.success(request, "Biaya berhasil diajukan (Menunggu Approval).")
+            biaya = form.save(commit=False)
+            biaya.status = 'PROSES'  # Default status menunggu approval
+            biaya.save()
+            messages.success(request, 'Pengeluaran berhasil dicatat, menunggu persetujuan.')
             return redirect('ops_list')
+        else:
+            # Ini akan memunculkan error di HTML jika ada input salah
+            messages.error(request, 'Gagal menyimpan. Periksa form kembali.')
     else:
-        form = BiayaOperasionalForm()
+        form = BiayaOperasionalForm(initial={'date': date.today()})
+
     return render(request, 'keuangan/ops_form.html', {'form': form})
 
 # ==========================================
@@ -112,7 +112,8 @@ def kartu_kontrol_armada(request):
         selected_armada = get_object_or_404(Armada, pk=armada_id)
         # Filter biaya kategori ARMADA untuk mobil ini
         logs = BiayaOperasional.objects.filter(
-            kategori_utama='ARMADA', 
+            kategori_utama='ARMADA',
+            status='SELESAI',
             armada=selected_armada
         ).order_by('-tanggal')
 
@@ -130,7 +131,8 @@ def get_armada_history(request):
         return JsonResponse({'error': 'No ID'}, status=400)
 
     history = BiayaOperasional.objects.filter(
-        kategori_utama='ARMADA', 
+        kategori_utama='ARMADA',
+        status='SELESAI',
         armada_id=armada_id
     ).order_by('-tanggal')[:5]
     

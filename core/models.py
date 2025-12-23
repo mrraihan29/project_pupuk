@@ -93,6 +93,11 @@ class KiosAllocation(models.Model):
     quota_original = models.DecimalField("Jatah Awal (Ton)", max_digits=10, decimal_places=2, default=Decimal('0'))
     quota_remaining = models.DecimalField("Sisa Kuota (Ton)", max_digits=10, decimal_places=2, default=Decimal('0'))
 
+    @property
+    def quota_used(self):
+        # Derived usage to avoid storing duplicate state
+        return self.quota_original - self.quota_remaining
+
     def __str__(self):
         return f"{self.kios.name} - {self.jenis_pupuk.code} {self.year}"
 

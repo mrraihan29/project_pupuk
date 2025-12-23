@@ -17,7 +17,7 @@
                     </div>
                     <div class="col-md-6">
                         <label class="form-label">Kecamatan</label>
-                        {{ form.district }}
+                        {{ form.kecamatan }}
                     </div>
                     <div class="col-md-6">
                         <label class="form-label">Nama PIC</label>
@@ -54,19 +54,28 @@
                                 <th>Jenis Pupuk</th>
                                 <th>Tahun</th>
                                 <th>Jatah Kuota (Ton)</th>
+                                <th></th>
                             </tr>
                         </thead>
-                        <tbody>
+                        <tbody id="quota-body">
                             {% for f in formset %}
                                 <tr>
-                                    <td>{{ f.fertilizer_type }}</td>
+                                    <td>{{ f.jenis_pupuk }}</td>
                                     <td>{{ f.year }}</td>
                                     <td>{{ f.quota_original }}</td>
+                                    <td class="text-center align-middle">{% if formset.can_delete %}{{ f.DELETE }}{% endif %}</td>
                                     {{ f.id }} 
                                 </tr>
                             {% endfor %}
                         </tbody>
                     </table>
+                </div>
+
+                <div class="d-flex justify-content-between align-items-center mt-2">
+                    <button type="button" class="btn btn-outline-primary btn-sm" id="add-quota-row">
+                        <i class="bi bi-plus-lg me-1"></i>Tambah Alokasi Pupuk
+                    </button>
+                    <small class="text-muted">Bisa lebih dari dua jenis pupuk per kios.</small>
                 </div>
 
                 <div class="d-flex justify-content-end gap-2 mt-4">
@@ -77,4 +86,35 @@
         </div>
     </div>
 </div>
+
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    const body = document.getElementById('quota-body');
+    const addBtn = document.getElementById('add-quota-row');
+    const totalInput = document.querySelector('input[name$="-TOTAL_FORMS"]');
+    const template = document.getElementById('empty-form-row');
+
+    if (!body || !addBtn || !totalInput || !template) return;
+
+    addBtn.addEventListener('click', function() {
+        const total = parseInt(totalInput.value, 10) || 0;
+        const html = template.innerHTML.replace(/__prefix__/g, total);
+        const tr = document.createElement('tr');
+        tr.innerHTML = html;
+        body.appendChild(tr);
+        totalInput.value = total + 1;
+    });
+});
+</script>
+
+{% with empty=formset.empty_form %}
+<script type="text/template" id="empty-form-row">
+    <td>{{ empty.jenis_pupuk }}</td>
+    <td>{{ empty.year }}</td>
+    <td>{{ empty.quota_original }}</td>
+    <td class="text-center align-middle">{% if formset.can_delete %}{{ empty.DELETE }}{% endif %}</td>
+    {{ empty.id }}
+</script>
+{% endwith %}
+
 {% endblock %}

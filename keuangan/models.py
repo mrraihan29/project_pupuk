@@ -24,9 +24,9 @@ class BiayaOperasional(models.Model):
     kategori_utama = models.CharField("Kategori", max_length=20, choices=KATEGORI_CHOICES)
     
     # RESTORASI FITUR: Relasi ke Armada (Nullable, karena biaya kantor tidak butuh mobil)
-    armada = models.ForeignKey(Armada, on_delete=models.SET_NULL, null=True, blank=True, related_name='biaya_list', verbose_name="Pilih Armada (Jika ada)")
+    armada = models.ForeignKey(Armada, on_delete=models.SET_NULL, null=True, blank=True, related_name='ops_list', verbose_name="Pilih Armada (Jika ada)")
     
-    deskripsi = models.CharField("Keterangan Detail", max_length=255)
+    deskripsi = models.TextField("Keterangan Detail", max_length=255)
     nominal = models.DecimalField("Jumlah (Rp)", max_digits=15, decimal_places=2)
     bukti_foto = models.ImageField(upload_to='keuangan/bukti/', null=True, blank=True)
     
@@ -96,8 +96,19 @@ class Payment(models.Model):
         return f"Pay {self.invoice.inv_number}"
 
     def clean(self):
+        # SAFEGUARD: Cek apakah invoice sudah terhubung
+        # Menghindari error RelatedObjectDoesNotExist saat form validation awal
+        try:
+            self.invoice
+        except Invoice.DoesNotExist: 
+            # Jika belum ada invoice (misal input manual di shell), skip validasi saldo
+            return
+
+        # Validasi: Tidak boleh bayar melebihi sisa tagihan
         sisa = self.invoice.remaining_balance
         if self.pk:
-            sisa += Payment.objects.get(pk=self.pk).amount
+            old_amount = Payment.objects.get(pk=self.pk).amount
+            sisa += old_amount
+            
         if self.amount > sisa:
-            raise ValidationError(f"Kelebihan bayar! Sisa: Rp {sisa:,.0f}")
+            raise ValidationError(f"Kelebihan bayar! Sisa tagihan hanya Rp {sisa:,.0f}")

@@ -1,7 +1,9 @@
 from django.shortcuts import render, redirect, get_object_or_404
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
-from django.db.models import Sum, Prefetch, F
+from django.db.models import Sum, Prefetch, F, DecimalField
+from django.db.models.functions import Coalesce
+from decimal import Decimal
 from datetime import date
 import csv
 from django.http import HttpResponse
@@ -16,8 +18,30 @@ from keuangan.models import Invoice, BiayaOperasional
 @login_required
 def kios_list(request):
     # Select related kecamatan agar query efisien
-    kios_data = Kios.objects.select_related('kecamatan').all().order_by('-created_at')
-    return render(request, 'core/kios_list.html', {'kios_data': kios_data})
+    current_year = date.today().year
+    kios_data = Kios.objects.select_related('kecamatan').prefetch_related('allocations__jenis_pupuk').order_by('-created_at')
+
+    # Hitung realisasi distribusi per kios x jenis pupuk di tahun berjalan
+    kios_ids = [k.id for k in kios_data]
+    dist_map = {}
+    if kios_ids:
+        dist_agg = Distribution.objects.filter(
+            kios_id__in=kios_ids,
+            date__year=current_year
+        ).values('kios_id', 'jenis_pupuk_id').annotate(total=Sum('tonnage'))
+
+        for row in dist_agg:
+            dist_map[(row['kios_id'], row['jenis_pupuk_id'])] = row['total'] or Decimal('0')
+
+    # Tempelkan nilai realisasi ke setiap allocation agar template sederhana
+    for kios in kios_data:
+        for allocation in kios.allocations.all():
+            allocation.realized = dist_map.get((kios.id, allocation.jenis_pupuk_id), Decimal('0'))
+
+    return render(request, 'core/kios_list.html', {
+        'kios_data': kios_data,
+        'current_year': current_year,
+    })
 
 # 2. CREATE (Tambah Kios Baru)
 @login_required
@@ -58,7 +82,19 @@ def kios_update(request, pk):
         
         if form.is_valid() and formset.is_valid():
             form.save()
-            formset.save()
+
+            allocations = formset.save(commit=False)
+
+            # Hapus baris yang ditandai delete di formset
+            for obj in formset.deleted_objects:
+                obj.delete()
+
+            for allocation in allocations:
+                allocation.kios = kios
+                # Pastikan alokasi baru punya sisa sama dengan jatah awal
+                if allocation.pk is None:
+                    allocation.quota_remaining = allocation.quota_original
+                allocation.save()
             messages.success(request, "Data Kios berhasil diperbarui.")
             return redirect('kios_list')
     else:
@@ -89,41 +125,59 @@ def kios_delete(request, pk):
 def dashboard(request):
     today = date.today()
     
-    # 1. FIX LOGIC TOTAL PIUTANG
-    # Masalah Dulu: aggregate(Sum('remaining_balance')) -> Error karena property python
-    # Solusi Baru: aggregate(Sum(Total - Bayar)) -> Menggunakan database calculation (F)
-    
+    # 1. HITUNG UANG (FIXED: Tambahkan output_field)
     piutang_data = Invoice.objects.filter(status__in=['UNPAID', 'PARTIAL']).aggregate(
-        total_sisa=Sum(F('total_amount') - F('total_paid'))
+        total_sisa=Sum(
+            F('total_amount') - F('total_paid'), 
+            output_field=DecimalField() # <--- WAJIB ADA
+        )
     )
     total_piutang = piutang_data['total_sisa'] or 0
 
-    # 2. Total Stok (Virtual + Fisik)
-    # Kita ambil dari SO yang masih aktif (belum closed)
-    stok_npk = SalesOrder.objects.filter(jenis_pupuk__name='NPK', is_closed=False).aggregate(total=Sum('allocations__tonnage'))['total'] or 0
-    stok_urea = SalesOrder.objects.filter(jenis_pupuk__name='UREA', is_closed=False).aggregate(total=Sum('allocations__tonnage'))['total'] or 0
-    total_stok = stok_npk + stok_urea
+    # 2. HITUNG STOK TERPISAH (FIXED: Tambahkan output_field pada Coalesce)
+    def get_stock_balance(jenis_nama, tipe_stok):
+        val = StockCard.objects.filter(
+            jenis_pupuk__name=jenis_nama,
+            stock_type=tipe_stok
+        ).aggregate(
+            # Logic: (Total Masuk atau 0) - (Total Keluar atau 0)
+            # Kita paksa 0 dianggap DecimalField agar tidak error mixed types
+            saldo=Coalesce(Sum('qty_in'), 0, output_field=DecimalField()) - 
+                  Coalesce(Sum('qty_out'), 0, output_field=DecimalField())
+        )['saldo']
+        
+        return val if val is not None else 0
 
-    # 3. Invoice Jatuh Tempo (Overdue)
+    # -- Stok Virtual (Masih di Pabrik) --
+    virt_npk = get_stock_balance('NPK', 'VIRTUAL')
+    virt_urea = get_stock_balance('UREA', 'VIRTUAL')
+    
+    # -- Stok Fisik (Siap Kirim di Gudang) --
+    phys_npk = get_stock_balance('NPK', 'PHYSICAL')
+    phys_urea = get_stock_balance('UREA', 'PHYSICAL')
+
+    # 3. DATA LAINNYA
     invoice_overdue_count = Invoice.objects.filter(
         status__in=['UNPAID', 'PARTIAL'], 
         due_date__lte=today
     ).count()
 
-    # 4. List Invoice Jatuh Tempo Terdekat (Top 5)
     invoices_list = Invoice.objects.filter(status__in=['UNPAID', 'PARTIAL']) \
                                     .select_related('distribution__kios') \
                                     .order_by('due_date')[:5]
 
-    # 5. SO yang akan expired/tua (Opsional)
     so_expiring = SalesOrder.objects.filter(is_closed=False).order_by('date')[:5]
 
     context = {
         'total_piutang': total_piutang,
         'invoice_overdue_count': invoice_overdue_count,
-        'stok_npk': stok_npk,
-        'stok_urea': stok_urea,
-        'total_stok': total_stok,
+        
+        # Kirim data terpisah ke HTML
+        'virt_npk': virt_npk,
+        'virt_urea': virt_urea,
+        'phys_npk': phys_npk,
+        'phys_urea': phys_urea,
+        
         'invoices_list': invoices_list,
         'so_expiring': so_expiring,
         'today': today,
@@ -297,18 +351,21 @@ def laporan_keuangan(request):
     
     biaya_armada = BiayaOperasional.objects.filter(
         tanggal__range=[start_date, end_date],
-        kategori_utama='ARMADA'
+        kategori_utama='ARMADA',
+        status='SELESAI'
     ).aggregate(total=Coalesce(Sum('nominal'), Decimal('0')))['total']
 
     biaya_kantor = BiayaOperasional.objects.filter(
         tanggal__range=[start_date, end_date],
-        kategori_utama='KANTOR'
+        kategori_utama='KANTOR',
+        status='SELESAI'
     ).aggregate(total=Coalesce(Sum('nominal'), Decimal('0')))['total']
     
     # Biaya Lainnya (Opsional)
     biaya_lain = BiayaOperasional.objects.filter(
         tanggal__range=[start_date, end_date],
-        kategori_utama='LAINNYA'
+        kategori_utama='LAINNYA',
+        status='SELESAI'
     ).aggregate(total=Coalesce(Sum('nominal'), Decimal('0')))['total']
 
     total_ops = biaya_armada + biaya_kantor + biaya_lain

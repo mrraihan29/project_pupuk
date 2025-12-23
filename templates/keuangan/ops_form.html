@@ -3,56 +3,62 @@
 
 {% block content %}
 <div class="row justify-content-center">
-    <div class="col-md-6">
-        <div class="card shadow border-0">
-            <div class="card-header bg-danger text-white">
-                <h5 class="mb-0">Input Pengeluaran Baru</h5>
+    <div class="col-md-8">
+        <div class="card shadow-sm border-0">
+            <div class="card-header bg-danger text-white py-3">
+                <h5 class="mb-0 fw-bold"><i class="bi bi-cash-stack me-2"></i>Input Biaya Operasional</h5>
             </div>
             <div class="card-body p-4">
+                
                 <form method="post" enctype="multipart/form-data">
                     {% csrf_token %}
                     
+                    {% if form.errors %}
+                        <div class="alert alert-danger">
+                            <strong>Gagal Simpan!</strong> Periksa inputan Anda:
+                            {{ form.errors }}
+                        </div>
+                    {% endif %}
+
                     <div class="mb-3">
                         <label class="form-label fw-bold">Tanggal</label>
                         {{ form.tanggal }}
                     </div>
-                    
+
                     <div class="mb-3">
                         <label class="form-label fw-bold">Kategori Pengeluaran</label>
                         {{ form.kategori_utama }}
                     </div>
 
-                    <div class="mb-3" id="wrapper_armada" style="display:none;">
-                        <label class="form-label fw-bold">Pilih Armada</label>
-                        <select name="armada" class="form-select">
-                            <option value="">-- Pilih Mobil --</option>
-                        </select>
-                        <small class="text-muted">Wajib dipilih untuk servis/bensin.</small>
-                    </div>
-                    
-                    <div class="mb-3" id="django_armada_wrapper">
-                        <label class="form-label fw-bold">Pilih Armada (Khusus Biaya Transport)</label>
-                        {{ form.armada }}
+                    <div class="mb-3" id="div_armada" style="display: none;">
+                        <div class="card bg-light border-0 p-3">
+                            <label class="form-label fw-bold text-primary"><i class="bi bi-truck me-2"></i>Pilih Armada / Kendaraan</label>
+                            {{ form.armada }}
+                            <small class="text-muted">Pilih kendaraan yang menggunakan biaya ini.</small>
+                        </div>
                     </div>
 
                     <div class="mb-3">
                         <label class="form-label fw-bold">Keterangan / Deskripsi</label>
-                        {{ form.description }}
+                        {{ form.deskripsi }}
                     </div>
-                    
+
                     <div class="mb-3">
                         <label class="form-label fw-bold">Nominal (Rp)</label>
                         {{ form.nominal }}
                     </div>
-                    
+
                     <div class="mb-3">
-                        <label class="form-label">Bukti Foto / Struk</label>
+                        <label class="form-label fw-bold">Bukti Foto / Struk</label>
                         {{ form.bukti_foto }}
+                        <small class="text-muted d-block mt-1">*Wajib upload foto bukti</small>
                     </div>
 
-                    <div class="d-grid gap-2">
-                        <button type="submit" class="btn btn-danger btn-lg">Simpan Pengeluaran</button>
-                        <a href="{% url 'ops_list' %}" class="btn btn-light">Batal</a>
+                    <div class="d-grid gap-2 mt-4">
+                        <button type="submit" class="btn btn-danger fw-bold py-2">
+                            <i class="bi bi-save me-2"></i>Simpan Pengeluaran
+                        </button>
+                        <a href="{% url 'ops_list' %}" class="btn btn-light border">Batal</a>
                     </div>
                 </form>
             </div>
@@ -62,19 +68,18 @@
 
 <script>
     document.addEventListener("DOMContentLoaded", function() {
-        const katSelect = document.getElementById('id_kategori_utama');
-        const armadaWrapper = document.getElementById('django_armada_wrapper');
-        const customWrapper = document.getElementById('wrapper_armada');
+        const categoryField = document.getElementById('id_kategori_utama');
+        const armadaDiv = document.getElementById('div_armada');
         const armadaSelect = document.getElementById('id_armada');
 
         function toggleArmada() {
-            const isArmada = katSelect && katSelect.value === 'ARMADA';
-            if (armadaWrapper) {
-                armadaWrapper.style.display = isArmada ? 'block' : 'none';
-            }
-            if (customWrapper) {
-                customWrapper.style.display = isArmada ? 'block' : 'none';
-            }
+            // Cek value kategori. Sesuaikan string ini dengan value di models.py
+            // Kalau di model pakai 'ARMADA', maka cek 'ARMADA'.
+            if (!categoryField || !armadaDiv) return;
+
+            const isArmada = categoryField.value === 'ARMADA';
+            armadaDiv.style.display = isArmada ? 'block' : 'none';
+
             if (armadaSelect) {
                 if (isArmada) {
                     armadaSelect.setAttribute('required', 'required');
@@ -84,9 +89,13 @@
                 }
             }
         }
-        if (katSelect) {
-            katSelect.addEventListener('change', toggleArmada);
-            toggleArmada();
+
+        // Jalankan saat halaman baru load (untuk mode edit)
+        toggleArmada();
+
+        // Jalankan setiap kali user ganti pilihan
+        if (categoryField) {
+            categoryField.addEventListener('change', toggleArmada);
         }
     });
 </script>
