@@ -4,56 +4,30 @@
 {% block content %}
 <form method="post">
     {% csrf_token %}
-    <div class="row">
+    {{ formset.management_form }}
+    <div class="row g-3">
+        {% for item in form_items %}
         <div class="col-md-6">
-            <div class="card border-danger shadow-sm">
-                <div class="card-header bg-danger text-white fw-bold">PUPUK NPK (MERAH)</div>
+            <div class="card shadow-sm border-0 h-100">
+                <div class="card-header text-white fw-bold" style="background: {{ item.jenis.color|default:'#0d6efd' }};">
+                    {{ item.jenis.name }} ({{ item.jenis.code }})
+                </div>
                 <div class="card-body">
                     <div class="mb-3">
-                        <label class="fw-bold">Harga Tebus (Beli)</label>
+                        <label class="fw-bold">Harga Tebus (Beli) per KG</label>
                         <div class="input-group">
                             <span class="input-group-text">Rp</span>
-                            {{ form_npk.price_buy }}
-                        </div>
-                    </div>
-                    <div class="mb-3">
-                        <label class="fw-bold">Harga Jual (Kios)</label>
-                        <div class="input-group">
-                            <span class="input-group-text">Rp</span>
-                            {{ form_npk.price_sell }}
-                        </div>
-                    </div>
-                </div>
-            </div>
-        </div>
-
-        <div class="col-md-6">
-            <div class="card border-primary shadow-sm">
-                <div class="card-header bg-primary text-white fw-bold">PUPUK UREA (PUTIH)</div>
-                <div class="card-body">
-                    <div class="mb-3">
-                        <label class="fw-bold">Harga Tebus (Beli)</label>
-                        <div class="input-group">
-                            <span class="input-group-text">Rp</span>
-                            {{ form_urea.price_buy }}
-                        </div>
-                    </div>
-                    <div class="mb-3">
-                        <label class="fw-bold">Harga Jual (Kios)</label>
-                        <div class="input-group">
-                            <span class="input-group-text">Rp</span>
-                            {{ form_urea.price_sell }}
-                        </div>
-                    </div>
-                </div>
-            </div>
-        </div>
-    </div>
-
-    <div class="mt-4 text-end">
-        <button type="submit" class="btn btn-success px-5 fw-bold" onclick="return confirm('Harga akan berubah untuk transaksi selanjutnya. Yakin?');">
-            <i class="bi bi-save me-2"></i>SIMPAN PERUBAHAN HARGA
-        </button>
-    </div>
-</form>
-{% endblock %}
+                            {% extends 'base.html' %}
+                            {% block content %}
+                            <div class="container-fluid py-4">
+                                <div class="d-flex justify-content-between align-items-center mb-3">
+                                    <div>
+                                        <h1 class="h3 mb-1">Master Harga Pupuk</h1>
+                                        <p class="text-muted mb-0">Halaman ini telah digabung ke Master Data Pupuk.</p>
+                                    </div>
+                                    <div>
+                                        <a href="{% url 'master_data_pupuk' %}" class="btn btn-primary">Buka Master Data Pupuk</a>
+                                    </div>
+                                </div>
+                            </div>
+                            {% endblock %}

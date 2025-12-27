@@ -1,0 +1,68 @@
+{% extends 'base.html' %}
+{% load humanize %}
+
+{% block content %}
+<div class="card shadow-sm border-0">
+    <div class="card-header bg-white py-3 d-flex justify-content-between align-items-center">
+        <div>
+            <h5 class="mb-0 fw-bold">Catatan Order</h5>
+            <small class="text-muted">Daftar order yang menjadi acuan penebusan</small>
+        </div>
+        <a href="{% url 'order_note_create' %}" class="btn btn-success fw-bold">
+            <i class="bi bi-plus-lg me-2"></i>Catat Order Baru
+        </a>
+    </div>
+    <div class="card-body p-0">
+        <div class="table-responsive table-sim-wrapper">
+            <table class="table table-hover align-middle mb-0 table-sim">
+                <thead>
+                    <tr>
+                        <th class="ps-4">Tanggal</th>
+                        <th>Kecamatan / Kios</th>
+                        <th>Rincian Pupuk</th>
+                        <th>Catatan</th>
+                        <th class="text-center">Aksi</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for order in orders %}
+                    <tr>
+                        <td class="ps-4">{{ order.date|date:"d M Y" }}</td>
+                        <td>
+                            <div class="fw-bold">{{ order.kecamatan.name }}</div>
+                            <div class="small text-muted">{{ order.kios.name }}</div>
+                        </td>
+                        <td>
+                            {% for item in order.items.all %}
+                                <div class="d-flex justify-content-between align-items-center border-bottom small py-1">
+                                    <span>{{ item.jenis_pupuk.name }} ({{ item.jenis_pupuk.code }})</span>
+                                    <span class="fw-bold">{{ item.tonnage }} Ton</span>
+                                </div>
+                            {% empty %}
+                                <span class="text-muted">Belum ada item</span>
+                            {% endfor %}
+                        </td>
+                        <td class="text-muted small">{{ order.notes|default:"-" }}</td>
+                        <td class="text-center">
+                            <form action="{% url 'order_note_complete' order.id %}" method="post" onsubmit="return confirm('Tandai selesai dan sembunyikan order ini?');" class="d-inline-block">
+                                {% csrf_token %}
+                                <button type="submit" class="btn btn-sm btn-outline-success" title="Selesaikan">
+                                    <i class="bi bi-check2-circle"></i>
+                                </button>
+                            </form>
+                        </td>
+                    </tr>
+                    {% empty %}
+                    <tr>
+                        <td colspan="5" class="text-center py-5 text-muted">
+                            <i class="bi bi-journal-text display-5 d-block mb-2"></i>
+                            Belum ada catatan order.
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+{% endblock %}

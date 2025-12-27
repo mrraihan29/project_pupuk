@@ -68,6 +68,20 @@ class HargaPupukForm(forms.ModelForm):
 
 
 # ==========================================
+# FORM JENIS PUPUK (CRUD dinamis)
+# ==========================================
+class JenisPupukForm(forms.ModelForm):
+    class Meta:
+        model = JenisPupuk
+        fields = ['name', 'code', 'is_active']
+        widgets = {
+            'name': forms.TextInput(attrs={'class': 'form-control', 'placeholder': 'Nama Pupuk'}),
+            'code': forms.TextInput(attrs={'class': 'form-control', 'placeholder': 'Kode (unik)'}),
+            'is_active': forms.CheckboxInput(attrs={'class': 'form-check-input'}),
+        }
+
+
+# ==========================================
 # FORM COMPANY PROFILE (Singleton)
 # ==========================================
 class CompanyProfileForm(forms.ModelForm):

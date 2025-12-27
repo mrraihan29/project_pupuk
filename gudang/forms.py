@@ -4,8 +4,8 @@ from django.core.exceptions import ValidationError
 from datetime import date
 
 # Import Models
-from .models import SalesOrder, SalesOrderAllocation, Distribution, WarehouseTransfer, StockCard
-from core.models import JenisPupuk, Kios, Armada
+from .models import SalesOrder, SalesOrderAllocation, Distribution, WarehouseTransfer, StockCard, OrderNote, OrderNoteItem
+from core.models import JenisPupuk, Kios, Armada, Kecamatan
 
 # ==========================================
 # 1. FORM PENEBUSAN (SO) + ALOKASI
@@ -152,3 +152,58 @@ class StockOpnameForm(forms.Form):
         widget=forms.Textarea(attrs={'class': 'form-control', 'rows': 2}),
         required=False
     )
+
+
+# ==========================================
+# 5. FORM CATATAN ORDER
+# ==========================================
+class OrderNoteForm(forms.ModelForm):
+    class Meta:
+        model = OrderNote
+        fields = ['date', 'kecamatan', 'kios', 'notes']
+        widgets = {
+            'date': forms.DateInput(attrs={'class': 'form-control', 'type': 'date'}),
+            'kecamatan': forms.Select(attrs={'class': 'form-select', 'id': 'id_kecamatan'}),
+            'kios': forms.Select(attrs={'class': 'form-select', 'id': 'id_kios'}),
+            'notes': forms.Textarea(attrs={'class': 'form-control', 'rows': 2, 'placeholder': 'Catatan (opsional)'}),
+        }
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.fields['kios'].queryset = Kios.objects.filter(is_active=True)
+        self.fields['kecamatan'].queryset = Kecamatan.objects.all()
+
+        kecamatan_id = None
+        if self.is_bound:
+            kecamatan_id = self.data.get('kecamatan')
+        elif self.instance and self.instance.kecamatan_id:
+            kecamatan_id = self.instance.kecamatan_id
+
+        if kecamatan_id:
+            self.fields['kios'].queryset = Kios.objects.filter(kecamatan_id=kecamatan_id, is_active=True)
+
+
+class OrderNoteItemForm(forms.ModelForm):
+    class Meta:
+        model = OrderNoteItem
+        fields = ['jenis_pupuk', 'tonnage']
+        widgets = {
+            'jenis_pupuk': forms.Select(attrs={'class': 'form-select'}),
+            'tonnage': forms.NumberInput(attrs={'class': 'form-control', 'placeholder': 'Ton', 'step': '0.01', 'min': '0.01'}),
+        }
+
+    def clean_tonnage(self):
+        ton = self.cleaned_data.get('tonnage')
+        if ton is not None and ton <= 0:
+            raise ValidationError('Tonase harus lebih dari 0')
+        return ton
+
+
+OrderNoteItemFormSet = inlineformset_factory(
+    OrderNote,
+    OrderNoteItem,
+    form=OrderNoteItemForm,
+    fields=('jenis_pupuk', 'tonnage'),
+    extra=1,
+    can_delete=True,
+)

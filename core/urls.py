@@ -13,7 +13,11 @@ urlpatterns = [
     path('armada/', views.armada_list, name='armada_list'),
     path('armada/add/', views.armada_create, name='armada_create'),
     
+    path('master/pupuk/', views.jenis_pupuk_list, name='jenis_pupuk_list'),
+    path('master/pupuk/<int:pk>/edit/', views.jenis_pupuk_edit, name='jenis_pupuk_edit'),
+    path('master/pupuk/<int:pk>/delete/', views.jenis_pupuk_delete, name='jenis_pupuk_delete'),
     path('master/harga/', views.master_harga, name='master_harga'),       # Untuk Menu Master Harga
+        path('master-data-pupuk/', views.master_data_pupuk, name='master_data_pupuk'),
     path('laporan/keuangan/', views.laporan_keuangan, name='laporan_keuangan'), # Untuk Menu Laba Rugi
 
     # Setup (admin/staff only)

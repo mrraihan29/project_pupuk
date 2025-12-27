@@ -1,0 +1,187 @@
+{% extends 'base.html' %}
+{% block page_title %}Master Data Pupuk{% endblock %}
+
+{% block content %}
+<div class="container-fluid py-4">
+    <div class="d-flex justify-content-between align-items-center mb-3">
+        <div>
+            <h1 class="h4 mb-0">Master Data Pupuk</h1>
+            <p class="text-muted mb-0">Kelola jenis pupuk dan harga dalam satu halaman.</p>
+        </div>
+    </div>
+
+    <div class="row g-4">
+        <div class="col-lg-4">
+            <div class="card shadow-sm border-0 h-100">
+                <div class="card-header bg-primary text-white fw-bold">{{ edit_target|yesno:'Edit Jenis Pupuk,Tambah Jenis Pupuk' }}</div>
+                <div class="card-body">
+                    <form method="post">
+                        {% csrf_token %}
+                        {% if edit_target %}
+                            <input type="hidden" name="action" value="update_jenis">
+                            <input type="hidden" name="jenis_id" value="{{ edit_target.id }}">
+                        {% else %}
+                            <input type="hidden" name="action" value="create_jenis">
+                        {% endif %}
+                        <div class="mb-3">
+                            <label class="form-label">Nama</label>
+                            {{ jenis_form.name }}
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label">Kode</label>
+                            {{ jenis_form.code }}
+                        </div>
+                        <div class="form-check mb-3">
+                            {{ jenis_form.is_active }}
+                            <label class="form-check-label">Aktif</label>
+                        </div>
+                        {% if jenis_form.errors %}
+                            <div class="alert alert-danger small">{{ jenis_form.errors }}</div>
+                        {% endif %}
+                        <div class="d-flex gap-2">
+                            {% if edit_target %}
+                                <a href="{% url 'master_data_pupuk' %}" class="btn btn-light w-50">Batal</a>
+                            {% endif %}
+                            <button type="submit" class="btn btn-primary {% if edit_target %}w-50{% else %}w-100{% endif %} fw-bold">Simpan Jenis</button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </div>
+
+        <div class="col-lg-8">
+            <div class="card shadow-sm border-0 h-100">
+                <div class="card-header bg-white fw-bold d-flex justify-content-between align-items-center">
+                    <span>Harga Pupuk</span>
+                    <a href="{% if show_archived %}{% url 'master_data_pupuk' %}{% else %}{% url 'master_data_pupuk' %}?archived=1{% endif %}" class="btn btn-sm btn-outline-secondary">
+                        {% if show_archived %}Sembunyikan Arsip{% else %}Lihat Arsip{% endif %}
+                    </a>
+                </div>
+                <div class="card-body">
+                    <form method="post">
+                        {% csrf_token %}
+                        <input type="hidden" name="action" value="update_prices">
+                        {{ price_formset.management_form }}
+                        <div class="table-responsive">
+                            <table class="table align-middle">
+                                <thead>
+                                    <tr>
+                                        <th>Jenis</th>
+                                        <th class="text-end">Harga Beli (Rp/Ton)</th>
+                                        <th class="text-end">Harga Jual (Rp/Ton)</th>
+                                        <th class="text-end">Aksi</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {% for item in price_items %}
+                                    <tr>
+                                        <td>
+                                            <div class="fw-bold mb-1">{{ item.jenis.name }}</div>
+                                            <div class="text-muted small">Kode: {{ item.jenis.code }}</div>
+                                            {% if item.jenis.is_active %}
+                                                <span class="badge bg-success">Aktif</span>
+                                            {% else %}
+                                                <span class="badge bg-secondary">Nonaktif</span>
+                                            {% endif %}
+                                        </td>
+                                        <td class="text-end">
+                                            {{ item.form.price_buy }}
+                                            {{ item.form.price_buy.errors }}
+                                        </td>
+                                        <td class="text-end">
+                                            {{ item.form.price_sell }}
+                                            {{ item.form.price_sell.errors }}
+                                            {{ item.form.id }}
+                                        </td>
+                                        <td class="text-end">
+                                            <div class="btn-group">
+                                                <a href="{% url 'master_data_pupuk' %}?edit={{ item.jenis.id }}" class="btn btn-sm btn-outline-primary">Edit</a>
+                                                <button type="button" class="btn btn-sm btn-outline-secondary dropdown-toggle dropdown-toggle-split" data-bs-toggle="dropdown" aria-expanded="false">
+                                                    <span class="visually-hidden">Toggle</span>
+                                                </button>
+                                                <ul class="dropdown-menu dropdown-menu-end">
+                                                    <li>
+                                                        <button type="submit" class="dropdown-item" form="archive-form-{{ item.jenis.id }}" onclick="return confirm('Arsipkan jenis pupuk ini?');">Arsipkan</button>
+                                                    </li>
+                                                    <li><hr class="dropdown-divider"></li>
+                                                    <li>
+                                                        <button type="submit" class="dropdown-item text-danger" form="delete-form-{{ item.jenis.id }}" onclick="return confirm('Hapus jenis pupuk ini? Akan diarsipkan jika masih dipakai.');">Hapus</button>
+                                                    </li>
+                                                </ul>
+                                            </div>
+                                        </td>
+                                    </tr>
+                                    {% empty %}
+                                    <tr>
+                                        <td colspan="4" class="text-center text-muted py-4">Belum ada jenis pupuk. Tambahkan di formulir kiri.</td>
+                                    </tr>
+                                    {% endfor %}
+                                </tbody>
+                            </table>
+                        </div>
+                        <div class="mt-3 text-end">
+                            <button type="submit" class="btn btn-primary">Simpan Harga</button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    {% comment %}Hidden forms for archive/delete to avoid nested forms inside the price form{% endcomment %}
+    {% for item in price_items %}
+    <form id="archive-form-{{ item.jenis.id }}" method="post" class="d-none">
+        {% csrf_token %}
+        <input type="hidden" name="action" value="archive_jenis">
+        <input type="hidden" name="jenis_id" value="{{ item.jenis.id }}">
+    </form>
+    <form id="delete-form-{{ item.jenis.id }}" method="post" class="d-none">
+        {% csrf_token %}
+        <input type="hidden" name="action" value="delete_jenis">
+        <input type="hidden" name="jenis_id" value="{{ item.jenis.id }}">
+    </form>
+    {% endfor %}
+
+    {% if show_archived %}
+    <div class="card shadow-sm border-0 mt-4">
+        <div class="card-header bg-light fw-bold">Pupuk Diarsipkan</div>
+        <div class="card-body p-0">
+            <div class="table-responsive">
+                <table class="table align-middle mb-0">
+                    <thead>
+                        <tr>
+                            <th class="ps-3">Nama</th>
+                            <th>Kode</th>
+                            <th class="text-end pe-3">Aksi</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for a in archived_pupuk %}
+                        <tr>
+                            <td class="ps-3">{{ a.name }}</td>
+                            <td>{{ a.code }}</td>
+                            <td class="text-end pe-3">
+                                <button type="submit" class="btn btn-sm btn-outline-primary" form="restore-form-{{ a.id }}">Aktifkan</button>
+                            </td>
+                        </tr>
+                        {% empty %}
+                        <tr>
+                            <td colspan="3" class="text-center text-muted py-3">Tidak ada data arsip.</td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+    {% endif %}
+
+    {% for a in archived_pupuk %}
+    <form id="restore-form-{{ a.id }}" method="post" class="d-none">
+        {% csrf_token %}
+        <input type="hidden" name="action" value="restore_jenis">
+        <input type="hidden" name="jenis_id" value="{{ a.id }}">
+    </form>
+    {% endfor %}
+</div>
+{% endblock %}

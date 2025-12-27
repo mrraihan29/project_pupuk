@@ -1,0 +1,36 @@
+{% extends 'base.html' %}
+{% block page_title %}Edit Jenis Pupuk{% endblock %}
+
+{% block content %}
+<div class="row justify-content-center">
+    <div class="col-lg-6">
+        <div class="card shadow-sm border-0">
+            <div class="card-header bg-primary text-white fw-bold">Edit Jenis Pupuk</div>
+            <div class="card-body">
+                <form method="post">
+                    {% csrf_token %}
+                    <div class="mb-3">
+                        <label class="form-label">Nama</label>
+                        {{ form.name }}
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Kode</label>
+                        {{ form.code }}
+                    </div>
+                    <div class="form-check mb-3">
+                        {{ form.is_active }}
+                        <label class="form-check-label">Aktif</label>
+                    </div>
+                    {% if form.errors %}
+                        <div class="alert alert-danger small">{{ form.errors }}</div>
+                    {% endif %}
+                    <div class="d-flex justify-content-between">
+                        <a href="{% url 'jenis_pupuk_list' %}" class="btn btn-light">Batal</a>
+                        <button type="submit" class="btn btn-primary fw-bold">Simpan</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

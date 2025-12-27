@@ -313,3 +313,58 @@ class StockCard(models.Model):
 
     def __str__(self):
         return f"{self.date} - {self.jenis_pupuk.name} ({self.transaction_type})"
+
+
+# ==========================================
+# 5. CATATAN ORDER (ORDER NOTE)
+# ==========================================
+class OrderNote(models.Model):
+    STATUS_OPEN = 'OPEN'
+    STATUS_DONE = 'DONE'
+    STATUS_CHOICES = [
+        (STATUS_OPEN, 'Terbuka'),
+        (STATUS_DONE, 'Selesai'),
+    ]
+
+    date = models.DateField("Tanggal Order")
+    kecamatan = models.ForeignKey(Kecamatan, on_delete=models.PROTECT, verbose_name="Kecamatan")
+    kios = models.ForeignKey(Kios, on_delete=models.PROTECT, verbose_name="Kios")
+    notes = models.TextField("Catatan", blank=True)
+    status = models.CharField("Status", max_length=10, choices=STATUS_CHOICES, default=STATUS_OPEN)
+    is_deleted = models.BooleanField(default=False)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+    completed_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        verbose_name = "Catatan Order"
+        verbose_name_plural = "Catatan Order"
+        ordering = ['-date', '-created_at']
+
+    def mark_done(self):
+        self.status = self.STATUS_DONE
+        self.is_deleted = True
+        self.completed_at = timezone.now()
+        self.save(update_fields=['status', 'is_deleted', 'completed_at', 'updated_at'])
+
+    def __str__(self):
+        return f"Order {self.kios.name} ({self.date})"
+
+
+class OrderNoteItem(models.Model):
+    order = models.ForeignKey(OrderNote, on_delete=models.CASCADE, related_name='items')
+    jenis_pupuk = models.ForeignKey(JenisPupuk, on_delete=models.PROTECT, verbose_name="Jenis Pupuk")
+    tonnage = models.DecimalField("Jumlah (Ton)", max_digits=10, decimal_places=2)
+
+    # Referensi opsional untuk upgrade di masa depan
+    linked_sales_order = models.ForeignKey(SalesOrder, on_delete=models.SET_NULL, null=True, blank=True, related_name='order_note_items')
+    linked_distribution = models.ForeignKey(Distribution, on_delete=models.SET_NULL, null=True, blank=True, related_name='order_note_items')
+
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        verbose_name = "Item Catatan Order"
+        verbose_name_plural = "Item Catatan Order"
+
+    def __str__(self):
+        return f"{self.jenis_pupuk.code} - {self.tonnage} Ton"

@@ -1,4 +1,5 @@
 from django.shortcuts import render, redirect, get_object_or_404
+from django.urls import reverse
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
 from django.contrib.auth import get_user_model
@@ -6,6 +7,7 @@ from django.contrib.auth.models import Group
 from django.contrib.auth.mixins import LoginRequiredMixin
 from django.views.decorators.http import require_http_methods
 from django.views.decorators.cache import never_cache
+from django.forms import modelformset_factory
 from django.db.models import Sum, Prefetch, F, DecimalField
 from django.db.models.functions import Coalesce
 from decimal import Decimal
@@ -20,6 +22,7 @@ from .forms import (
     KiosAllocationFormSet,
     ArmadaForm,
     HargaPupukForm,
+    JenisPupukForm,
     CompanyProfileForm,
     KecamatanForm,
     UserCreateForm,
@@ -252,43 +255,164 @@ def armada_create(request):
 
 @login_required
 def master_harga(request):
-    """
-    Halaman Setting Harga.
-    Logic Baru: Pastikan JenisPupuk ada dulu, baru buat Harga.
-    """
-    # 1. Pastikan Master Jenis Pupuk tersedia (Init Data)
-    pupuk_npk, _ = JenisPupuk.objects.get_or_create(
-        name='NPK', defaults={'code': 'NPK', 'color': 'danger'}
-    )
-    pupuk_urea, _ = JenisPupuk.objects.get_or_create(
-        name='UREA', defaults={'code': 'UREA', 'color': 'primary'}
-    )
+    return redirect('master_data_pupuk')
 
-    # 2. Ambil/Buat Data Harga
-    harga_npk, _ = FertilizerPrice.objects.get_or_create(
-        jenis_pupuk=pupuk_npk, defaults={'price_buy': 2300000, 'price_sell': 2350000}
-    )
-    harga_urea, _ = FertilizerPrice.objects.get_or_create(
-        jenis_pupuk=pupuk_urea, defaults={'price_buy': 2200000, 'price_sell': 2250000}
-    )
 
-    if request.method == 'POST':
-        form_npk = HargaPupukForm(request.POST, instance=harga_npk, prefix='npk')
-        form_urea = HargaPupukForm(request.POST, instance=harga_urea, prefix='urea')
-        
-        if form_npk.is_valid() and form_urea.is_valid():
-            form_npk.save()
-            form_urea.save()
-            messages.success(request, "Harga Pupuk Berhasil Diupdate!")
-            return redirect('master_harga')
+@login_required
+def master_data_pupuk(request):
+    """Satu halaman untuk jenis pupuk + harga."""
+    PriceFormSet = modelformset_factory(FertilizerPrice, form=HargaPupukForm, extra=0)
+
+    show_archived = request.GET.get('archived') == '1'
+
+    pupuk_list = list(JenisPupuk.objects.filter(is_active=True).order_by('name'))
+    archived_pupuk = list(JenisPupuk.objects.filter(is_active=False).order_by('name')) if show_archived else []
+
+    # Pastikan tiap jenis punya harga
+    for jp in pupuk_list:
+        FertilizerPrice.objects.get_or_create(
+            jenis_pupuk=jp,
+            defaults={'price_buy': Decimal('0'), 'price_sell': Decimal('0')}
+        )
+
+    price_qs = FertilizerPrice.objects.filter(jenis_pupuk__in=pupuk_list)
+    price_qs = price_qs.select_related('jenis_pupuk').order_by('jenis_pupuk__name')
+
+    action = request.POST.get('action') if request.method == 'POST' else None
+
+    edit_id = request.GET.get('edit')
+    edit_target = None
+    if edit_id:
+        edit_target = get_object_or_404(JenisPupuk, pk=edit_id)
+
+    if action == 'update_prices':
+        price_formset = PriceFormSet(request.POST, queryset=price_qs, prefix='prices')
+        jenis_form = JenisPupukForm(prefix='jenis', instance=edit_target)
+        if price_formset.is_valid():
+            price_formset.save()
+            messages.success(request, "Harga pupuk berhasil diperbarui.")
+            return redirect('master_data_pupuk')
+        messages.error(request, "Periksa input harga yang bertanda merah.")
+
+    elif action == 'create_jenis':
+        jenis_form = JenisPupukForm(request.POST, prefix='jenis')
+        price_formset = PriceFormSet(queryset=price_qs, prefix='prices')
+        if jenis_form.is_valid():
+            jenis = jenis_form.save()
+            FertilizerPrice.objects.get_or_create(
+                jenis_pupuk=jenis,
+                defaults={'price_buy': Decimal('0'), 'price_sell': Decimal('0')}
+            )
+            messages.success(request, "Jenis pupuk berhasil ditambahkan.")
+            return redirect('master_data_pupuk')
+        messages.error(request, "Periksa input jenis pupuk yang bertanda merah.")
+
+    elif action == 'update_jenis':
+        jenis_id = request.POST.get('jenis_id')
+        target = get_object_or_404(JenisPupuk, pk=jenis_id)
+        jenis_form = JenisPupukForm(request.POST, prefix='jenis', instance=target)
+        price_formset = PriceFormSet(queryset=price_qs, prefix='prices')
+        if jenis_form.is_valid():
+            jenis_form.save()
+            messages.success(request, "Jenis pupuk diperbarui.")
+            return redirect('master_data_pupuk')
+        messages.error(request, "Periksa input jenis pupuk yang bertanda merah.")
+
+    elif action == 'archive_jenis':
+        jenis_id = request.POST.get('jenis_id')
+        target = get_object_or_404(JenisPupuk, pk=jenis_id)
+        target.is_active = False
+        target.save(update_fields=['is_active'])
+        messages.warning(request, f"{target.name} diarsipkan.")
+        return redirect('master_data_pupuk')
+
+    elif action == 'delete_jenis':
+        jenis_id = request.POST.get('jenis_id')
+        target = get_object_or_404(JenisPupuk, pk=jenis_id)
+
+        has_refs = (
+            KiosAllocation.objects.filter(jenis_pupuk=target).exists() or
+            Distribution.objects.filter(jenis_pupuk=target).exists() or
+            SalesOrder.objects.filter(jenis_pupuk=target).exists() or
+            StockCard.objects.filter(jenis_pupuk=target).exists()
+        )
+
+        if has_refs:
+            target.is_active = False
+            target.save(update_fields=['is_active'])
+            messages.warning(request, f"{target.name} masih dipakai, status diarsipkan.")
+        else:
+            FertilizerPrice.objects.filter(jenis_pupuk=target).delete()
+            target.delete()
+            messages.success(request, f"{target.name} dihapus.")
+        return redirect('master_data_pupuk')
+
+    elif action == 'restore_jenis':
+        jenis_id = request.POST.get('jenis_id')
+        target = get_object_or_404(JenisPupuk, pk=jenis_id)
+        target.is_active = True
+        target.save(update_fields=['is_active'])
+        messages.success(request, f"{target.name} diaktifkan kembali.")
+        return redirect('master_data_pupuk')
+
     else:
-        form_npk = HargaPupukForm(instance=harga_npk, prefix='npk')
-        form_urea = HargaPupukForm(instance=harga_urea, prefix='urea')
+        price_formset = PriceFormSet(queryset=price_qs, prefix='prices')
+        jenis_form = JenisPupukForm(prefix='jenis', instance=edit_target)
 
-    return render(request, 'core/master_harga.html', {
-        'form_npk': form_npk,
-        'form_urea': form_urea
+    price_items = [
+        {'form': form, 'jenis': form.instance.jenis_pupuk}
+        for form in price_formset.forms
+    ]
+
+    return render(request, 'core/master_data_pupuk.html', {
+        'jenis_form': jenis_form,
+        'price_formset': price_formset,
+        'price_items': price_items,
+        'pupuk_list': pupuk_list,
+        'edit_target': edit_target,
+        'show_archived': show_archived,
+        'archived_pupuk': archived_pupuk,
     })
+
+
+# ==========================================
+# MASTER JENIS PUPUK (CRUD)
+# ==========================================
+@login_required
+def jenis_pupuk_list(request):
+    return redirect('master_data_pupuk')
+
+
+@login_required
+def jenis_pupuk_edit(request, pk):
+    return redirect(f"{reverse('master_data_pupuk')}?edit={pk}")
+
+
+@login_required
+def jenis_pupuk_delete(request, pk):
+    jenis = get_object_or_404(JenisPupuk, pk=pk)
+    if request.method != 'POST':
+        messages.error(request, "Gunakan tombol hapus untuk mengarsipkan jenis pupuk.")
+        return redirect('jenis_pupuk_list')
+
+    # Cek referensi; jika terpakai, set inactive saja
+    has_refs = (
+        FertilizerPrice.objects.filter(jenis_pupuk=jenis).exists() or
+        KiosAllocation.objects.filter(jenis_pupuk=jenis).exists() or
+        Distribution.objects.filter(jenis_pupuk=jenis).exists() or
+        SalesOrder.objects.filter(jenis_pupuk=jenis).exists() or
+        StockCard.objects.filter(jenis_pupuk=jenis).exists()
+    )
+
+    if has_refs:
+        jenis.is_active = False
+        jenis.save(update_fields=['is_active'])
+        messages.warning(request, "Jenis pupuk sudah dipakai; status di-nonaktifkan.")
+    else:
+        jenis.delete()
+        messages.success(request, "Jenis pupuk dihapus.")
+
+    return redirect('jenis_pupuk_list')
 
 # ==========================================
 # VIEW LAPORAN KEUANGAN (THE CORE LOGIC)
@@ -317,48 +441,40 @@ def laporan_keuangan(request):
         messages.error(request, "Harga pupuk belum dikonfigurasi. Silakan set di Master Harga.")
         return redirect('master_harga')
 
-    # 3. HITUNG MODAL PENEBUSAN (HPP / COGS)
-    # Logic: Total Tonase dari 'SalesOrderAllocation' dalam periode ini
-    # Kita menggunakan Allocation karena SO Header tidak menyimpan total tonase secara langsung di DB (hanya property)
-    
-    # -- NPK --
-    qty_beli_npk = SalesOrderAllocation.objects.filter(
-        sales_order__date__range=[start_date, end_date], 
-        sales_order__jenis_pupuk__name='NPK'
-    ).aggregate(total=Coalesce(Sum('tonnage'), Decimal('0')))['total']
+    # Harga master disimpan per ton; distribusi tonnage juga dalam ton.
+    ton_to_kg = Decimal('1')
 
-    # -- UREA --
-    qty_beli_urea = SalesOrderAllocation.objects.filter(
-        sales_order__date__range=[start_date, end_date], 
-        sales_order__jenis_pupuk__name='UREA'
-    ).aggregate(total=Coalesce(Sum('tonnage'), Decimal('0')))['total']
-
-    # Hitung Nilai Rupiah Modal (harga per ton, tampilkan penuh tanpa pembagian 1000)
-    modal_npk = qty_beli_npk * harga_npk.price_buy
-    modal_urea = qty_beli_urea * harga_urea.price_buy
-    total_modal = modal_npk + modal_urea
-
-    # 4. HITUNG OMZET PENJUALAN (REVENUE)
-    # Logic: Total Tonase dari 'Distribution' dalam periode ini
-    
-    # -- NPK --
+    # 3. HITUNG OMZET PENJUALAN (REVENUE) — basis invoice jika ada, fallback ke tonase x harga master
     qty_jual_npk = Distribution.objects.filter(
         date__range=[start_date, end_date],
         jenis_pupuk__name='NPK'
     ).aggregate(total=Coalesce(Sum('tonnage'), Decimal('0')))['total']
 
-    # -- UREA --
     qty_jual_urea = Distribution.objects.filter(
         date__range=[start_date, end_date],
         jenis_pupuk__name='UREA'
     ).aggregate(total=Coalesce(Sum('tonnage'), Decimal('0')))['total']
 
-    # Hitung Nilai Rupiah Omzet (Menggunakan Harga Jual saat ini)
-    # Note: Jika ingin super akurat, harusnya 'Distribution' menyimpan harga saat transaksi (snapshot).
-    # Di Phase 1 ini kita gunakan Master Harga Jual.
-    omzet_npk = qty_jual_npk * harga_npk.price_sell
-    omzet_urea = qty_jual_urea * harga_urea.price_sell
-    total_omzet = omzet_npk + omzet_urea
+    # Per produk (asumsi harga master per KG; konversi ton -> kg)
+    omzet_npk = qty_jual_npk * harga_npk.price_sell * ton_to_kg
+    omzet_urea = qty_jual_urea * harga_urea.price_sell * ton_to_kg
+    total_omzet_distribution = omzet_npk + omzet_urea
+
+    # Total omzet prefer Invoice (lebih akurat nilai tagihan); jika tidak ada invoice periode ini, pakai distribusi
+    total_omzet_invoice = Invoice.objects.filter(
+        issue_date__range=[start_date, end_date]
+    ).aggregate(total=Coalesce(Sum('total_amount'), Decimal('0')))['total']
+
+    total_omzet = total_omzet_invoice if total_omzet_invoice else total_omzet_distribution
+
+    # 4. HITUNG MODAL PENEBUSAN (HPP / COGS) — gunakan qty terjual x harga beli master (per KG)
+    modal_npk = qty_jual_npk * harga_npk.price_buy * ton_to_kg
+    modal_urea = qty_jual_urea * harga_urea.price_buy * ton_to_kg
+    total_modal = modal_npk + modal_urea
+
+    # Kompatibilitas context lama (tidak dipakai di template): samakan pembelian dengan qty terjual
+    qty_beli_npk = qty_jual_npk
+    qty_beli_urea = qty_jual_urea
 
     # 5. HITUNG BIAYA OPERASIONAL
     # Logic: Sum Nominal dari BiayaOperasional group by Kategori Utama
@@ -400,8 +516,8 @@ def laporan_keuangan(request):
 
     avg_sell_npk = omzet_npk / qty_jual_npk if qty_jual_npk else Decimal('0')
     avg_sell_urea = omzet_urea / qty_jual_urea if qty_jual_urea else Decimal('0')
-    avg_cost_npk = modal_npk / qty_beli_npk if qty_beli_npk else Decimal('0')
-    avg_cost_urea = modal_urea / qty_beli_urea if qty_beli_urea else Decimal('0')
+    avg_cost_npk = modal_npk / qty_jual_npk if qty_jual_npk else Decimal('0')
+    avg_cost_urea = modal_urea / qty_jual_urea if qty_jual_urea else Decimal('0')
 
     # 7. VALUASI ASET (SISA STOK REAL-TIME)
     # Menggunakan StockCard sebagai 'Single Source of Truth'
@@ -410,7 +526,8 @@ def laporan_keuangan(request):
     def get_stock_balance(pupuk_name):
         agg = StockCard.objects.filter(
             date__lte=end_date, # Saldo per tanggal akhir laporan
-            jenis_pupuk__name=pupuk_name
+            jenis_pupuk__name=pupuk_name,
+            stock_type='PHYSICAL'  # hanya stok fisik siap kirim
         ).aggregate(
             masuk=Coalesce(Sum('qty_in'), Decimal('0')),
             keluar=Coalesce(Sum('qty_out'), Decimal('0'))

@@ -26,4 +26,11 @@ urlpatterns = [
     # ==========================
     path('stock-card/', views.stock_card_list, name='stock_card_list'),
     path('opname/', views.stock_opname, name='stock_opname'),
+
+    # ==========================
+    # 5. CATATAN ORDER
+    # ==========================
+    path('order-notes/', views.order_note_list, name='order_note_list'),
+    path('order-notes/create/', views.order_note_create, name='order_note_create'),
+    path('order-notes/<int:pk>/complete/', views.order_note_complete, name='order_note_complete'),
 ]

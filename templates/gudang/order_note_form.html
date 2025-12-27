@@ -1,0 +1,178 @@
+{% extends 'base.html' %}
+{% block content %}
+<div class="row justify-content-center">
+    <div class="col-md-10">
+        <div class="card shadow-sm border-0">
+            <div class="card-header bg-primary text-white d-flex justify-content-between align-items-center">
+                <h5 class="mb-0"><i class="bi bi-journal-text me-2"></i>Catatan Order Baru</h5>
+                <span class="badge bg-white text-primary fs-6">Flexible & multi-item</span>
+            </div>
+            <div class="card-body p-4">
+                <form method="post" id="orderNoteForm">
+                    {% csrf_token %}
+                    <div class="row g-3 mb-4">
+                        <div class="col-md-4">
+                            <label class="form-label">Tanggal Order</label>
+                            {{ form.date }}
+                        </div>
+                        <div class="col-md-4">
+                            <label class="form-label">Kecamatan</label>
+                            {{ form.kecamatan }}
+                        </div>
+                        <div class="col-md-4">
+                            <label class="form-label">Kios</label>
+                            {{ form.kios }}
+                        </div>
+                        <div class="col-12">
+                            <label class="form-label">Catatan (opsional)</label>
+                            {{ form.notes }}
+                        </div>
+                    </div>
+
+                    <hr class="my-4">
+
+                    <div class="d-flex justify-content-between align-items-center mb-3">
+                        <h6 class="text-primary fw-bold mb-0">Rincian Pupuk</h6>
+                    </div>
+
+                    {{ formset.management_form }}
+                    <div id="item-form-list">
+                        {% for f in formset %}
+                        <div class="item-row row g-2 align-items-end mb-2">
+                            <div class="col-md-7">
+                                {{ f.jenis_pupuk }}
+                            </div>
+                            <div class="col-md-4">
+                                <div class="input-group">
+                                    {{ f.tonnage }}
+                                    <span class="input-group-text">Ton</span>
+                                </div>
+                            </div>
+                            <div class="col-md-1 text-center">
+                                {% if formset.can_delete %}
+                                    <div class="form-check d-none">{{ f.DELETE }}</div>
+                                    <button type="button" class="btn btn-danger btn-sm remove-item" title="Hapus Baris">
+                                        <i class="bi bi-trash"></i>
+                                    </button>
+                                {% endif %}
+                            </div>
+                            {% for hidden in f.hidden_fields %}
+                                {{ hidden }}
+                            {% endfor %}
+                            {% if f.errors %}
+                                <div class="col-12 text-danger small">{{ f.errors }}</div>
+                            {% endif %}
+                        </div>
+                        {% endfor %}
+                    </div>
+
+                    <div class="d-flex justify-content-end mb-3">
+                        <button type="button" id="add-item" class="btn btn-sm btn-outline-success">
+                            <i class="bi bi-plus-lg"></i> Tambah Item
+                        </button>
+                    </div>
+
+                    {% if form.errors or formset.non_form_errors %}
+                        <div class="alert alert-danger mt-3">
+                            <b>Gagal Simpan:</b>
+                            {{ form.errors }}
+                            {{ formset.non_form_errors }}
+                        </div>
+                    {% endif %}
+
+                    <div class="d-grid gap-2 mt-4">
+                        <button type="submit" class="btn btn-primary btn-lg">
+                            <i class="bi bi-save me-2"></i>Simpan Catatan Order
+                        </button>
+                        <a href="{% url 'order_note_list' %}" class="btn btn-light text-muted">Batal</a>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+    document.addEventListener('DOMContentLoaded', function() {
+        const kecSelect = document.getElementById('id_kecamatan');
+        const kiosSelect = document.getElementById('id_kios');
+        const kiosDataElement = document.getElementById('kios-data');
+        const kiosData = kiosDataElement ? JSON.parse(kiosDataElement.textContent) : [];
+
+        function refreshKios() {
+            const current = kiosSelect.value;
+            const kecamatanId = kecSelect.value;
+            kiosSelect.innerHTML = '<option value="">---------</option>';
+            kiosData.forEach(item => {
+                if (kecamatanId && String(item.kecamatan_id) !== String(kecamatanId)) {
+                    return;
+                }
+                if (!kecamatanId && item.kecamatan_id) {
+                    return;
+                }
+                const opt = document.createElement('option');
+                opt.value = item.id;
+                opt.textContent = item.name;
+                if (String(item.id) === current) opt.selected = true;
+                kiosSelect.appendChild(opt);
+            });
+
+            const selectedValid = Array.from(kiosSelect.options).some(opt => opt.value && opt.selected);
+            if (!selectedValid && kiosSelect.options.length > 1) {
+                kiosSelect.selectedIndex = 1;
+            }
+        }
+
+        if (kecSelect) {
+            kecSelect.addEventListener('change', refreshKios);
+            refreshKios();
+        }
+
+        const addBtn = document.getElementById('add-item');
+        const formList = document.getElementById('item-form-list');
+        const totalFormsInput = document.getElementById('id_items-TOTAL_FORMS');
+
+        addBtn.addEventListener('click', function() {
+            const rows = formList.getElementsByClassName('item-row');
+            const idx = rows.length;
+            const clone = rows[0].cloneNode(true);
+            clone.querySelectorAll('input, select').forEach(input => {
+                input.value = '';
+                if (input.name) {
+                    input.name = input.name.replace(/items-\d+-/, `items-${idx}-`);
+                    input.id = input.id.replace(/items-\d+-/, `items-${idx}-`);
+                }
+            });
+            const deleteCheck = clone.querySelector('input[name$="-DELETE"]');
+            if (deleteCheck) deleteCheck.checked = false;
+            formList.appendChild(clone);
+            totalFormsInput.value = idx + 1;
+            attachRemove();
+        });
+
+        function attachRemove() {
+            document.querySelectorAll('.remove-item').forEach(btn => {
+                btn.onclick = function() {
+                    const row = this.closest('.item-row');
+                    const rows = formList.getElementsByClassName('item-row');
+                    if (rows.length <= 1) {
+                        alert('Minimal satu item');
+                        return;
+                    }
+                    const del = row.querySelector('input[name$="-DELETE"]');
+                    if (del) {
+                        del.checked = true;
+                        row.style.display = 'none';
+                    } else {
+                        row.remove();
+                        totalFormsInput.value = formList.getElementsByClassName('item-row').length;
+                    }
+                };
+            });
+        }
+
+        attachRemove();
+    });
+</script>
+{{ kios_data|json_script:"kios-data" }}
+{% endblock %}

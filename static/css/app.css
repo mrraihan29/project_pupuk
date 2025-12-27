@@ -271,6 +271,13 @@ body {
   color: var(--dark-green);
 }
 
+.nav-section-toggle.open {
+  background: #eafaf1;
+  border-color: #cdeede;
+  color: #1f8f4d;
+  box-shadow: 0 4px 14px rgba(46, 204, 113, 0.12);
+}
+
 .submenu {
   display: none;
   padding: 4px 0 6px 0;

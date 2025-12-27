@@ -7,14 +7,14 @@ from django.db.models import Sum, Prefetch
 from django.utils import timezone
 
 # Import Models & Forms Baru
-from .models import SalesOrder, SalesOrderAllocation, Distribution, WarehouseTransfer, StockCard
+from .models import SalesOrder, SalesOrderAllocation, Distribution, WarehouseTransfer, StockCard, OrderNote, OrderNoteItem
 from .signals import recompute_stock_balance
 from .forms import (
     SalesOrderForm, AllocationFormSet, 
     DistributionForm, WarehouseTransferForm, 
-    StockOpnameForm
+    StockOpnameForm, OrderNoteForm, OrderNoteItemFormSet
 )
-from core.models import CompanyProfile, JenisPupuk
+from core.models import CompanyProfile, JenisPupuk, Kios
 
 # ==========================================
 # 1. MODUL PENEBUSAN (SO)
@@ -260,3 +260,65 @@ def print_surat_jalan(request, pk):
     }
     # Kita gunakan template khusus print yang bersih dari sidebar
     return render(request, 'gudang/print_surat_jalan.html', context)
+
+
+# ==========================================
+# 6. CATATAN ORDER
+# ==========================================
+@login_required
+def order_note_list(request):
+    orders = OrderNote.objects.filter(is_deleted=False).select_related('kecamatan', 'kios').prefetch_related(
+        Prefetch('items', queryset=OrderNoteItem.objects.select_related('jenis_pupuk'))
+    )
+    return render(request, 'gudang/order_note_list.html', {'orders': orders})
+
+
+@login_required
+def order_note_create(request):
+    if request.method == 'POST':
+        form = OrderNoteForm(request.POST)
+        formset = OrderNoteItemFormSet(request.POST, prefix='items')
+        kios_data = list(Kios.objects.filter(is_active=True).values('id', 'name', 'kecamatan_id'))
+
+        if form.is_valid() and formset.is_valid():
+            items_clean = [f for f in formset.cleaned_data if f and not f.get('DELETE')]
+            if not items_clean:
+                messages.error(request, "Minimal 1 item pupuk diperlukan.")
+            else:
+                try:
+                    with transaction.atomic():
+                        order = form.save()
+                        items = formset.save(commit=False)
+                        for item in items:
+                            item.order = order
+                            item.save()
+                        for deleted in formset.deleted_objects:
+                            deleted.delete()
+                        messages.success(request, "Catatan order disimpan.")
+                        return redirect('order_note_list')
+                except Exception as exc:
+                    messages.error(request, f"Gagal simpan catatan order: {exc}")
+        else:
+            messages.error(request, "Periksa input yang bertanda merah.")
+    else:
+        form = OrderNoteForm()
+        formset = OrderNoteItemFormSet(prefix='items')
+        kios_data = list(Kios.objects.filter(is_active=True).values('id', 'name', 'kecamatan_id'))
+
+    return render(request, 'gudang/order_note_form.html', {
+        'form': form,
+        'formset': formset,
+        'kios_data': kios_data,
+    })
+
+
+@login_required
+def order_note_complete(request, pk):
+    order = get_object_or_404(OrderNote, pk=pk, is_deleted=False)
+    if request.method != 'POST':
+        messages.error(request, "Gunakan tombol selesai untuk menutup order.")
+        return redirect('order_note_list')
+
+    order.mark_done()
+    messages.success(request, "Order ditandai selesai dan disembunyikan.")
+    return redirect('order_note_list')
