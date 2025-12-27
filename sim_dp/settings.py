@@ -22,9 +22,9 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 
 # --- SECURITY CONFIGURATION (Risk R-01 & R-04) ---
 SECRET_KEY = os.getenv('SECRET_KEY') or 'dev-secret-key-change-me'
-DEBUG = os.getenv('DEBUG') == 'True'
+DEBUG = os.getenv('DEBUG', 'False') == 'True'
 _hosts = [h for h in os.getenv('ALLOWED_HOSTS', '').split(',') if h]
-ALLOWED_HOSTS = _hosts if _hosts else (['*'] if DEBUG else [])
+ALLOWED_HOSTS = _hosts if _hosts else []
 
 # Application definition
 INSTALLED_APPS = [
@@ -99,6 +99,11 @@ LANGUAGE_CODE = 'id' # Set Bahasa Indonesia
 TIME_ZONE = 'Asia/Jakarta' # Set Waktu WIB (Penting untuk Jatuh Tempo)
 USE_I18N = True
 USE_TZ = True
+
+# Cookie security (should be True in production; configurable via env)
+CSRF_COOKIE_SECURE = os.getenv('CSRF_COOKIE_SECURE', 'True') == 'True'
+SESSION_COOKIE_SECURE = os.getenv('SESSION_COOKIE_SECURE', 'True') == 'True'
+SESSION_COOKIE_SAMESITE = os.getenv('SESSION_COOKIE_SAMESITE', 'Lax')
 
 # Static files (CSS, JavaScript, Images)
 STATIC_URL = 'static/'

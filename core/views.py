@@ -1,7 +1,7 @@
 from django.shortcuts import render, redirect, get_object_or_404
 from django.urls import reverse
 from django.contrib import messages
-from django.contrib.auth.decorators import login_required
+from django.contrib.auth.decorators import login_required, user_passes_test
 from django.contrib.auth import get_user_model
 from django.contrib.auth.models import Group
 from django.contrib.auth.mixins import LoginRequiredMixin
@@ -259,6 +259,7 @@ def master_harga(request):
 
 
 @login_required
+@user_passes_test(lambda u: u.is_staff)
 def master_data_pupuk(request):
     """Satu halaman untuk jenis pupuk + harga."""
     PriceFormSet = modelformset_factory(FertilizerPrice, form=HargaPupukForm, extra=0)
@@ -379,11 +380,13 @@ def master_data_pupuk(request):
 # MASTER JENIS PUPUK (CRUD)
 # ==========================================
 @login_required
+@user_passes_test(lambda u: u.is_staff)
 def jenis_pupuk_list(request):
     return redirect('master_data_pupuk')
 
 
 @login_required
+@user_passes_test(lambda u: u.is_staff)
 def jenis_pupuk_edit(request, pk):
     return redirect(f"{reverse('master_data_pupuk')}?edit={pk}")
 
@@ -418,6 +421,7 @@ def jenis_pupuk_delete(request, pk):
 # VIEW LAPORAN KEUANGAN (THE CORE LOGIC)
 # ==========================================
 @login_required
+@user_passes_test(lambda u: u.is_staff)
 def laporan_keuangan(request):
     """
     Laporan Laba Rugi (Profit & Loss Statement).
@@ -436,9 +440,12 @@ def laporan_keuangan(request):
     harga_npk = FertilizerPrice.objects.select_related('jenis_pupuk').filter(jenis_pupuk__code='NPK').first()
     harga_urea = FertilizerPrice.objects.select_related('jenis_pupuk').filter(jenis_pupuk__code='UREA').first()
 
-    # Jika harga tidak ditemukan, lemparkan info agar pengguna mengisi master harga
+    # Validasi harga master
     if not harga_npk or not harga_urea:
         messages.error(request, "Harga pupuk belum dikonfigurasi. Silakan set di Master Harga.")
+        return redirect('master_harga')
+    if harga_npk.price_buy <= 0 or harga_npk.price_sell <= 0 or harga_urea.price_buy <= 0 or harga_urea.price_sell <= 0:
+        messages.error(request, "Harga pupuk harus lebih dari 0. Perbarui di Master Harga.")
         return redirect('master_harga')
 
     # Harga master disimpan per ton; distribusi tonnage juga dalam ton.

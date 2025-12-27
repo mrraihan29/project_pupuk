@@ -66,6 +66,14 @@ class HargaPupukForm(forms.ModelForm):
             'price_sell': forms.NumberInput(attrs={'class': 'form-control', 'step': '100'}),
         }
 
+    def clean(self):
+        cleaned = super().clean()
+        pb = cleaned.get('price_buy') or 0
+        ps = cleaned.get('price_sell') or 0
+        if pb <= 0 or ps <= 0:
+            raise forms.ValidationError('Harga beli/jual harus lebih dari 0.')
+        return cleaned
+
 
 # ==========================================
 # FORM JENIS PUPUK (CRUD dinamis)
