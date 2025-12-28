@@ -23,18 +23,12 @@ RUN apt-get update \
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Create non-root user early
-RUN useradd --create-home appuser
 
 # Create writable static directory
-RUN mkdir -p /staticfiles \
- && chown -R appuser:appuser /staticfiles
+RUN mkdir -p /staticfiles
 
 # Copy project source
-COPY --chown=appuser:appuser . .
-
-# Switch to non-root
-USER appuser
+COPY . .
 
 EXPOSE 8000
 
