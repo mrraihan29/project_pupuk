@@ -6,9 +6,17 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
     PIP_DISABLE_PIP_VERSION_CHECK=on
 WORKDIR /app
 
-# System dependencies
+# System dependencies (includes Cairo toolchain for PDF rendering)
 RUN apt-get update \
- && apt-get install -y --no-install-recommends build-essential libpq-dev curl \
+ && apt-get install -y --no-install-recommends \
+     build-essential \
+     libpq-dev \
+     curl \
+     libcairo2-dev \
+     libffi-dev \
+     pkg-config \
+     libpango1.0-dev \
+     libgdk-pixbuf-2.0-0 \
  && rm -rf /var/lib/apt/lists/*
 
 # Install dependencies (cache-friendly)
