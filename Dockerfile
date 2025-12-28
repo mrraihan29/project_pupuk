@@ -26,7 +26,11 @@ RUN pip install --no-cache-dir -r requirements.txt
 # Create non-root user early
 RUN useradd --create-home appuser
 
-# Copy project source as non-root
+# Create writable static directory
+RUN mkdir -p /staticfiles \
+ && chown -R appuser:appuser /staticfiles
+
+# Copy project source
 COPY --chown=appuser:appuser . .
 
 # Switch to non-root
