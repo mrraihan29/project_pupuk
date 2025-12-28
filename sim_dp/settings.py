@@ -105,10 +105,18 @@ CSRF_COOKIE_SECURE = os.getenv('CSRF_COOKIE_SECURE', 'True') == 'True'
 SESSION_COOKIE_SECURE = os.getenv('SESSION_COOKIE_SECURE', 'True') == 'True'
 SESSION_COOKIE_SAMESITE = os.getenv('SESSION_COOKIE_SAMESITE', 'Lax')
 
-# Static files (CSS, JavaScript, Images)
+# Konfigurasi Static Files (CSS, JS)
 STATIC_URL = 'static/'
-STATICFILES_DIRS = [BASE_DIR / 'static']
-STATIC_ROOT = BASE_DIR / 'staticfiles'
+
+# Folder tempat mengumpulkan static files saat deploy
+STATIC_ROOT = os.path.join(BASE_DIR, 'staticfiles')
+
+# Folder tempat kita menaruh CSS custom (yang sudah ada)
+STATICFILES_DIRS = [
+    os.path.join(BASE_DIR, 'static'),
+]
+
+# Aktifkan kompresi dan caching otomatis Whitenoise
 STATICFILES_STORAGE = 'whitenoise.storage.CompressedManifestStaticFilesStorage'
 
 # Default primary key field type
