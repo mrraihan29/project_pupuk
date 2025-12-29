@@ -25,6 +25,8 @@ SECRET_KEY = os.getenv('SECRET_KEY') or 'dev-secret-key-change-me'
 DEBUG = os.getenv('DEBUG', 'False') == 'True'
 _hosts = [h for h in os.getenv('ALLOWED_HOSTS', '').split(',') if h]
 ALLOWED_HOSTS = _hosts if _hosts else []
+_origins = os.getenv('CSRF_TRUSTED_ORIGINS', '').split(',')
+CSRF_TRUSTED_ORIGINS = _origins if _origins else []
 
 # Application definition
 INSTALLED_APPS = [
