@@ -21,12 +21,35 @@ load_dotenv()
 BASE_DIR = Path(__file__).resolve().parent.parent
 
 # --- SECURITY CONFIGURATION (Risk R-01 & R-04) ---
-SECRET_KEY = os.getenv('SECRET_KEY') or 'dev-secret-key-change-me'
-DEBUG = os.getenv('DEBUG', 'False') == 'True'
-_hosts = [h for h in os.getenv('ALLOWED_HOSTS', '').split(',') if h]
-ALLOWED_HOSTS = _hosts if _hosts else []
-_origins = os.getenv('CSRF_TRUSTED_ORIGINS', '').split(',')
-CSRF_TRUSTED_ORIGINS = _origins if _origins else []
+# 1. SECRET_KEY: Wajib ada. Jika tidak, aplikasi akan stop (Fail Fast).
+SECRET_KEY = os.getenv('SECRET_KEY')
+if not SECRET_KEY:
+    raise RuntimeError("SECRET_KEY environment variable must be set and non-empty.")
+
+# 2. DEBUG: Default False untuk keamanan
+DEBUG = os.getenv('DEBUG', 'false').lower() in ('true', '1', 'yes')
+
+# 3. ALLOWED_HOSTS: Wajib ada saat Production
+_hosts_env = os.getenv('ALLOWED_HOSTS', '')
+if _hosts_env:
+    # Split string berdasarkan koma dan bersihkan spasi
+    ALLOWED_HOSTS = [h.strip() for h in _hosts_env.split(',') if h.strip()]
+else:
+    if not DEBUG:
+        # Error jika di Production tapi lupa setting domain
+        raise RuntimeError(
+            "ALLOWED_HOSTS environment variable must be set when DEBUG=False. "
+            "Please configure ALLOWED_HOSTS for your deployment."
+        )
+    # Jika di Local (DEBUG=True), biarkan kosong (Django otomatis izinkan localhost)
+    ALLOWED_HOSTS = []
+
+# 4. CSRF_TRUSTED_ORIGINS: Wajib untuk HTTPS/Coolify
+_origins_env = os.getenv('CSRF_TRUSTED_ORIGINS', '')
+if _origins_env:
+    CSRF_TRUSTED_ORIGINS = [url.strip() for url in _origins_env.split(',') if url.strip()]
+else:
+    CSRF_TRUSTED_ORIGINS = []
 
 # Application definition
 INSTALLED_APPS = [
