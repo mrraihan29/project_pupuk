@@ -132,7 +132,6 @@ SESSION_COOKIE_SAMESITE = os.getenv('SESSION_COOKIE_SAMESITE', 'Lax')
 
 # Konfigurasi Static Files (CSS, JS)
 STATIC_URL = 'static/'
-WHITENOISE_MANIFEST_STRICT = False
 # Folder tempat mengumpulkan static files saat deploy
 STATIC_ROOT = os.path.join(BASE_DIR, 'staticfiles')
 
@@ -202,6 +201,7 @@ else:
             "BACKEND": "whitenoise.storage.CompressedManifestStaticFilesStorage",
         },
     }
+WHITENOISE_MANIFEST_STRICT = False
 
 # Auth redirects
 LOGIN_URL = '/accounts/login/'
