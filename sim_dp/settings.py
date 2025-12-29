@@ -142,7 +142,7 @@ STATICFILES_DIRS = [
 ]
 
 # Aktifkan kompresi dan caching otomatis Whitenoise
-STATICFILES_STORAGE = 'whitenoise.storage.CompressedStaticFilesStorage'
+# STATICFILES_STORAGE = 'whitenoise.storage.CompressedStaticFilesStorage'
 # Default primary key field type
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 
