@@ -146,9 +146,62 @@ STATICFILES_STORAGE = 'whitenoise.storage.CompressedStaticFilesStorage'
 # Default primary key field type
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 
-# MEDIA CONFIGURATION (Untuk Upload Foto)
-MEDIA_URL = '/media/'
-MEDIA_ROOT = BASE_DIR / 'media'
+# --- KONFIGURASI PENYIMPANAN FILE (Cloudflare R2 vs Local) ---
+
+# Cek apakah variabel R2_ACCESS_KEY_ID sudah disetting di Coolify
+if os.getenv('R2_ACCESS_KEY_ID'):
+    # === PRODUCTION (Cloudflare R2) ===
+    # Otomatis dipakai saat website berjalan di Coolify
+    
+    # 1. Kredensial dari Environment Variables Coolify
+    AWS_ACCESS_KEY_ID = os.getenv('R2_ACCESS_KEY_ID')
+    AWS_SECRET_ACCESS_KEY = os.getenv('R2_SECRET_ACCESS_KEY')
+    AWS_STORAGE_BUCKET_NAME = os.getenv('R2_BUCKET_NAME')
+    AWS_S3_ENDPOINT_URL = os.getenv('R2_ENDPOINT_URL')
+
+    # 2. Konfigurasi agar kompatibel dengan R2
+    AWS_S3_OBJECT_PARAMETERS = {
+        'CacheControl': 'max-age=86400', # Cache gambar 1 hari agar cepat
+    }
+    AWS_S3_SIGNATURE_VERSION = 's3v4'
+    AWS_S3_REGION_NAME = 'auto'  # R2 set auto
+    AWS_S3_FILE_OVERWRITE = False # Jangan timpa file jika nama sama
+    
+    # 3. Gunakan library django-storages
+    STORAGES = {
+        "default": {
+            "BACKEND": "storages.backends.s3.S3Storage",
+            "OPTIONS": {
+                "location": "media", # Simpan di folder /media di Cloudflare
+            },
+        },
+        "staticfiles": {
+            "BACKEND": "whitenoise.storage.CompressedManifestStaticFilesStorage",
+        },
+    }
+
+    # 4. URL Public untuk akses gambar
+    # Ini akan menggunakan URL Public R2 yang nanti Anda setting di Cloudflare
+    # Format: https://pub-<kode>.r2.dev/media/
+    # Jika belum diset, kode ini akan mencoba menebak (tapi sebaiknya diset di .env jika punya custom domain)
+    MEDIA_URL = f'{AWS_S3_ENDPOINT_URL}/{AWS_STORAGE_BUCKET_NAME}/media/' 
+
+else:
+    # === DEVELOPMENT (Laptop / Localhost) ===
+    # Dipakai saat Anda coding di laptop
+    
+    MEDIA_URL = '/media/'
+    MEDIA_ROOT = BASE_DIR / 'media'
+    
+    # Gunakan penyimpanan hardisk laptop biasa
+    STORAGES = {
+        "default": {
+            "BACKEND": "django.core.files.storage.FileSystemStorage",
+        },
+        "staticfiles": {
+            "BACKEND": "whitenoise.storage.CompressedManifestStaticFilesStorage",
+        },
+    }
 
 # Auth redirects
 LOGIN_URL = '/accounts/login/'
