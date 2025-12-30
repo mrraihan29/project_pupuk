@@ -62,8 +62,8 @@ class HargaPupukForm(forms.ModelForm):
         model = FertilizerPrice
         fields = ['price_buy', 'price_sell']
         widgets = {
-            'price_buy': forms.NumberInput(attrs={'class': 'form-control', 'step': '100'}),
-            'price_sell': forms.NumberInput(attrs={'class': 'form-control', 'step': '100'}),
+            'price_buy': forms.NumberInput(attrs={'class': 'form-control'}),
+            'price_sell': forms.NumberInput(attrs={'class': 'form-control'}),
         }
 
     def clean(self):

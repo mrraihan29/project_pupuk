@@ -127,9 +127,9 @@ class Armada(models.Model):
 # ==========================================
 class FertilizerPrice(models.Model):
     jenis_pupuk = models.OneToOneField(JenisPupuk, on_delete=models.CASCADE, verbose_name="Jenis Pupuk", related_name='price_config')
-    
-    price_buy = models.DecimalField("Harga Tebus (Per KG)", max_digits=15, decimal_places=2)
-    price_sell = models.DecimalField("Harga Jual (Per KG)", max_digits=15, decimal_places=2)
+    # Simpan harga per ton agar konsisten dengan tampilan dan laporan
+    price_buy = models.DecimalField("Harga Tebus (Per Ton)", max_digits=15, decimal_places=2)
+    price_sell = models.DecimalField("Harga Jual (Per Ton)", max_digits=15, decimal_places=2)
     updated_at = models.DateTimeField(auto_now=True)
 
     def __str__(self):
