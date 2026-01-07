@@ -9,7 +9,8 @@ from django.utils import timezone
 # Import Models & Forms
 from .models import Invoice, Payment, BiayaOperasional
 from .forms import PaymentForm, BiayaOperasionalForm
-from core.models import Armada, CompanyProfile
+from core.models import Armada, CompanyProfile, Kabupaten
+from core.utils import get_scope_kabupaten, scope_by_kabupaten
 
 # Decorator Custom (Pastikan Anda punya file ini, jika tidak, hapus baris ini)
 from core.decorators import owner_required
@@ -19,9 +20,13 @@ from core.decorators import owner_required
 # ==========================================
 @login_required
 def invoice_list(request):
-    invoices = Invoice.objects.select_related('distribution__kios').order_by('status', 'due_date')
+    kab = get_scope_kabupaten(request)
+    kab_options = Kabupaten.objects.all().order_by('name') if request.user.is_superuser else Kabupaten.objects.none()
+    invoices = Invoice.objects.select_related('distribution__kios__kecamatan__kabupaten').order_by('status', 'due_date')
+    if kab:
+        invoices = invoices.filter(distribution__kios__kecamatan__kabupaten=kab)
 
-    agg = Invoice.objects.filter(status__in=['UNPAID', 'PARTIAL']).aggregate(
+    agg = invoices.filter(status__in=['UNPAID', 'PARTIAL']).aggregate(
         total_amount=Sum('total_amount'),
         total_paid=Sum('total_paid')
     )
@@ -30,7 +35,9 @@ def invoice_list(request):
 
     return render(request, 'keuangan/invoice_list.html', {
         'invoices': invoices,
-        'total_piutang': sisa_piutang
+        'total_piutang': sisa_piutang,
+        'kab_options': kab_options,
+        'selected_kabupaten': kab.id if kab else None,
     })
 
 @login_required
@@ -54,17 +61,32 @@ def payment_create(request, pk):
 # ==========================================
 @login_required
 def ops_list(request):
-    ops = BiayaOperasional.objects.select_related('armada').order_by('-tanggal')
-    return render(request, 'keuangan/ops_list.html', {'ops': ops})
+    kab = get_scope_kabupaten(request)
+    kab_options = Kabupaten.objects.all().order_by('name') if request.user.is_superuser else Kabupaten.objects.none()
+    ops = BiayaOperasional.objects.select_related('armada', 'kabupaten').order_by('-tanggal')
+    if kab:
+        ops = ops.filter(kabupaten=kab)
+    return render(request, 'keuangan/ops_list.html', {
+        'ops': ops,
+        'kab_options': kab_options,
+        'selected_kabupaten': kab.id if kab else None,
+    })
 
 @login_required
 def ops_create(request):
+    kab = get_scope_kabupaten(request)
     if request.method == 'POST':
         # ===>>> WAJIB ADA: request.FILES <<<===
         form = BiayaOperasionalForm(request.POST, request.FILES)
+        if kab and not request.user.is_superuser:
+            form.fields['kabupaten'].queryset = form.fields['kabupaten'].queryset.filter(pk=kab.pk)
+            form.data = form.data.copy()
+            form.data['kabupaten'] = kab.pk
         
         if form.is_valid():
             biaya = form.save(commit=False)
+            if kab and not request.user.is_superuser:
+                biaya.kabupaten = kab
             biaya.status = 'PROSES'  # Default status menunggu approval
             biaya.save()
             messages.success(request, 'Pengeluaran berhasil dicatat, menunggu persetujuan.')
@@ -73,7 +95,9 @@ def ops_create(request):
             # Ini akan memunculkan error di HTML jika ada input salah
             messages.error(request, 'Gagal menyimpan. Periksa form kembali.')
     else:
-        form = BiayaOperasionalForm(initial={'tanggal': timezone.localdate()})
+        form = BiayaOperasionalForm(initial={'tanggal': timezone.localdate(), 'kabupaten': kab.pk if kab else None})
+        if kab and not request.user.is_superuser:
+            form.fields['kabupaten'].queryset = form.fields['kabupaten'].queryset.filter(pk=kab.pk)
 
     return render(request, 'keuangan/ops_form.html', {'form': form})
 
@@ -104,6 +128,7 @@ def kartu_kontrol_armada(request):
     armada_list = Armada.objects.all()
     selected_armada = None
     logs = []
+    kab = get_scope_kabupaten(request)
     
     armada_id = request.GET.get('armada_id')
     if armada_id:
@@ -113,7 +138,10 @@ def kartu_kontrol_armada(request):
             kategori_utama='ARMADA',
             status='SELESAI',
             armada=selected_armada
-        ).order_by('-tanggal')
+        )
+        if kab:
+            logs = logs.filter(kabupaten=kab)
+        logs = logs.order_by('-tanggal')
 
     return render(request, 'keuangan/kartu_kontrol.html', {
         'armada_list': armada_list,

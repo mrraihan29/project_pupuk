@@ -20,6 +20,10 @@
             {{ form.email }}
           </div>
           <div class="col-12">
+            <label class="form-label">Kabupaten</label>
+            {{ form.kabupaten }}
+          </div>
+          <div class="col-12">
             <label class="form-label">Peran</label>
             {{ form.role }}
           </div>
@@ -52,6 +56,7 @@
           <tr>
             <th>Username</th>
             <th>Email</th>
+            <th>Kabupaten</th>
             <th>Peran</th>
             <th class="text-center">Status</th>
             <th class="text-center">Aksi</th>
@@ -62,6 +67,7 @@
           <tr>
             <td>{{ u.username }}</td>
             <td>{{ u.email|default:"-" }}</td>
+            <td>{{ u.profile.kabupaten|default:"-" }}</td>
             <td>
               {% if u.groups.first %}
                 <span class="badge bg-light text-dark border">{{ u.groups.first.name }}</span>

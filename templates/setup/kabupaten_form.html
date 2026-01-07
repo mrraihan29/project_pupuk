@@ -1,31 +1,29 @@
 {% extends 'base.html' %}
-{% block page_title %}Edit Kecamatan{% endblock %}
+{% block page_title %}Edit Kabupaten{% endblock %}
 {% block content %}
 <div class="card shadow-sm border-0">
   <div class="card-header bg-white">
-    <h6 class="mb-0 fw-bold">Edit Kecamatan</h6>
+    <h6 class="mb-0 fw-bold">Edit Kabupaten</h6>
   </div>
   <div class="card-body">
     <form method="post" class="row g-3">
       {% csrf_token %}
       <div class="col-12">
-        <label class="form-label">Nama Kecamatan</label>
+        <label class="form-label">Nama Kabupaten</label>
         {{ form.name }}
       </div>
       <div class="col-md-6">
         <label class="form-label">Kode (opsional)</label>
         {{ form.code }}
       </div>
-      <div class="col-md-6">
-        <label class="form-label">Kabupaten</label>
-        {{ form.kabupaten }}
-      </div>
-      <div class="col-md-6">
-        <label class="form-label">Target Tahunan (Ton)</label>
-        {{ form.target_tonnage }}
+      <div class="col-md-6 d-flex align-items-center pt-3">
+        <div class="form-check mt-2">
+          {{ form.is_active }}
+          <label class="form-check-label">Aktif</label>
+        </div>
       </div>
       <div class="col-12 d-flex justify-content-end gap-2">
-        <a href="{% url 'setup_kecamatan' %}" class="btn btn-light border">Batal</a>
+        <a href="{% url 'setup_kabupaten' %}" class="btn btn-light border">Batal</a>
         <button type="submit" class="btn btn-success px-4">Simpan</button>
       </div>
     </form>

@@ -14,7 +14,8 @@ from .forms import (
     DistributionForm, WarehouseTransferForm, 
     StockOpnameForm, OrderNoteForm, OrderNoteItemFormSet
 )
-from core.models import CompanyProfile, JenisPupuk, Kios
+from core.models import CompanyProfile, JenisPupuk, Kios, Kabupaten
+from core.utils import scope_by_kabupaten, get_scope_kabupaten
 
 # ==========================================
 # 1. MODUL PENEBUSAN (SO)
@@ -24,12 +25,20 @@ def so_list(request):
     """
     Daftar Sales Order (Penebusan).
     """
+    kab = get_scope_kabupaten(request)
+    kab_options = Kabupaten.objects.all().order_by('name') if request.user.is_superuser else Kabupaten.objects.none()
     # Ambil semua data SO, urutkan dari yang terbaru
     orders = SalesOrder.objects.select_related('jenis_pupuk') \
-                            .prefetch_related('allocations') \
+                            .prefetch_related('allocations__kecamatan__kabupaten') \
                             .order_by('-date')
+    if kab:
+        orders = orders.filter(allocations__kecamatan__kabupaten=kab).distinct()
     
-    return render(request, 'gudang/so_list.html', {'orders': orders})
+    return render(request, 'gudang/so_list.html', {
+        'orders': orders,
+        'kab_options': kab_options,
+        'selected_kabupaten': kab.id if kab else None,
+    })
 
 @login_required
 def so_create(request):
@@ -66,6 +75,11 @@ def so_create(request):
     else:
         form = SalesOrderForm()
         formset = AllocationFormSet()
+    kab = get_scope_kabupaten(request)
+    if kab:
+        # Batasi pilihan kecamatan di formset sesuai kabupaten user
+        for form_alloc in formset.forms:
+            form_alloc.fields['kecamatan'].queryset = form_alloc.fields['kecamatan'].queryset.filter(kabupaten=kab)
     
     return render(request, 'gudang/so_form.html', {
         'form': form,
@@ -79,8 +93,11 @@ def so_create(request):
 @login_required
 def transfer_list(request):
     """Riwayat Perpindahan Stok (Virtual -> Fisik)"""
+    kab = get_scope_kabupaten(request)
     transfers = WarehouseTransfer.objects.select_related('source_so__jenis_pupuk') \
                                          .order_by('-date')
+    if kab:
+        transfers = transfers.filter(source_so__allocations__kecamatan__kabupaten=kab).distinct()
     return render(request, 'gudang/transfer_list.html', {'transfers': transfers})
 
 @login_required
@@ -116,15 +133,23 @@ def distribution_list(request):
     data_surat_jalan = Distribution.objects.select_related(
         'kios', 'armada', 'jenis_pupuk', 'source_so', 'invoice' 
     ).order_by('-date', '-created_at')
-    
+    data_surat_jalan = scope_by_kabupaten(data_surat_jalan, request.user, 'kios__kecamatan__kabupaten')
+    kab = get_scope_kabupaten(request)
+    kab_options = Kabupaten.objects.all().order_by('name') if request.user.is_superuser else Kabupaten.objects.none()
     return render(request, 'gudang/distribution_list.html', {
-        'dist_list': data_surat_jalan 
+        'dist_list': data_surat_jalan,
+        'kab_options': kab_options,
+        'selected_kabupaten': kab.id if kab else None,
     })
 
 @login_required
 def distribution_create(request):
+    kab = get_scope_kabupaten(request)
     if request.method == 'POST':
         form = DistributionForm(request.POST)
+        if kab:
+            form.fields['kios'].queryset = Kios.objects.filter(is_active=True, kecamatan__kabupaten=kab)
+            form.fields['source_so'].queryset = SalesOrder.objects.filter(is_closed=False, allocations__kecamatan__kabupaten=kab).distinct()
         if form.is_valid():
             try:
                 dist = form.save()
@@ -136,6 +161,9 @@ def distribution_create(request):
             messages.error(request, "Form tidak valid. Cek apakah Stok Cukup?")
     else:
         form = DistributionForm()
+        if kab:
+            form.fields['kios'].queryset = Kios.objects.filter(is_active=True, kecamatan__kabupaten=kab)
+            form.fields['source_so'].queryset = SalesOrder.objects.filter(is_closed=False, allocations__kecamatan__kabupaten=kab).distinct()
 
     return render(request, 'gudang/distribution_form.html', {'form': form})
 
@@ -270,15 +298,26 @@ def order_note_list(request):
     orders = OrderNote.objects.filter(is_deleted=False).select_related('kecamatan', 'kios').prefetch_related(
         Prefetch('items', queryset=OrderNoteItem.objects.select_related('jenis_pupuk'))
     )
-    return render(request, 'gudang/order_note_list.html', {'orders': orders})
+    orders = scope_by_kabupaten(orders, request.user, 'kecamatan__kabupaten')
+    kab = get_scope_kabupaten(request)
+    kab_options = Kabupaten.objects.all().order_by('name') if request.user.is_superuser else Kabupaten.objects.none()
+    return render(request, 'gudang/order_note_list.html', {
+        'orders': orders,
+        'kab_options': kab_options,
+        'selected_kabupaten': kab.id if kab else None,
+    })
 
 
 @login_required
 def order_note_create(request):
+    kab = get_scope_kabupaten(request)
     if request.method == 'POST':
         form = OrderNoteForm(request.POST)
         formset = OrderNoteItemFormSet(request.POST, prefix='items')
-        kios_data = list(Kios.objects.filter(is_active=True).values('id', 'name', 'kecamatan_id'))
+        kios_qs = Kios.objects.filter(is_active=True)
+        if kab:
+            kios_qs = kios_qs.filter(kecamatan__kabupaten=kab)
+        kios_data = list(kios_qs.values('id', 'name', 'kecamatan_id'))
 
         if form.is_valid() and formset.is_valid():
             items_clean = [f for f in formset.cleaned_data if f and not f.get('DELETE')]
@@ -303,7 +342,14 @@ def order_note_create(request):
     else:
         form = OrderNoteForm()
         formset = OrderNoteItemFormSet(prefix='items')
-        kios_data = list(Kios.objects.filter(is_active=True).values('id', 'name', 'kecamatan_id'))
+        kios_qs = Kios.objects.filter(is_active=True)
+        if kab:
+            kios_qs = kios_qs.filter(kecamatan__kabupaten=kab)
+        kios_data = list(kios_qs.values('id', 'name', 'kecamatan_id'))
+
+    if kab:
+        form.fields['kecamatan'].queryset = form.fields['kecamatan'].queryset.filter(kabupaten=kab)
+        form.fields['kios'].queryset = form.fields['kios'].queryset.filter(kecamatan__kabupaten=kab)
 
     return render(request, 'gudang/order_note_form.html', {
         'form': form,

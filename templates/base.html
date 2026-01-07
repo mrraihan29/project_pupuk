@@ -108,6 +108,10 @@
                             <i class="bi bi-building"></i>
                             <span>Company Profile</span>
                         </a>
+                        <a class="nav-link{% if current_url == 'setup_kabupaten' %} active{% endif %}" href="{% url 'setup_kabupaten' %}" title="Master Kabupaten">
+                            <i class="bi bi-geo"></i>
+                            <span>Master Kabupaten</span>
+                        </a>
                         <a class="nav-link{% if current_url == 'setup_kecamatan' %} active{% endif %}" href="{% url 'setup_kecamatan' %}" title="Master Kecamatan">
                             <i class="bi bi-geo-alt"></i>
                             <span>Master Kecamatan</span>

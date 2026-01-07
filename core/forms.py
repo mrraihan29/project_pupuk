@@ -4,7 +4,7 @@ from django.contrib.auth import get_user_model
 from django.contrib.auth.forms import SetPasswordForm
 
 # Import model-model baru
-from .models import Kios, KiosAllocation, Armada, FertilizerPrice, Kecamatan, JenisPupuk, CompanyProfile
+from .models import Kios, KiosAllocation, Armada, FertilizerPrice, Kecamatan, JenisPupuk, CompanyProfile, Kabupaten, UserProfile
 
 # ==========================================
 # FORM KIOS (Update: district -> kecamatan)
@@ -113,11 +113,26 @@ class CompanyProfileForm(forms.ModelForm):
 class KecamatanForm(forms.ModelForm):
     class Meta:
         model = Kecamatan
-        fields = ['name', 'code', 'target_tonnage']
+        fields = ['name', 'code', 'kabupaten', 'target_tonnage']
         widgets = {
             'name': forms.TextInput(attrs={'class': 'form-control', 'placeholder': 'Nama Kecamatan'}),
             'code': forms.TextInput(attrs={'class': 'form-control', 'placeholder': 'Kode (opsional)'}),
+            'kabupaten': forms.Select(attrs={'class': 'form-select'}),
             'target_tonnage': forms.NumberInput(attrs={'class': 'form-control', 'step': '0.01'}),
+        }
+
+
+# ==========================================
+# FORM KABUPATEN
+# ==========================================
+class KabupatenForm(forms.ModelForm):
+    class Meta:
+        model = Kabupaten
+        fields = ['name', 'code', 'is_active']
+        widgets = {
+            'name': forms.TextInput(attrs={'class': 'form-control', 'placeholder': 'Nama Kabupaten'}),
+            'code': forms.TextInput(attrs={'class': 'form-control', 'placeholder': 'Kode (opsional)'}),
+            'is_active': forms.CheckboxInput(attrs={'class': 'form-check-input'}),
         }
 
 
@@ -137,6 +152,14 @@ class UserCreateForm(forms.ModelForm):
         label='Peran',
     )
 
+    kabupaten = forms.ModelChoiceField(
+        queryset=Kabupaten.objects.filter(is_active=True),
+        required=False,
+        widget=forms.Select(attrs={'class': 'form-select'}),
+        label='Kabupaten',
+        help_text='Wajib untuk non-superuser; kosongkan hanya untuk superuser.',
+    )
+
     password1 = forms.CharField(label='Password', widget=forms.PasswordInput(attrs={'class': 'form-control'}))
     password2 = forms.CharField(label='Ulangi Password', widget=forms.PasswordInput(attrs={'class': 'form-control'}))
 
@@ -154,6 +177,9 @@ class UserCreateForm(forms.ModelForm):
         p2 = cleaned.get('password2')
         if p1 and p2 and p1 != p2:
             raise forms.ValidationError('Password tidak sama.')
+        kabupaten = cleaned.get('kabupaten')
+        if not self.instance.is_superuser and not kabupaten:
+            raise forms.ValidationError('Kabupaten wajib diisi untuk admin/staff.')
         return cleaned
 
     def save(self, commit=True):
@@ -164,6 +190,7 @@ class UserCreateForm(forms.ModelForm):
             user.set_password(self.cleaned_data['password1'])
             user.save()
             self._assign_group(user)
+            self._assign_kabupaten(user)
         return user
 
     def _assign_group(self, user):
@@ -173,6 +200,12 @@ class UserCreateForm(forms.ModelForm):
         group, _ = Group.objects.get_or_create(name=group_name)
         user.groups.clear()
         user.groups.add(group)
+
+    def _assign_kabupaten(self, user):
+        kab = self.cleaned_data.get('kabupaten')
+        profile, _ = UserProfile.objects.get_or_create(user=user)
+        profile.kabupaten = kab
+        profile.save(update_fields=['kabupaten'])
 
 
 class UserSetPasswordForm(SetPasswordForm):

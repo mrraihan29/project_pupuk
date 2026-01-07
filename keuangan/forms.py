@@ -47,10 +47,11 @@ class PaymentForm(forms.ModelForm):
 class BiayaOperasionalForm(forms.ModelForm):
     class Meta:
         model = BiayaOperasional
-        fields = ['tanggal', 'kategori_utama', 'armada', 'deskripsi', 'nominal', 'bukti_foto']
+        fields = ['tanggal', 'kategori_utama', 'kabupaten', 'armada', 'deskripsi', 'nominal', 'bukti_foto']
         widgets = {
             'tanggal': forms.DateInput(attrs={'class': 'form-control', 'type': 'date'}),
             'kategori_utama': forms.Select(attrs={'class': 'form-select'}),
+            'kabupaten': forms.Select(attrs={'class': 'form-select'}),
             'armada': forms.Select(attrs={'class': 'form-select'}),  # tambahkan ini
             'deskripsi': forms.TextInput(attrs={'class': 'form-control', 'placeholder': 'Contoh: Bensin Truk Nopol H-1234'}),
             'nominal': forms.NumberInput(attrs={'class': 'form-control', 'placeholder': 'Rp ...'}),

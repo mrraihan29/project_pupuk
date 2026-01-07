@@ -2,7 +2,7 @@ from django.db import models
 from django.core.exceptions import ValidationError
 from django.utils import timezone
 # Import Armada untuk relasi Kartu Kontrol
-from core.models import Armada 
+from core.models import Armada, Kabupaten 
 from decimal import Decimal
 
 # ==========================================
@@ -26,6 +26,8 @@ class BiayaOperasional(models.Model):
     
     # RESTORASI FITUR: Relasi ke Armada (Nullable, karena biaya kantor tidak butuh mobil)
     armada = models.ForeignKey(Armada, on_delete=models.SET_NULL, null=True, blank=True, related_name='ops_list', verbose_name="Pilih Armada (Jika ada)")
+
+    kabupaten = models.ForeignKey(Kabupaten, on_delete=models.PROTECT, null=True, blank=True, related_name='ops_list')
     
     deskripsi = models.TextField("Keterangan Detail", max_length=255)
     nominal = models.DecimalField("Jumlah (Rp)", max_digits=15, decimal_places=2)

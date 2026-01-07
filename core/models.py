@@ -1,5 +1,6 @@
 from django.db import models
 from django.utils import timezone
+from django.conf import settings
 from decimal import Decimal
 
 # ==========================================
@@ -24,11 +25,28 @@ class CompanyProfile(models.Model):
         verbose_name_plural = "Profil Perusahaan"
 
 # ==========================================
-# 2. MASTER WILAYAH (KECAMATAN)
+# 2. MASTER WILAYAH (KABUPATEN & KECAMATAN)
 # ==========================================
+class Kabupaten(models.Model):
+    name = models.CharField("Nama Kabupaten", max_length=100, unique=True)
+    code = models.CharField("Kode", max_length=10, blank=True, null=True)
+    is_active = models.BooleanField(default=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    def __str__(self):
+        return self.name
+
+    class Meta:
+        verbose_name = "Kabupaten"
+        verbose_name_plural = "Kabupaten"
+        ordering = ['name']
+
+
 class Kecamatan(models.Model):
     name = models.CharField("Nama Kecamatan", max_length=100, unique=True)
     code = models.CharField("Kode Wilayah", max_length=10, blank=True, null=True)
+    kabupaten = models.ForeignKey(Kabupaten, on_delete=models.PROTECT, related_name='kecamatan_list', null=True, blank=True)
     
     # TAMBAHAN: Target Tahunan (Penting untuk Laporan Realisasi)
     target_tonnage = models.DecimalField("Target Tahunan (Ton)", max_digits=10, decimal_places=2, default=Decimal('0'))
@@ -78,6 +96,21 @@ class Kios(models.Model):
 
     class Meta:
         verbose_name_plural = "Data Kios"
+
+
+# ==========================================
+# 4b. USER PROFILE (Kabupaten Assignment)
+# ==========================================
+class UserProfile(models.Model):
+    user = models.OneToOneField(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name='profile')
+    kabupaten = models.ForeignKey(Kabupaten, on_delete=models.PROTECT, null=True, blank=True, related_name='users')
+
+    def __str__(self):
+        return f"Profile {self.user.username}"
+
+    class Meta:
+        verbose_name = "User Profile"
+        verbose_name_plural = "User Profiles"
 
 # ==========================================
 # 5. ALLOCATION (KUOTA KIOS)

@@ -1,7 +1,7 @@
 from django.contrib import admin
 from .models import (
-    CompanyProfile, Kecamatan, JenisPupuk, 
-    Kios, KiosAllocation, Armada, FertilizerPrice
+    CompanyProfile, Kabupaten, Kecamatan, JenisPupuk, 
+    Kios, KiosAllocation, Armada, FertilizerPrice, UserProfile
 )
 
 # ==========================================
@@ -13,8 +13,16 @@ class CompanyProfileAdmin(admin.ModelAdmin):
 
 @admin.register(Kecamatan)
 class KecamatanAdmin(admin.ModelAdmin):
-    list_display = ('name', 'code', 'target_tonnage')
+    list_display = ('name', 'kabupaten', 'code', 'target_tonnage')
     search_fields = ('name',)
+    list_filter = ('kabupaten',)
+
+
+@admin.register(Kabupaten)
+class KabupatenAdmin(admin.ModelAdmin):
+    list_display = ('name', 'code', 'is_active')
+    search_fields = ('name', 'code')
+    list_filter = ('is_active',)
 
 @admin.register(JenisPupuk)
 class JenisPupukAdmin(admin.ModelAdmin):
@@ -35,6 +43,12 @@ class KiosAdmin(admin.ModelAdmin):
     list_filter = ('kecamatan', 'is_active') 
     search_fields = ('name', 'pic_name')
     inlines = [KiosAllocationInline]
+
+
+@admin.register(UserProfile)
+class UserProfileAdmin(admin.ModelAdmin):
+    list_display = ('user', 'kabupaten')
+    list_filter = ('kabupaten',)
 
 @admin.register(KiosAllocation)
 class KiosAllocationAdmin(admin.ModelAdmin):

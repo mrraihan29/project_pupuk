@@ -22,6 +22,9 @@ urlpatterns = [
 
     # Setup (admin/staff only)
     path('setup/company-profile/', views.setup_company_profile, name='setup_company_profile'),
+    path('setup/kabupaten/', views.setup_kabupaten, name='setup_kabupaten'),
+    path('setup/kabupaten/<int:pk>/edit/', views.setup_kabupaten_edit, name='setup_kabupaten_edit'),
+    path('setup/kabupaten/<int:pk>/delete/', views.setup_kabupaten_delete, name='setup_kabupaten_delete'),
     path('setup/kecamatan/', views.setup_kecamatan, name='setup_kecamatan'),
     path('setup/kecamatan/<int:pk>/edit/', views.setup_kecamatan_edit, name='setup_kecamatan_edit'),
     path('setup/kecamatan/<int:pk>/delete/', views.setup_kecamatan_delete, name='setup_kecamatan_delete'),

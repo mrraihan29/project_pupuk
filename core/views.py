@@ -16,7 +16,7 @@ import csv
 from django.http import HttpResponse
 
 # Import Models Baru
-from .models import Kios, Armada, FertilizerPrice, JenisPupuk, Kecamatan, KiosAllocation, CompanyProfile
+from .models import Kios, Armada, FertilizerPrice, JenisPupuk, Kecamatan, KiosAllocation, CompanyProfile, Kabupaten, UserProfile
 from .forms import (
     KiosForm,
     KiosAllocationFormSet,
@@ -25,9 +25,11 @@ from .forms import (
     JenisPupukForm,
     CompanyProfileForm,
     KecamatanForm,
+    KabupatenForm,
     UserCreateForm,
     UserSetPasswordForm,
 )
+from .utils import scope_by_kabupaten, get_scope_kabupaten
 User = get_user_model()
 
 from gudang.models import SalesOrder, SalesOrderAllocation, Distribution, StockCard
@@ -38,7 +40,8 @@ from keuangan.models import Invoice, BiayaOperasional, Payment
 def kios_list(request):
     # Select related kecamatan agar query efisien
     current_year = date.today().year
-    kios_data = Kios.objects.select_related('kecamatan').prefetch_related('allocations__jenis_pupuk').order_by('-created_at')
+    kios_data = Kios.objects.select_related('kecamatan__kabupaten').prefetch_related('allocations__jenis_pupuk').order_by('-created_at')
+    kios_data = scope_by_kabupaten(kios_data, request.user, 'kecamatan__kabupaten')
 
     # Hitung realisasi distribusi per kios x jenis pupuk di tahun berjalan
     kios_ids = [k.id for k in kios_data]
@@ -68,6 +71,13 @@ def kios_create(request):
     if request.method == 'POST':
         form = KiosForm(request.POST)
         formset = KiosAllocationFormSet(request.POST)
+
+        kab = get_scope_kabupaten(request)
+        if kab:
+            form.fields['kecamatan'].queryset = Kecamatan.objects.filter(kabupaten=kab)
+            for alloc_form in formset.forms:
+                alloc_form.fields['jenis_pupuk'].queryset = alloc_form.fields['jenis_pupuk'].queryset
+        
         
         if form.is_valid() and formset.is_valid():
             kios = form.save()
@@ -84,6 +94,12 @@ def kios_create(request):
         form = KiosForm()
         formset = KiosAllocationFormSet()
 
+    kab = get_scope_kabupaten(request)
+    if kab:
+        form.fields['kecamatan'].queryset = Kecamatan.objects.filter(kabupaten=kab)
+        for alloc_form in formset.forms:
+            alloc_form.fields['jenis_pupuk'].queryset = alloc_form.fields['jenis_pupuk'].queryset
+
     return render(request, 'core/kios_form.html', {
         'form': form, 
         'formset': formset, 
@@ -94,10 +110,17 @@ def kios_create(request):
 @login_required
 def kios_update(request, pk):
     kios = get_object_or_404(Kios, pk=pk)
+    kab = get_scope_kabupaten(request)
+    if kab and kios.kecamatan.kabupaten != kab:
+        messages.error(request, "Akses ditolak untuk kabupaten lain.")
+        return redirect('kios_list')
     
     if request.method == 'POST':
         form = KiosForm(request.POST, instance=kios)
         formset = KiosAllocationFormSet(request.POST, instance=kios)
+
+        if kab:
+            form.fields['kecamatan'].queryset = Kecamatan.objects.filter(kabupaten=kab)
         
         if form.is_valid() and formset.is_valid():
             form.save()
@@ -119,6 +142,9 @@ def kios_update(request, pk):
     else:
         form = KiosForm(instance=kios)
         formset = KiosAllocationFormSet(instance=kios)
+
+    if kab:
+        form.fields['kecamatan'].queryset = Kecamatan.objects.filter(kabupaten=kab)
 
     return render(request, 'core/kios_form.html', {
         'form': form, 
@@ -143,6 +169,8 @@ def kios_delete(request, pk):
 @login_required
 def dashboard(request):
     today = date.today()
+    kab = get_scope_kabupaten(request)
+    kab_options = Kabupaten.objects.all().order_by('name') if request.user.is_superuser else Kabupaten.objects.none()
     
     # 1. HITUNG UANG (FIXED: Tambahkan output_field)
     piutang_data = Invoice.objects.filter(status__in=['UNPAID', 'PARTIAL']).aggregate(
@@ -155,10 +183,12 @@ def dashboard(request):
 
     # 2. HITUNG STOK TERPISAH (FIXED: Tambahkan output_field pada Coalesce)
     def get_stock_balance(jenis_nama, tipe_stok):
-        val = StockCard.objects.filter(
+        qs = StockCard.objects.filter(
             jenis_pupuk__name=jenis_nama,
             stock_type=tipe_stok
-        ).aggregate(
+        )
+        # StockCard belum menyimpan kabupaten; tetap global.
+        val = qs.aggregate(
             # Logic: (Total Masuk atau 0) - (Total Keluar atau 0)
             # Kita paksa 0 dianggap DecimalField agar tidak error mixed types
             saldo=Coalesce(Sum('qty_in'), 0, output_field=DecimalField()) - 
@@ -181,11 +211,16 @@ def dashboard(request):
         due_date__lte=today
     ).count()
 
-    invoices_list = Invoice.objects.filter(status__in=['UNPAID', 'PARTIAL']) \
-                                    .select_related('distribution__kios') \
-                                    .order_by('due_date')[:5]
+    invoices_qs = Invoice.objects.filter(status__in=['UNPAID', 'PARTIAL']) \
+                                    .select_related('distribution__kios__kecamatan__kabupaten')
+    if kab:
+        invoices_qs = invoices_qs.filter(distribution__kios__kecamatan__kabupaten=kab)
+    invoices_list = invoices_qs.order_by('due_date')[:5]
 
-    so_expiring = SalesOrder.objects.filter(is_closed=False).order_by('date')[:5]
+    so_qs = SalesOrder.objects.filter(is_closed=False).prefetch_related('allocations__kecamatan__kabupaten')
+    if kab:
+        so_qs = so_qs.filter(allocations__kecamatan__kabupaten=kab)
+    so_expiring = so_qs.order_by('date').distinct()[:5]
 
     context = {
         'total_piutang': total_piutang,
@@ -200,6 +235,8 @@ def dashboard(request):
         'invoices_list': invoices_list,
         'so_expiring': so_expiring,
         'today': today,
+        'kab_options': kab_options,
+        'selected_kabupaten': kab.id if kab else None,
     }
 
     return render(request, 'dashboard.html', context)
@@ -211,7 +248,8 @@ def raport_kios(request):
     Laporan Kinerja Kios: Alokasi vs Realisasi.
     """
     current_year = date.today().year
-    kios_data = Kios.objects.filter(is_active=True).prefetch_related('allocations', 'kecamatan')
+    kios_data = Kios.objects.filter(is_active=True).prefetch_related('allocations', 'kecamatan__kabupaten')
+    kios_data = scope_by_kabupaten(kios_data, request.user, 'kecamatan__kabupaten')
     report_data = []
 
     for k in kios_data:
@@ -427,6 +465,8 @@ def laporan_keuangan(request):
     Laporan Laba Rugi (Profit & Loss Statement).
     Menghitung: Omzet - HPP - Biaya Ops = Laba Bersih.
     """
+    kab = get_scope_kabupaten(request)
+    kab_options = Kabupaten.objects.all().order_by('name') if request.user.is_superuser else Kabupaten.objects.none()
     
     # 1. SETUP TANGGAL (Default: Awal Bulan s/d Hari Ini)
     today = date.today()
@@ -452,15 +492,15 @@ def laporan_keuangan(request):
     ton_to_kg = Decimal('1')
 
     # 3. HITUNG OMZET PENJUALAN (REVENUE) — basis invoice jika ada, fallback ke tonase x harga master
-    qty_jual_npk = Distribution.objects.filter(
+    dist_qs = Distribution.objects.filter(
         date__range=[start_date, end_date],
-        jenis_pupuk__name='NPK'
-    ).aggregate(total=Coalesce(Sum('tonnage'), Decimal('0')))['total']
+    ).select_related('kios__kecamatan__kabupaten')
+    if kab:
+        dist_qs = dist_qs.filter(kios__kecamatan__kabupaten=kab)
 
-    qty_jual_urea = Distribution.objects.filter(
-        date__range=[start_date, end_date],
-        jenis_pupuk__name='UREA'
-    ).aggregate(total=Coalesce(Sum('tonnage'), Decimal('0')))['total']
+    qty_jual_npk = dist_qs.filter(jenis_pupuk__name='NPK').aggregate(total=Coalesce(Sum('tonnage'), Decimal('0')))['total']
+
+    qty_jual_urea = dist_qs.filter(jenis_pupuk__name='UREA').aggregate(total=Coalesce(Sum('tonnage'), Decimal('0')))['total']
 
     # Per produk (asumsi harga master per KG; konversi ton -> kg)
     omzet_npk = qty_jual_npk * harga_npk.price_sell * ton_to_kg
@@ -468,9 +508,11 @@ def laporan_keuangan(request):
     total_omzet_distribution = omzet_npk + omzet_urea
 
     # Total omzet prefer Invoice (lebih akurat nilai tagihan); jika tidak ada invoice periode ini, pakai distribusi
-    total_omzet_invoice = Invoice.objects.filter(
-        issue_date__range=[start_date, end_date]
-    ).aggregate(total=Coalesce(Sum('total_amount'), Decimal('0')))['total']
+    inv_qs = Invoice.objects.filter(issue_date__range=[start_date, end_date]).select_related('distribution__kios__kecamatan__kabupaten')
+    if kab:
+        inv_qs = inv_qs.filter(distribution__kios__kecamatan__kabupaten=kab)
+
+    total_omzet_invoice = inv_qs.aggregate(total=Coalesce(Sum('total_amount'), Decimal('0')))['total']
 
     total_omzet = total_omzet_invoice if total_omzet_invoice else total_omzet_distribution
 
@@ -499,23 +541,18 @@ def laporan_keuangan(request):
     ).aggregate(total=Coalesce(Sum('nominal'), Decimal('0')))['total']
     
     # Biaya Lainnya (Opsional)
-    biaya_lain = BiayaOperasional.objects.filter(
+    biaya_qs = BiayaOperasional.objects.filter(
         tanggal__range=[start_date, end_date],
-        kategori_utama='LAINNYA',
         status='SELESAI'
-    ).aggregate(total=Coalesce(Sum('nominal'), Decimal('0')))['total']
+    ).select_related('kabupaten')
+    if kab:
+        biaya_qs = biaya_qs.filter(kabupaten=kab)
 
-    total_ops = biaya_armada + biaya_kantor + biaya_lain
+    biaya_armada = biaya_qs.filter(kategori_utama='ARMADA').aggregate(total=Coalesce(Sum('nominal'), Decimal('0')))['total']
 
-    # 6. KALKULASI PROFIT & KPI TAMBAHAN
-    def safe_pct(num, denom):
-        return (num / denom * Decimal('100')) if denom else Decimal('0')
-
-    gross_profit = total_omzet - total_modal  # Laba Kotor
-    net_profit = gross_profit - total_ops     # Laba Bersih
-
-    gross_margin_pct = safe_pct(gross_profit, total_omzet)
-    net_margin_pct = safe_pct(net_profit, total_omzet)
+    biaya_kantor = biaya_qs.filter(kategori_utama='KANTOR').aggregate(total=Coalesce(Sum('nominal'), Decimal('0')))['total']
+    
+    biaya_lain = biaya_qs.filter(kategori_utama='LAINNYA').aggregate(total=Coalesce(Sum('nominal'), Decimal('0')))['total']
     opex_ratio_pct = safe_pct(total_ops, total_omzet)
 
     gp_npk = omzet_npk - modal_npk
@@ -549,23 +586,33 @@ def laporan_keuangan(request):
     total_aset = aset_npk + aset_urea
 
     # 8. SNAPSHOT PIUTANG & KAS (periode laporan)
-    piutang_data = Invoice.objects.filter(
+    piutang_qs = Invoice.objects.filter(
         status__in=['UNPAID', 'PARTIAL'],
         issue_date__lte=end_date
-    ).aggregate(total_sisa=Coalesce(Sum(F('total_amount') - F('total_paid'), output_field=DecimalField()), Decimal('0')))
+    ).select_related('distribution__kios__kecamatan__kabupaten')
+    if kab:
+        piutang_qs = piutang_qs.filter(distribution__kios__kecamatan__kabupaten=kab)
+
+    piutang_data = piutang_qs.aggregate(total_sisa=Coalesce(Sum(F('total_amount') - F('total_paid'), output_field=DecimalField()), Decimal('0')))
     total_piutang = piutang_data['total_sisa'] or Decimal('0')
 
-    payment_total = Payment.objects.filter(
+    pay_qs = Payment.objects.filter(
         status='APPROVED',
         date__range=[start_date, end_date]
-    ).aggregate(total=Coalesce(Sum('amount'), Decimal('0')))['total']
+    ).select_related('invoice__distribution__kios__kecamatan__kabupaten')
+    if kab:
+        pay_qs = pay_qs.filter(invoice__distribution__kios__kecamatan__kabupaten=kab)
+    payment_total = pay_qs.aggregate(total=Coalesce(Sum('amount'), Decimal('0')))['total']
     cash_estimate = payment_total - total_ops
 
     # 9. NERACA SINGKAT (Aset = Liabilitas + Ekuitas)
-    pending_ops = BiayaOperasional.objects.filter(
+    pending_ops_qs = BiayaOperasional.objects.filter(
         status='PROSES',
         tanggal__lte=end_date
-    ).aggregate(total=Coalesce(Sum('nominal'), Decimal('0')))['total']
+    ).select_related('kabupaten')
+    if kab:
+        pending_ops_qs = pending_ops_qs.filter(kabupaten=kab)
+    pending_ops = pending_ops_qs.aggregate(total=Coalesce(Sum('nominal'), Decimal('0')))['total']
 
     liabilities_total = pending_ops
     assets_total = cash_estimate + total_piutang + total_aset
@@ -629,6 +676,8 @@ def laporan_keuangan(request):
         'liab_equity_total': liab_equity_total,
         'balance_gap': balance_gap,
         'is_balanced': is_balanced,
+        'kab_options': kab_options,
+        'selected_kabupaten': kab.id if kab else None,
     }
 
     # --- EXPORT EXCEL LOGIC ---
@@ -669,6 +718,56 @@ def setup_company_profile(request):
         form = CompanyProfileForm(instance=profile)
 
     return render(request, 'setup/company_profile.html', {'form': form})
+
+
+@login_required
+@never_cache
+def setup_kabupaten(request):
+    if not _staff_required(request):
+        return setup_forbidden(request)
+
+    kab_list = Kabupaten.objects.all().order_by('name')
+    form = KabupatenForm(request.POST or None)
+    if request.method == 'POST':
+        if form.is_valid():
+            form.save()
+            messages.success(request, "Kabupaten berhasil disimpan.")
+            return redirect('setup_kabupaten')
+        messages.error(request, "Periksa kembali input Anda.")
+
+    return render(request, 'setup/kabupaten_list.html', {'form': form, 'kabupaten_list': kab_list})
+
+
+@login_required
+@never_cache
+def setup_kabupaten_edit(request, pk):
+    if not _staff_required(request):
+        return setup_forbidden(request)
+
+    kab = get_object_or_404(Kabupaten, pk=pk)
+    form = KabupatenForm(request.POST or None, instance=kab)
+    if request.method == 'POST':
+        if form.is_valid():
+            form.save()
+            messages.success(request, "Kabupaten diperbarui.")
+            return redirect('setup_kabupaten')
+        messages.error(request, "Periksa kembali input Anda.")
+    return render(request, 'setup/kabupaten_form.html', {'form': form, 'obj': kab})
+
+
+@login_required
+@require_http_methods(["POST"])
+def setup_kabupaten_delete(request, pk):
+    if not _staff_required(request):
+        return setup_forbidden(request)
+
+    kab = get_object_or_404(Kabupaten, pk=pk)
+    if kab.kecamatan_list.exists():
+        messages.error(request, "Tidak bisa hapus: kabupaten masih memiliki kecamatan.")
+    else:
+        kab.delete()
+        messages.success(request, "Kabupaten dihapus.")
+    return redirect('setup_kabupaten')
 
 
 @login_required
@@ -734,6 +833,8 @@ def setup_users(request):
 
     _ensure_default_groups()
     users = User.objects.filter(is_superuser=False).order_by('username')
+    for usr in users:
+        UserProfile.objects.get_or_create(user=usr)
     form = UserCreateForm(request.POST or None)
     if request.method == 'POST':
         if form.is_valid():
