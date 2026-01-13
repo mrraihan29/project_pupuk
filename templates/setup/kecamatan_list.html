@@ -22,10 +22,6 @@
             <label class="form-label">Kabupaten</label>
             {{ form.kabupaten }}
           </div>
-          <div class="col-md-6">
-            <label class="form-label">Target Tahunan (Ton)</label>
-            {{ form.target_tonnage }}
-          </div>
           <div class="col-12 d-flex justify-content-end gap-2">
             <button type="submit" class="btn btn-success px-4">Simpan</button>
           </div>
@@ -41,7 +37,6 @@
             <th>Nama</th>
             <th>Kode</th>
             <th>Kabupaten</th>
-            <th class="text-end">Target (Ton)</th>
             <th class="text-center">Aksi</th>
           </tr>
         </thead>
@@ -51,7 +46,6 @@
             <td>{{ item.name }}</td>
             <td>{{ item.code|default:"-" }}</td>
             <td>{{ item.kabupaten|default:"-" }}</td>
-            <td class="text-end">{{ item.target_tonnage }}</td>
             <td class="text-center">
               <a href="{% url 'setup_kecamatan_edit' item.pk %}" class="btn btn-sm btn-outline-primary">Edit</a>
               <form action="{% url 'setup_kecamatan_delete' item.pk %}" method="post" class="d-inline" onsubmit="return confirm('Hapus kecamatan ini?');">

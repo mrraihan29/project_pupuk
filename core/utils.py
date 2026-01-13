@@ -1,7 +1,7 @@
 from typing import Optional
 from django.db.models import QuerySet
 from django.contrib.auth import get_user_model
-from .models import Kabupaten
+from .models import Kabupaten, JenisPupuk, FertilizerPrice
 
 User = get_user_model()
 
@@ -48,3 +48,26 @@ def scope_by_kabupaten(qs: QuerySet, user: User, kabupaten_field: str = 'kabupat
     if not kab:
         return qs
     return qs.filter(**{kabupaten_field: kab})
+
+
+def get_price_for(jenis_pupuk: JenisPupuk, kabupaten: Optional[Kabupaten]):
+    """
+    Ambil harga untuk jenis pupuk dan kabupaten tertentu.
+    Prioritas: harga sesuai kabupaten; fallback ke harga global (kabupaten NULL).
+    """
+    if not jenis_pupuk:
+        return None
+    qs = FertilizerPrice.objects.filter(jenis_pupuk=jenis_pupuk)
+    if kabupaten:
+        price = qs.filter(kabupaten=kabupaten).first()
+        if price:
+            return price
+    return qs.filter(kabupaten__isnull=True).first()
+
+
+def get_price_by_code(jenis_code: str, kabupaten: Optional[Kabupaten]):
+    try:
+        jenis = JenisPupuk.objects.get(code=jenis_code)
+    except JenisPupuk.DoesNotExist:
+        return None
+    return get_price_for(jenis, kabupaten)

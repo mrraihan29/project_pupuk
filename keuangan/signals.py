@@ -4,7 +4,7 @@ from datetime import timedelta
 from decimal import Decimal
 
 # Import Models Baru
-from core.models import FertilizerPrice
+from core.utils import get_price_for
 from gudang.models import Distribution
 from .models import Invoice, Payment
 
@@ -15,17 +15,9 @@ from .models import Invoice, Payment
 def create_invoice_automatis(sender, instance, created, **kwargs):
     if created:
         # A. CARI HARGA JUAL
-        try:
-            # FIX: Ambil jenis_pupuk langsung dari Distribution (bukan dari SO)
-            # Karena transaksi Fisik tidak punya SO, tapi pasti punya jenis_pupuk
-            harga_obj = FertilizerPrice.objects.get(jenis_pupuk=instance.jenis_pupuk)
-            
-            # Konversi Harga: Di Master Harga per KG, di sini Tonase
-            # 1 Ton = 1000 KG
-            harga_per_ton = harga_obj.price_sell
-            
-        except FertilizerPrice.DoesNotExist:
-            harga_per_ton = 0
+        kab = getattr(getattr(instance.kios, 'kecamatan', None), 'kabupaten', None)
+        price_obj = get_price_for(instance.jenis_pupuk, kab)
+        harga_per_ton = price_obj.price_sell if price_obj else 0
             
         # B. HITUNG TOTAL TAGIHAN
         total_tagihan = instance.tonnage * harga_per_ton

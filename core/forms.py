@@ -60,8 +60,9 @@ class ArmadaForm(forms.ModelForm):
 class HargaPupukForm(forms.ModelForm):
     class Meta:
         model = FertilizerPrice
-        fields = ['price_buy', 'price_sell']
+        fields = ['kabupaten', 'price_buy', 'price_sell']
         widgets = {
+            'kabupaten': forms.HiddenInput(),
             'price_buy': forms.NumberInput(attrs={'class': 'form-control'}),
             'price_sell': forms.NumberInput(attrs={'class': 'form-control'}),
         }
@@ -113,12 +114,11 @@ class CompanyProfileForm(forms.ModelForm):
 class KecamatanForm(forms.ModelForm):
     class Meta:
         model = Kecamatan
-        fields = ['name', 'code', 'kabupaten', 'target_tonnage']
+        fields = ['name', 'code', 'kabupaten']
         widgets = {
             'name': forms.TextInput(attrs={'class': 'form-control', 'placeholder': 'Nama Kecamatan'}),
             'code': forms.TextInput(attrs={'class': 'form-control', 'placeholder': 'Kode (opsional)'}),
             'kabupaten': forms.Select(attrs={'class': 'form-select'}),
-            'target_tonnage': forms.NumberInput(attrs={'class': 'form-control', 'step': '0.01'}),
         }
 
 

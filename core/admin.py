@@ -13,7 +13,7 @@ class CompanyProfileAdmin(admin.ModelAdmin):
 
 @admin.register(Kecamatan)
 class KecamatanAdmin(admin.ModelAdmin):
-    list_display = ('name', 'kabupaten', 'code', 'target_tonnage')
+    list_display = ('name', 'kabupaten', 'code')
     search_fields = ('name',)
     list_filter = ('kabupaten',)
 
@@ -72,5 +72,6 @@ class ArmadaAdmin(admin.ModelAdmin):
 @admin.register(FertilizerPrice)
 class FertilizerPriceAdmin(admin.ModelAdmin):
     # Update: fertilizer_type diganti jenis_pupuk
-    list_display = ('jenis_pupuk', 'price_buy', 'price_sell', 'updated_at')
+    list_display = ('jenis_pupuk', 'kabupaten', 'price_buy', 'price_sell', 'updated_at')
+    list_filter = ('kabupaten', 'jenis_pupuk')
     # Agar jenis_pupuk muncul nama-nya (bukan ID), Django otomatis handle via __str__ di model

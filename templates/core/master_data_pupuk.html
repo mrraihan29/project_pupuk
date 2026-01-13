@@ -8,6 +8,18 @@
             <h1 class="h4 mb-0">Master Data Pupuk</h1>
             <p class="text-muted mb-0">Kelola jenis pupuk dan harga dalam satu halaman.</p>
         </div>
+        {% if user.is_superuser %}
+        <form method="get" class="d-flex align-items-center gap-2">
+            <label class="text-muted mb-0">Kabupaten</label>
+            <select name="kabupaten" class="form-select">
+                <option value="">Global / Semua</option>
+                {% for kab in kab_options %}
+                    <option value="{{ kab.id }}" {% if selected_kabupaten == kab.id %}selected{% endif %}>{{ kab.name }}</option>
+                {% endfor %}
+            </select>
+            <button type="submit" class="btn btn-outline-primary">Pilih</button>
+        </form>
+        {% endif %}
     </div>
 
     <div class="row g-4">
@@ -17,6 +29,9 @@
                 <div class="card-body">
                     <form method="post">
                         {% csrf_token %}
+                        {% if user.is_superuser %}
+                            <input type="hidden" name="kabupaten" value="{{ selected_kabupaten }}">
+                        {% endif %}
                         {% if edit_target %}
                             <input type="hidden" name="action" value="update_jenis">
                             <input type="hidden" name="jenis_id" value="{{ edit_target.id }}">
@@ -60,6 +75,9 @@
                 <div class="card-body">
                     <form method="post">
                         {% csrf_token %}
+                        {% if user.is_superuser %}
+                            <input type="hidden" name="kabupaten" value="{{ selected_kabupaten }}">
+                        {% endif %}
                         <input type="hidden" name="action" value="update_prices">
                         {{ price_formset.management_form }}
                         <div class="table-responsive">
@@ -67,6 +85,7 @@
                                 <thead>
                                     <tr>
                                         <th>Jenis</th>
+                                        <th>Kabupaten</th>
                                         <th class="text-end">Harga Beli (Rp/Ton)</th>
                                         <th class="text-end">Harga Jual (Rp/Ton)</th>
                                         <th class="text-end">Aksi</th>
@@ -82,6 +101,14 @@
                                                 <span class="badge bg-success">Aktif</span>
                                             {% else %}
                                                 <span class="badge bg-secondary">Nonaktif</span>
+                                            {% endif %}
+                                            {{ item.form.kabupaten }}
+                                        </td>
+                                        <td>
+                                            {% if item.form.instance.kabupaten %}
+                                                {{ item.form.instance.kabupaten.name }}
+                                            {% else %}
+                                                <span class="text-muted">Global</span>
                                             {% endif %}
                                         </td>
                                         <td class="text-end">
@@ -113,7 +140,7 @@
                                     </tr>
                                     {% empty %}
                                     <tr>
-                                        <td colspan="4" class="text-center text-muted py-4">Belum ada jenis pupuk. Tambahkan di formulir kiri.</td>
+                                        <td colspan="5" class="text-center text-muted py-4">Belum ada jenis pupuk. Tambahkan di formulir kiri.</td>
                                     </tr>
                                     {% endfor %}
                                 </tbody>
@@ -134,11 +161,13 @@
         {% csrf_token %}
         <input type="hidden" name="action" value="archive_jenis">
         <input type="hidden" name="jenis_id" value="{{ item.jenis.id }}">
+        {% if user.is_superuser %}<input type="hidden" name="kabupaten" value="{{ selected_kabupaten }}">{% endif %}
     </form>
     <form id="delete-form-{{ item.jenis.id }}" method="post" class="d-none">
         {% csrf_token %}
         <input type="hidden" name="action" value="delete_jenis">
         <input type="hidden" name="jenis_id" value="{{ item.jenis.id }}">
+        {% if user.is_superuser %}<input type="hidden" name="kabupaten" value="{{ selected_kabupaten }}">{% endif %}
     </form>
     {% endfor %}
 
@@ -181,6 +210,7 @@
         {% csrf_token %}
         <input type="hidden" name="action" value="restore_jenis">
         <input type="hidden" name="jenis_id" value="{{ a.id }}">
+        {% if user.is_superuser %}<input type="hidden" name="kabupaten" value="{{ selected_kabupaten }}">{% endif %}
     </form>
     {% endfor %}
 </div>

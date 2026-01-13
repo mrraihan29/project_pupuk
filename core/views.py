@@ -29,7 +29,7 @@ from .forms import (
     UserCreateForm,
     UserSetPasswordForm,
 )
-from .utils import scope_by_kabupaten, get_scope_kabupaten
+from .utils import scope_by_kabupaten, get_scope_kabupaten, get_price_by_code
 User = get_user_model()
 
 from gudang.models import SalesOrder, SalesOrderAllocation, Distribution, StockCard
@@ -307,15 +307,24 @@ def master_data_pupuk(request):
     pupuk_list = list(JenisPupuk.objects.filter(is_active=True).order_by('name'))
     archived_pupuk = list(JenisPupuk.objects.filter(is_active=False).order_by('name')) if show_archived else []
 
-    # Pastikan tiap jenis punya harga
+    # Tentukan kabupaten kerja
+    kab_scope = get_scope_kabupaten(request)
+    if request.user.is_superuser and not kab_scope:
+        post_kab_id = request.POST.get('kabupaten')
+        if post_kab_id:
+            kab_scope = Kabupaten.objects.filter(pk=post_kab_id, is_active=True).first()
+    kab_options = Kabupaten.objects.filter(is_active=True).order_by('name') if request.user.is_superuser else Kabupaten.objects.none()
+
+    # Pastikan tiap jenis punya harga untuk kabupaten terpilih (atau global None)
     for jp in pupuk_list:
         FertilizerPrice.objects.get_or_create(
             jenis_pupuk=jp,
+            kabupaten=kab_scope,
             defaults={'price_buy': Decimal('0'), 'price_sell': Decimal('0')}
         )
 
-    price_qs = FertilizerPrice.objects.filter(jenis_pupuk__in=pupuk_list)
-    price_qs = price_qs.select_related('jenis_pupuk').order_by('jenis_pupuk__name')
+    price_qs = FertilizerPrice.objects.filter(jenis_pupuk__in=pupuk_list, kabupaten=kab_scope)
+    price_qs = price_qs.select_related('jenis_pupuk', 'kabupaten').order_by('jenis_pupuk__name')
 
     action = request.POST.get('action') if request.method == 'POST' else None
 
@@ -340,6 +349,7 @@ def master_data_pupuk(request):
             jenis = jenis_form.save()
             FertilizerPrice.objects.get_or_create(
                 jenis_pupuk=jenis,
+                kabupaten=kab_scope,
                 defaults={'price_buy': Decimal('0'), 'price_sell': Decimal('0')}
             )
             messages.success(request, "Jenis pupuk berhasil ditambahkan.")
@@ -398,6 +408,11 @@ def master_data_pupuk(request):
         price_formset = PriceFormSet(queryset=price_qs, prefix='prices')
         jenis_form = JenisPupukForm(prefix='jenis', instance=edit_target)
 
+    # Set kabupaten tetap untuk setiap form dalam formset
+    for form in price_formset.forms:
+        form.fields['kabupaten'].initial = kab_scope
+        form.fields['kabupaten'].widget.attrs['value'] = kab_scope.id if kab_scope else ''
+
     price_items = [
         {'form': form, 'jenis': form.instance.jenis_pupuk}
         for form in price_formset.forms
@@ -411,6 +426,8 @@ def master_data_pupuk(request):
         'edit_target': edit_target,
         'show_archived': show_archived,
         'archived_pupuk': archived_pupuk,
+        'kab_options': kab_options,
+        'selected_kabupaten': kab_scope.id if kab_scope else '',
     })
 
 
@@ -476,9 +493,9 @@ def laporan_keuangan(request):
     start_date = request.GET.get('start', default_start)
     end_date = request.GET.get('end', default_end)
 
-    # 2. SIAPKAN HARGA ACUAN (Master Price) - gunakan FK langsung
-    harga_npk = FertilizerPrice.objects.select_related('jenis_pupuk').filter(jenis_pupuk__code='NPK').first()
-    harga_urea = FertilizerPrice.objects.select_related('jenis_pupuk').filter(jenis_pupuk__code='UREA').first()
+    # 2. SIAPKAN HARGA ACUAN (Master Price) - gunakan FK langsung + kabupaten
+    harga_npk = get_price_by_code('NPK', kab)
+    harga_urea = get_price_by_code('UREA', kab)
 
     # Validasi harga master
     if not harga_npk or not harga_urea:

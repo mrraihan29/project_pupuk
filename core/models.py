@@ -48,9 +48,6 @@ class Kecamatan(models.Model):
     code = models.CharField("Kode Wilayah", max_length=10, blank=True, null=True)
     kabupaten = models.ForeignKey(Kabupaten, on_delete=models.PROTECT, related_name='kecamatan_list', null=True, blank=True)
     
-    # TAMBAHAN: Target Tahunan (Penting untuk Laporan Realisasi)
-    target_tonnage = models.DecimalField("Target Tahunan (Ton)", max_digits=10, decimal_places=2, default=Decimal('0'))
-    
     def __str__(self):
         return self.name
     
@@ -159,14 +156,17 @@ class Armada(models.Model):
 # 7. MASTER HARGA
 # ==========================================
 class FertilizerPrice(models.Model):
-    jenis_pupuk = models.OneToOneField(JenisPupuk, on_delete=models.CASCADE, verbose_name="Jenis Pupuk", related_name='price_config')
+    jenis_pupuk = models.ForeignKey(JenisPupuk, on_delete=models.CASCADE, verbose_name="Jenis Pupuk")
+    kabupaten = models.ForeignKey(Kabupaten, on_delete=models.PROTECT, null=True, blank=True, related_name='fertilizer_prices')
     # Simpan harga per ton agar konsisten dengan tampilan dan laporan
     price_buy = models.DecimalField("Harga Tebus (Per Ton)", max_digits=15, decimal_places=2)
     price_sell = models.DecimalField("Harga Jual (Per Ton)", max_digits=15, decimal_places=2)
     updated_at = models.DateTimeField(auto_now=True)
 
     def __str__(self):
-        return f"Harga {self.jenis_pupuk.code}"
+        kab_label = self.kabupaten.name if self.kabupaten else "Global"
+        return f"Harga {self.jenis_pupuk.code} ({kab_label})"
 
     class Meta:
         verbose_name_plural = "Master Harga Pupuk"
+        unique_together = ('jenis_pupuk', 'kabupaten')
