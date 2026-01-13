@@ -315,7 +315,25 @@ def master_data_pupuk(request):
             kab_scope = Kabupaten.objects.filter(pk=post_kab_id, is_active=True).first()
     kab_options = Kabupaten.objects.filter(is_active=True).order_by('name') if request.user.is_superuser else Kabupaten.objects.none()
 
-    # Pastikan tiap jenis punya harga untuk kabupaten terpilih (atau global None)
+    # Superuser wajib pilih kabupaten untuk mengelola harga
+    if request.user.is_superuser and not kab_scope:
+        messages.error(request, "Pilih kabupaten dulu untuk mengelola harga.")
+        price_qs = FertilizerPrice.objects.none()
+        price_formset = PriceFormSet(queryset=price_qs, prefix='prices')
+        jenis_form = JenisPupukForm(prefix='jenis', instance=None)
+        return render(request, 'core/master_data_pupuk.html', {
+            'jenis_form': jenis_form,
+            'price_formset': price_formset,
+            'price_items': [],
+            'pupuk_list': pupuk_list,
+            'edit_target': None,
+            'show_archived': show_archived,
+            'archived_pupuk': archived_pupuk,
+            'kab_options': kab_options,
+            'selected_kabupaten': '',
+        })
+
+    # Pastikan tiap jenis punya harga untuk kabupaten terpilih
     for jp in pupuk_list:
         FertilizerPrice.objects.get_or_create(
             jenis_pupuk=jp,
@@ -484,6 +502,10 @@ def laporan_keuangan(request):
     """
     kab = get_scope_kabupaten(request)
     kab_options = Kabupaten.objects.all().order_by('name') if request.user.is_superuser else Kabupaten.objects.none()
+    # Superuser boleh override kabupaten via filter form
+    kab_param = request.GET.get('kabupaten')
+    if request.user.is_superuser and kab_param:
+        kab = kab_options.filter(pk=kab_param).first()
     
     # 1. SETUP TANGGAL (Default: Awal Bulan s/d Hari Ini)
     today = date.today()
@@ -493,17 +515,60 @@ def laporan_keuangan(request):
     start_date = request.GET.get('start', default_start)
     end_date = request.GET.get('end', default_end)
 
+    # Helper context ketika belum pilih kabupaten atau harga belum siap
+    def empty_context():
+        zero = Decimal('0')
+        return {
+            'start_date': start_date,
+            'end_date': end_date,
+            'kab_options': kab_options,
+            'selected_kabupaten': kab.id if kab else None,
+            'net_profit': zero,
+            'gross_margin_pct': zero,
+            'net_margin_pct': zero,
+            'opex_ratio_pct': zero,
+            'total_ops': zero,
+            'gross_profit': zero,
+            'total_omzet': zero,
+            'omzet_npk': zero,
+            'omzet_urea': zero,
+            'modal_npk': zero,
+            'modal_urea': zero,
+            'total_modal': zero,
+            'qty_jual_npk': zero,
+            'qty_jual_urea': zero,
+            'gp_npk': zero,
+            'gp_urea': zero,
+            'avg_sell_npk': zero,
+            'avg_sell_urea': zero,
+            'avg_cost_npk': zero,
+            'avg_cost_urea': zero,
+            'ops_armada': zero,
+            'ops_kantor': zero,
+            'ops_lain': zero,
+            'cash_estimate': zero,
+            'total_piutang': zero,
+            'assets_total': zero,
+            'total_aset': zero,
+            'stok_sisa_npk': zero,
+            'stok_sisa_urea': zero,
+            'is_balanced': True,
+        }
+
     # 2. SIAPKAN HARGA ACUAN (Master Price) - gunakan FK langsung + kabupaten
     harga_npk = get_price_by_code('NPK', kab)
     harga_urea = get_price_by_code('UREA', kab)
 
     # Validasi harga master
+    if not kab:
+        messages.error(request, "Pilih kabupaten terlebih dahulu untuk melihat laporan.")
+        return render(request, 'core/laporan_keuangan.html', empty_context())
     if not harga_npk or not harga_urea:
-        messages.error(request, "Harga pupuk belum dikonfigurasi. Silakan set di Master Harga.")
-        return redirect('master_harga')
+        messages.error(request, "Harga pupuk belum dikonfigurasi untuk kabupaten ini. Silakan set di Master Harga.")
+        return render(request, 'core/laporan_keuangan.html', empty_context())
     if harga_npk.price_buy <= 0 or harga_npk.price_sell <= 0 or harga_urea.price_buy <= 0 or harga_urea.price_sell <= 0:
         messages.error(request, "Harga pupuk harus lebih dari 0. Perbarui di Master Harga.")
-        return redirect('master_harga')
+        return render(request, 'core/laporan_keuangan.html', empty_context())
 
     # Harga master disimpan per ton; distribusi tonnage juga dalam ton.
     ton_to_kg = Decimal('1')

@@ -193,6 +193,16 @@
                 </div>
             </div>
         </div>
+        {% if messages %}
+        <div class="container-fluid mt-3">
+            {% for message in messages %}
+                <div class="alert alert-{{ message.tags|default:'info' }} alert-dismissible fade show" role="alert">
+                    {{ message }}
+                    <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+                </div>
+            {% endfor %}
+        </div>
+        {% endif %}
         {% block content %}
         {% endblock %}
     </div>
@@ -205,5 +215,41 @@
         onerror="this.onerror=null;this.src='{% static 'vendor/bootstrap-5.3.0.bundle.min.js' %}'"
     ></script>
     <script src="{% static 'js/layout.js' %}" defer></script>
+    <script>
+    // Format angka dengan ribuan pada input yang diberi class currency-input
+    document.addEventListener('DOMContentLoaded', () => {
+        const formatNumber = (val) => {
+            if (!val) return '';
+            const cleaned = val.replace(/[^0-9.,]/g, '').replace(/,/g, '');
+            const parts = cleaned.split('.');
+            const intPart = parts[0] || '';
+            const decPart = parts[1] ? '.' + parts[1].slice(0, 2) : '';
+            return intPart.replace(/\B(?=(\d{3})+(?!\d))/g, ',') + decPart;
+        };
+
+        const inputs = Array.from(document.querySelectorAll('.currency-input'));
+        inputs.forEach((inp) => {
+            // initial format
+            if (inp.value) inp.value = formatNumber(inp.value);
+            inp.addEventListener('input', () => {
+                const cursorPos = inp.selectionStart;
+                const raw = inp.value;
+                const formatted = formatNumber(raw);
+                inp.value = formatted;
+                // best-effort: place cursor at end
+                inp.setSelectionRange(inp.value.length, inp.value.length);
+            });
+        });
+
+        // Strip koma sebelum submit supaya validasi server aman
+        document.querySelectorAll('form').forEach((form) => {
+            form.addEventListener('submit', () => {
+                inputs.forEach((inp) => {
+                    inp.value = inp.value.replace(/,/g, '');
+                });
+            });
+        });
+    });
+    </script>
 </body>
 </html>

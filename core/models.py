@@ -157,7 +157,7 @@ class Armada(models.Model):
 # ==========================================
 class FertilizerPrice(models.Model):
     jenis_pupuk = models.ForeignKey(JenisPupuk, on_delete=models.CASCADE, verbose_name="Jenis Pupuk")
-    kabupaten = models.ForeignKey(Kabupaten, on_delete=models.PROTECT, null=True, blank=True, related_name='fertilizer_prices')
+    kabupaten = models.ForeignKey(Kabupaten, on_delete=models.PROTECT, related_name='fertilizer_prices')
     # Simpan harga per ton agar konsisten dengan tampilan dan laporan
     price_buy = models.DecimalField("Harga Tebus (Per Ton)", max_digits=15, decimal_places=2)
     price_sell = models.DecimalField("Harga Jual (Per Ton)", max_digits=15, decimal_places=2)

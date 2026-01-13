@@ -63,8 +63,8 @@ class HargaPupukForm(forms.ModelForm):
         fields = ['kabupaten', 'price_buy', 'price_sell']
         widgets = {
             'kabupaten': forms.HiddenInput(),
-            'price_buy': forms.NumberInput(attrs={'class': 'form-control'}),
-            'price_sell': forms.NumberInput(attrs={'class': 'form-control'}),
+            'price_buy': forms.TextInput(attrs={'class': 'form-control currency-input', 'inputmode': 'decimal', 'placeholder': '0'}),
+            'price_sell': forms.TextInput(attrs={'class': 'form-control currency-input', 'inputmode': 'decimal', 'placeholder': '0'}),
         }
 
     def clean(self):

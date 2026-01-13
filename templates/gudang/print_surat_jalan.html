@@ -65,7 +65,7 @@
             <div class="info-col">
                 <table class="info-table">
                     <tr><td><span class="label">Nomor Surat</span> : {{ dist.no_surat_jalan }}</td></tr>
-                    <tr><td><span class="label">Tanggal</span> : {{ dist.date|date:"d F Y" }}</td></tr>
+                    <tr><td><span class="label">Tanggal</span> : {{ dist.pkp_date|date:"d F Y" }}</td></tr>
                     <tr><td><span class="label">Armada</span> : {{ dist.armada.plate_number }}</td></tr>
                     <tr><td><span class="label">Pengemudi</span> : {{ dist.armada.driver_name }}</td></tr>
                 </table>
@@ -93,7 +93,6 @@
                     <td>1</td>
                     <td style="text-align: left; padding-left: 20px;">
                         <strong>PUPUK {{ dist.jenis_pupuk.name }}</strong> ({{ dist.jenis_pupuk.code }})
-                        <br><small style="color: #666;">Sumber: {% if dist.source_type == 'VIRTUAL' %}Pabrik (DO: {{ dist.source_so.so_number }}){% else %}Gudang Penyangga{% endif %}</small>
                     </td>
                     <td>TON</td>
                     <td style="font-weight: bold; font-size: 16px;">{{ dist.tonnage }}</td>

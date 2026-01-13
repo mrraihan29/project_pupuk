@@ -11,8 +11,8 @@
         {% if user.is_superuser %}
         <form method="get" class="d-flex align-items-center gap-2">
             <label class="text-muted mb-0">Kabupaten</label>
-            <select name="kabupaten" class="form-select">
-                <option value="">Global / Semua</option>
+            <select name="kabupaten" class="form-select" required>
+                <option value="" disabled {% if not selected_kabupaten %}selected{% endif %}>Pilih kabupaten</option>
                 {% for kab in kab_options %}
                     <option value="{{ kab.id }}" {% if selected_kabupaten == kab.id %}selected{% endif %}>{{ kab.name }}</option>
                 {% endfor %}

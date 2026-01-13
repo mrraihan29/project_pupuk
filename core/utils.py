@@ -53,16 +53,13 @@ def scope_by_kabupaten(qs: QuerySet, user: User, kabupaten_field: str = 'kabupat
 def get_price_for(jenis_pupuk: JenisPupuk, kabupaten: Optional[Kabupaten]):
     """
     Ambil harga untuk jenis pupuk dan kabupaten tertentu.
-    Prioritas: harga sesuai kabupaten; fallback ke harga global (kabupaten NULL).
+    Harus ada kabupaten; tanpa kabupaten akan None.
     """
     if not jenis_pupuk:
         return None
-    qs = FertilizerPrice.objects.filter(jenis_pupuk=jenis_pupuk)
-    if kabupaten:
-        price = qs.filter(kabupaten=kabupaten).first()
-        if price:
-            return price
-    return qs.filter(kabupaten__isnull=True).first()
+    if not kabupaten:
+        return None
+    return FertilizerPrice.objects.filter(jenis_pupuk=jenis_pupuk, kabupaten=kabupaten).first()
 
 
 def get_price_by_code(jenis_code: str, kabupaten: Optional[Kabupaten]):

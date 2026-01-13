@@ -10,7 +10,7 @@ class PaymentForm(forms.ModelForm):
         fields = ['date', 'amount', 'method', 'proof', 'notes']
         widgets = {
             'date': forms.DateInput(attrs={'class': 'form-control', 'type': 'date'}),
-            'amount': forms.NumberInput(attrs={'class': 'form-control', 'placeholder': 'Rp ...'}),
+            'amount': forms.TextInput(attrs={'class': 'form-control currency-input', 'placeholder': 'Rp ...', 'inputmode': 'decimal'}),
             'method': forms.TextInput(attrs={'class': 'form-control', 'placeholder': 'Transfer BCA / Tunai'}),
             'proof': forms.FileInput(attrs={'class': 'form-control'}),
             'notes': forms.Textarea(attrs={'class': 'form-control', 'rows': 2, 'placeholder': 'Catatan tambahan...'}),
@@ -54,6 +54,6 @@ class BiayaOperasionalForm(forms.ModelForm):
             'kabupaten': forms.Select(attrs={'class': 'form-select'}),
             'armada': forms.Select(attrs={'class': 'form-select'}),  # tambahkan ini
             'deskripsi': forms.TextInput(attrs={'class': 'form-control', 'placeholder': 'Contoh: Bensin Truk Nopol H-1234'}),
-            'nominal': forms.NumberInput(attrs={'class': 'form-control', 'placeholder': 'Rp ...'}),
+            'nominal': forms.TextInput(attrs={'class': 'form-control currency-input', 'placeholder': 'Rp ...', 'inputmode': 'decimal'}),
             'bukti_foto': forms.FileInput(attrs={'class': 'form-control'}),
         }
