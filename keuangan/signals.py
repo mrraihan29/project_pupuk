@@ -1,3 +1,4 @@
+from django.db import transaction
 from django.db.models.signals import post_save, post_delete, pre_save
 from django.dispatch import receiver
 from datetime import timedelta
@@ -5,40 +6,52 @@ from decimal import Decimal
 
 # Import Models Baru
 from core.utils import get_price_for
-from gudang.models import Distribution
+from gudang.models import Distribution, DistributionItem
 from .models import Invoice, Payment
 
 # ==========================================
 # 1. AUTO-CREATE INVOICE (Saat Surat Jalan Terbit)
 # ==========================================
+def _compute_invoice_total(dist):
+    kab = getattr(getattr(dist.kios, 'kecamatan', None), 'kabupaten', None)
+    total = Decimal('0')
+    for item in dist.items.select_related('jenis_pupuk'):
+        price_obj = get_price_for(item.jenis_pupuk, kab)
+        harga_per_ton = price_obj.price_sell if price_obj else Decimal('0')
+        total += (item.tonnage or Decimal('0')) * harga_per_ton
+    return total
+
+
+def _upsert_invoice(dist):
+    if not dist.items.exists():
+        return
+    total_tagihan = _compute_invoice_total(dist)
+    no_inv = dist.no_surat_jalan.replace("SJ", "INV")
+    tgl_jatuh_tempo = dist.date + timedelta(days=7)
+
+    invoice, created = Invoice.objects.get_or_create(
+        distribution=dist,
+        defaults={
+            'inv_number': no_inv,
+            'issue_date': dist.date,
+            'due_date': tgl_jatuh_tempo,
+            'total_amount': total_tagihan,
+            'total_paid': Decimal('0'),
+            'status': 'UNPAID',
+        }
+    )
+    if not created:
+        invoice.total_amount = total_tagihan
+        invoice.issue_date = dist.date
+        invoice.due_date = tgl_jatuh_tempo
+        invoice.update_status()
+    invoice.save()
+
+
 @receiver(post_save, sender=Distribution)
 def create_invoice_automatis(sender, instance, created, **kwargs):
-    if created:
-        # A. CARI HARGA JUAL
-        kab = getattr(getattr(instance.kios, 'kecamatan', None), 'kabupaten', None)
-        price_obj = get_price_for(instance.jenis_pupuk, kab)
-        harga_per_ton = price_obj.price_sell if price_obj else 0
-            
-        # B. HITUNG TOTAL TAGIHAN
-        total_tagihan = instance.tonnage * harga_per_ton
-        
-        # C. GENERATE NO INVOICE (Ganti SJ jadi INV)
-        no_inv = instance.no_surat_jalan.replace("SJ", "INV")
-        
-        # D. TENTUKAN JATUH TEMPO (Default H+7 atau sesuai kebijakan)
-        tgl_jatuh_tempo = instance.date + timedelta(days=7)
-
-        # E. SIMPAN INVOICE
-        # Perhatikan nama field disesuaikan dengan keuangan/models.py baru
-        Invoice.objects.create(
-            distribution=instance,
-            inv_number=no_inv,          # Field baru (dulu invoice_no)
-            issue_date=instance.date,   # Field baru
-            due_date=tgl_jatuh_tempo,
-            total_amount=total_tagihan,
-            total_paid=0,               # Default 0
-            status='UNPAID'
-        )
+    # Jalankan setelah transaksi selesai supaya detail item sudah tersimpan
+    transaction.on_commit(lambda: _upsert_invoice(instance))
 
 # ==========================================
 # 2. SIMPAN STATE LAMA (untuk deteksi perubahan status/nominal)
@@ -105,3 +118,13 @@ def rollback_invoice_status(sender, instance, **kwargs):
         invoice.status = 'PARTIAL'
         
     invoice.save()
+
+
+@receiver(post_save, sender=DistributionItem)
+def sync_invoice_on_item_save(sender, instance, created, **kwargs):
+    _upsert_invoice(instance.distribution)
+
+
+@receiver(post_delete, sender=DistributionItem)
+def sync_invoice_on_item_delete(sender, instance, **kwargs):
+    _upsert_invoice(instance.distribution)

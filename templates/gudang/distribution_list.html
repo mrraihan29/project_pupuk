@@ -31,7 +31,7 @@
                         <th>No. Surat Jalan</th>
                         <th>Tujuan (Kios)</th>
                         <th>Barang</th>
-                        <th>Tonase</th>
+                        <th>Tonase Total</th>
                         <th>Armada</th>
                         <th>Cetak Dokumen</th>
                     </tr>
@@ -46,16 +46,17 @@
                             <br><small class="text-muted">{{ item.kios.kecamatan.name }}</small>
                         </td>
                         <td>
-                            {% if item.source_type == 'VIRTUAL' %}
-                                <span class="badge bg-primary">Pabrik</span>
-                            {% else %}
-                                <span class="badge bg-warning text-dark">Gudang</span>
-                            {% endif %}
-                            <span class="d-block small mt-1">
-                                {{ item.jenis_pupuk.name }} ({{ item.jenis_pupuk.code }})
-                            </span>
+                            {% for det in item.items.all %}
+                                <div class="small mb-1">
+                                    <span class="badge {% if det.source_type == 'VIRTUAL' %}bg-primary{% else %}bg-warning text-dark{% endif %}">{{ det.source_type|title }}</span>
+                                    {{ det.jenis_pupuk.code }} - {{ det.tonnage }} Ton
+                                    {% if det.source_so %}<small class="text-muted">(SO {{ det.source_so.so_number }})</small>{% endif %}
+                                </div>
+                            {% empty %}
+                                <span class="text-muted small">Tidak ada detail</span>
+                            {% endfor %}
                         </td>
-                        <td class="fw-bold">{{ item.tonnage }} Ton</td>
+                        <td class="fw-bold">{{ item.total_ton|default:"0" }} Ton</td>
                         <td>
                             {{ item.armada.plate_number }}
                             <br><small class="text-muted">{{ item.armada.driver_name }}</small>

@@ -49,9 +49,9 @@
                         
                         <td>
                             {% if item.is_closed %}
-                                <span class="text-muted">0 (Habis)</span>
+                                <span class="text-muted">0,00 (Habis)</span>
                             {% else %}
-                                <span class="text-success fw-bold">{{ item.total_tonnage|floatformat:2 }}</span>
+                                <span class="text-success fw-bold">{{ item.virtual_balance|floatformat:2 }}</span>
                                 <small class="text-muted d-block" style="font-size: 10px;">(Virtual)</small>
                             {% endif %}
                         </td>

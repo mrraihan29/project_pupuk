@@ -54,10 +54,12 @@ class SalesOrder(models.Model):
         """
         # 1. Hitung total yang sudah ditarik ke gudang fisik (Fisik In)
         transferred = self.transfers.aggregate(total=Sum('tonnage'))['total'] or Decimal('0')
-        
-        # 2. Hitung total yang didistribusikan LANGSUNG dari Pabrik (Virtual Out)
-        distributed = self.distributions.filter(source_type='VIRTUAL').aggregate(total=Sum('tonnage'))['total'] or Decimal('0')
-        
+        # 2. Hitung total yang didistribusikan LANGSUNG dari Pabrik (Virtual Out) berbasis item
+        distributed = DistributionItem.objects.filter(
+            source_type='VIRTUAL',
+            source_so=self
+        ).aggregate(total=Sum('tonnage'))['total'] or Decimal('0')
+
         return self.total_tonnage - transferred - distributed
 
     def save(self, *args, **kwargs):
@@ -189,6 +191,11 @@ class Distribution(models.Model):
         super().save(*args, **kwargs)
 
     def clean(self):
+        # Jika dipakai via form header saja (item detail akan isi bidang ini di view),
+        # lewati validasi model terlebih dulu agar tidak menuntut field yang belum diisi.
+        if not self.pk and (self.jenis_pupuk_id is None or self.tonnage is None):
+            return
+
         # Validasi 1: Konsistensi Sumber Stok
         if self.source_type == 'VIRTUAL' and not self.source_so:
             raise ValidationError({'source_so': "Jika sumber stok adalah 'Langsung Pabrik', Anda WAJIB memilih Nomor SO!"})
@@ -258,6 +265,23 @@ class Distribution(models.Model):
         verbose_name = "Distribusi / Surat Jalan"
         verbose_name_plural = "Distribusi / Surat Jalan"
         ordering = ['-date', '-created_at']
+
+
+class DistributionItem(models.Model):
+    """Detail barang per Surat Jalan (multi-item support)."""
+    distribution = models.ForeignKey(Distribution, on_delete=models.CASCADE, related_name='items')
+    jenis_pupuk = models.ForeignKey(JenisPupuk, on_delete=models.PROTECT, verbose_name="Jenis Pupuk")
+    source_type = models.CharField("Sumber Stok", max_length=10, choices=Distribution.SOURCE_CHOICES, default='VIRTUAL')
+    source_so = models.ForeignKey(SalesOrder, on_delete=models.PROTECT, null=True, blank=True, verbose_name="Ambil dari SO", related_name='distribution_items')
+    tonnage = models.DecimalField("Jumlah Kirim (Ton)", max_digits=10, decimal_places=2)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    def __str__(self):
+        return f"{self.distribution.no_surat_jalan} - {self.jenis_pupuk.code} {self.tonnage} Ton"
+
+    class Meta:
+        verbose_name = "Detail Distribusi"
+        verbose_name_plural = "Detail Distribusi"
 
 
 # ==========================================

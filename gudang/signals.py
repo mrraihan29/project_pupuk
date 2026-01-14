@@ -6,7 +6,7 @@ from decimal import Decimal
 
 from .models import (
     SalesOrder, SalesOrderAllocation, 
-    WarehouseTransfer, Distribution, 
+    WarehouseTransfer, Distribution, DistributionItem,
     StockCard
 )
 from core.models import KiosAllocation
@@ -153,6 +153,9 @@ def update_stock_from_distribution(sender, instance, created, **kwargs):
     - Jika VIRTUAL: Catat OUT_DIST_V
     - Jika PHYSICAL: Catat OUT_DIST_P
     """
+    # Jika sudah pakai detail items, stock & quota ditangani di signal DistributionItem
+    if instance.items.exists():
+        return
     ref_code = f"SJ-{instance.id}"
     
     # Tentukan Tipe Transaksi & Stok
@@ -210,8 +213,11 @@ def update_stock_from_distribution(sender, instance, created, **kwargs):
 
 @receiver(post_delete, sender=Distribution)
 def delete_stock_from_distribution(sender, instance, **kwargs):
+    if instance.items.exists():
+        # Stock handled by DistributionItem signals; ensure header stockcards removed if any legacy
+        StockCard.objects.filter(reference_number__startswith=f"SJ-{instance.id}").delete()
+        return
     StockCard.objects.filter(reference_number=f"SJ-{instance.id}").delete()
-    # Kembalikan kuota jika distribusi dihapus
     try:
         with transaction.atomic():
             alloc = KiosAllocation.objects.select_for_update().filter(
@@ -247,3 +253,88 @@ def cache_old_distribution(sender, instance, **kwargs):
         }
     except Distribution.DoesNotExist:
         instance._old_dist_state = None
+
+
+# === NEW: PER-ITEM STOCK & KUOTA ===
+
+@receiver(pre_save, sender=DistributionItem)
+def cache_old_distribution_item(sender, instance, **kwargs):
+    if not instance.pk:
+        instance._old_state = None
+        return
+    try:
+        old = DistributionItem.objects.get(pk=instance.pk)
+        instance._old_state = {
+            'jenis_id': old.jenis_pupuk_id,
+            'tonnage': old.tonnage,
+            'source_type': old.source_type,
+            'source_so_id': old.source_so_id,
+        }
+    except DistributionItem.DoesNotExist:
+        instance._old_state = None
+
+
+def _apply_quota(distribution, jenis_id, ton_delta):
+    alloc = KiosAllocation.objects.select_for_update().filter(
+        kios=distribution.kios,
+        jenis_pupuk_id=jenis_id,
+        year=distribution.date.year
+    ).first()
+    if not alloc:
+        raise ValueError("Alokasi kios tidak ditemukan saat update distribusi")
+    alloc.quota_remaining += ton_delta
+    if alloc.quota_remaining < 0:
+        raise ValueError("Kuota kios menjadi negatif, batalkan transaksi")
+    alloc.save(update_fields=['quota_remaining'])
+
+
+@receiver(post_save, sender=DistributionItem)
+def update_stock_from_distribution_item(sender, instance, created, **kwargs):
+    ref_code = f"SJ-{instance.distribution_id}-{instance.id}"
+    stock_type = 'VIRTUAL' if instance.source_type == 'VIRTUAL' else 'PHYSICAL'
+    trans_type = 'OUT_DIST_V' if stock_type == 'VIRTUAL' else 'OUT_DIST_P'
+    desc = f"Kirim ke {instance.distribution.kios.name} ({stock_type.title()})"
+
+    with transaction.atomic():
+        StockCard.objects.update_or_create(
+            reference_number=ref_code,
+            defaults={
+                'date': instance.distribution.date,
+                'jenis_pupuk': instance.jenis_pupuk,
+                'stock_type': stock_type,
+                'transaction_type': trans_type,
+                'description': desc,
+                'qty_in': 0,
+                'qty_out': instance.tonnage,
+            }
+        )
+
+        prev = getattr(instance, '_old_state', None)
+        if prev:
+            # Kembalikan stok/quota lama
+            prev_stock_type = 'VIRTUAL' if prev['source_type'] == 'VIRTUAL' else 'PHYSICAL'
+            recompute_stock_balance(prev['jenis_id'], prev_stock_type)
+            _apply_quota(instance.distribution, prev['jenis_id'], prev['tonnage'])
+            if prev['source_type'] == 'VIRTUAL' and prev['source_so_id']:
+                update_so_closure(SalesOrder.objects.filter(pk=prev['source_so_id']).first())
+
+        # Kurangi stok/quota baru
+        recompute_stock_balance(instance.jenis_pupuk_id, stock_type)
+        _apply_quota(instance.distribution, instance.jenis_pupuk_id, -instance.tonnage)
+        if instance.source_type == 'VIRTUAL' and instance.source_so:
+            update_so_closure(instance.source_so)
+
+
+@receiver(post_delete, sender=DistributionItem)
+def delete_stock_from_distribution_item(sender, instance, **kwargs):
+    ref_code = f"SJ-{instance.distribution_id}-{instance.id}"
+    StockCard.objects.filter(reference_number=ref_code).delete()
+    try:
+        with transaction.atomic():
+            stock_type = 'VIRTUAL' if instance.source_type == 'VIRTUAL' else 'PHYSICAL'
+            recompute_stock_balance(instance.jenis_pupuk_id, stock_type)
+            _apply_quota(instance.distribution, instance.jenis_pupuk_id, instance.tonnage)
+            if instance.source_type == 'VIRTUAL' and instance.source_so:
+                update_so_closure(instance.source_so)
+    except Exception:
+        pass

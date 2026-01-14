@@ -10,10 +10,10 @@
                 <h5 class="mb-0"><i class="bi bi-truck me-2"></i>Buat Surat Jalan (Distribusi)</h5>
             </div>
             <div class="card-body p-4">
-                
                 <form method="post" id="distForm">
                     {% csrf_token %}
-                    {% if form.errors %}
+
+                    {% if form.errors or formset.non_form_errors %}
                     <div class="alert alert-danger">
                         <strong>Periksa input berikut:</strong>
                         <ul class="mb-0">
@@ -22,13 +22,16 @@
                                     <li>{{ field.label }}: {{ error }}</li>
                                 {% endfor %}
                             {% endfor %}
+                            {% for error in formset.non_form_errors %}
+                                <li>{{ error }}</li>
+                            {% endfor %}
                             {% for error in form.non_field_errors %}
                                 <li>{{ error }}</li>
                             {% endfor %}
                         </ul>
                     </div>
                     {% endif %}
-                    
+
                     <div class="row g-3">
                         <div class="col-md-6">
                             <label class="form-label fw-bold">Tanggal Kirim</label>
@@ -55,41 +58,56 @@
 
                             <label class="form-label">Pilih Kios</label>
                             {{ form.kios }}
-                            <div class="form-text">Pilih kecamatan di atas untuk menyaring daftar kios.</div>
                         </div>
 
                         <hr class="my-4">
 
                         <div class="col-md-12">
-                            <h6 class="text-success fw-bold">Sumber Barang</h6>
-                        </div>
-
-                        <div class="col-md-6">
-                            <label class="form-label fw-bold">Ambil Stok Dari?</label>
-                            {{ form.source_type }}
-                        </div>
-
-                        <div class="col-md-6" id="wrapper_so">
-                            <label class="form-label fw-bold">Pilih Nomor SO</label>
-                            {{ form.source_so }}
-                            <div class="form-text text-primary">Stok akan dipotong dari Sisa SO Pabrik.</div>
-                        </div>
-
-                        <div class="col-md-6" id="wrapper_pupuk" style="display:none;">
-                            <label class="form-label fw-bold">Jenis Pupuk</label>
-                            {{ form.jenis_pupuk }}
-                            <div class="form-text text-warning">Stok akan dipotong dari Gudang Penyangga.</div>
+                            <h6 class="text-success fw-bold d-flex align-items-center justify-content-between">
+                                <span>Detail Barang</span>
+                                <button type="button" id="btnAddRow" class="btn btn-outline-primary btn-sm">+ Tambah Item</button>
+                            </h6>
+                            {{ formset.management_form }}
+                            <div id="itemsContainer" class="d-flex flex-column gap-3">
+                                {% for f in formset.forms %}
+                                <div class="border rounded p-3 dist-item" data-index="{{ forloop.counter0 }}">
+                                    {{ f.id }}
+                                    <div class="row g-3 align-items-end">
+                                        <div class="col-md-3">
+                                            <label class="form-label fw-bold">Jenis Pupuk</label>
+                                            {{ f.jenis_pupuk }}
+                                            {% for err in f.jenis_pupuk.errors %}<div class="text-danger small">{{ err }}</div>{% endfor %}
+                                        </div>
+                                        <div class="col-md-3">
+                                            <label class="form-label fw-bold">Sumber Stok</label>
+                                            {{ f.source_type }}
+                                            {% for err in f.source_type.errors %}<div class="text-danger small">{{ err }}</div>{% endfor %}
+                                        </div>
+        
+                                        <div class="col-md-3 source-so-wrap">
+                                            <label class="form-label fw-bold">Nomor SO (jika Pabrik)</label>
+                                            {{ f.source_so }}
+                                            {% for err in f.source_so.errors %}<div class="text-danger small">{{ err }}</div>{% endfor %}
+                                        </div>
+                                        <div class="col-md-2">
+                                            <label class="form-label fw-bold">Tonase</label>
+                                            <div class="input-group">
+                                                {{ f.tonnage }}
+                                                <span class="input-group-text">Ton</span>
+                                            </div>
+                                            {% for err in f.tonnage.errors %}<div class="text-danger small">{{ err }}</div>{% endfor %}
+                                        </div>
+                                        <div class="col-md-1 text-end">
+                                            <button type="button" class="btn btn-outline-danger btn-sm btn-remove">Hapus</button>
+                                            <span class="visually-hidden">{{ f.DELETE }}</span>
+                                        </div>
+                                    </div>
+                                </div>
+                                {% endfor %}
+                            </div>
                         </div>
 
                         <div class="col-md-12">
-                            <label class="form-label fw-bold">Jumlah Kirim</label>
-                            <div class="input-group">
-                                {{ form.tonnage }}
-                                <span class="input-group-text">Ton</span>
-                            </div>
-                            {% if form.tonnage.errors %}
-                                <div class="text-danger fw-bold mt-1">{{ form.tonnage.errors }}</div>
-                            {% endif %}
                             {% if form.non_field_errors %}
                                 <div class="text-danger fw-bold mt-1">{{ form.non_field_errors }}</div>
                             {% endif %}
@@ -483,32 +501,7 @@
 
 <script>
     document.addEventListener("DOMContentLoaded", function() {
-        // 1. LOGIKA SUMBER STOK (VIRTUAL VS FISIK)
-        const sourceType = document.getElementById('id_source_type');
-        const wrapperSO = document.getElementById('wrapper_so');
-        const wrapperPupuk = document.getElementById('wrapper_pupuk');
-        const inputSO = document.getElementById('id_source_so');
-        const inputPupuk = document.getElementById('id_jenis_pupuk');
-
-        function toggleSource() {
-            if (sourceType.value === 'VIRTUAL') {
-                wrapperSO.style.display = 'block';
-                wrapperPupuk.style.display = 'none';
-                inputSO.required = true;
-                inputPupuk.required = false;
-            } else {
-                wrapperSO.style.display = 'none';
-                wrapperPupuk.style.display = 'block';
-                inputSO.required = false;
-                inputPupuk.required = true;
-                inputSO.value = ""; // Reset SO agar tidak error validasi
-            }
-        }
-        
-        sourceType.addEventListener('change', toggleSource);
-        toggleSource(); // Run on load
-
-        // 2. LOGIKA FILTER KIOS (KECAMATAN -> KIOS)
+        // 1. LOGIKA FILTER KIOS (KECAMATAN -> KIOS)
         const kiosSelect = document.getElementById('id_kios');
         const filterKec = document.getElementById('filter_kecamatan');
         
@@ -557,6 +550,59 @@
                     opt.style.display = 'none';
                 }
             });
+        });
+
+        // 2. FORMSET: tambah/hapus baris & toggle SO per baris
+        const itemsContainer = document.getElementById('itemsContainer');
+        const totalForms = document.getElementById('id_items-TOTAL_FORMS');
+        const btnAdd = document.getElementById('btnAddRow');
+
+        function bindRow(row) {
+            const sourceTypeSel = row.querySelector('.item-source-type');
+            const soWrap = row.querySelector('.source-so-wrap');
+            const soSelect = row.querySelector('.item-source-so');
+            const delInput = row.querySelector('input[type="checkbox"][name$="-DELETE"]');
+            const btnRemove = row.querySelector('.btn-remove');
+
+            const toggleSO = () => {
+                if (sourceTypeSel.value === 'VIRTUAL') {
+                    soWrap.style.display = 'block';
+                } else {
+                    soWrap.style.display = 'none';
+                    if (soSelect) soSelect.value = '';
+                }
+            };
+            sourceTypeSel.addEventListener('change', toggleSO);
+            toggleSO();
+
+            btnRemove.addEventListener('click', () => {
+                if (delInput) {
+                    delInput.checked = true;
+                    row.style.display = 'none';
+                }
+            });
+        }
+
+        Array.from(itemsContainer.querySelectorAll('.dist-item')).forEach(bindRow);
+
+        btnAdd.addEventListener('click', () => {
+            const currentCount = parseInt(totalForms.value, 10);
+            const template = itemsContainer.querySelector('.dist-item');
+            const clone = template.cloneNode(true);
+            const html = clone.innerHTML.replace(/items-(\d+)-/g, `items-${currentCount}-`).replace(/items-(\d+)-/g, `items-${currentCount}-`);
+            clone.innerHTML = html;
+            clone.setAttribute('data-index', currentCount);
+            // reset values
+            clone.querySelectorAll('input, select').forEach(el => {
+                if (el.type === 'checkbox') {
+                    el.checked = false;
+                } else {
+                    el.value = '';
+                }
+            });
+            itemsContainer.appendChild(clone);
+            totalForms.value = currentCount + 1;
+            bindRow(clone);
         });
     });
 </script>

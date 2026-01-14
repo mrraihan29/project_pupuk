@@ -7,14 +7,16 @@ from django.db.models import Sum, Prefetch
 from django.utils import timezone
 
 # Import Models & Forms Baru
-from .models import SalesOrder, SalesOrderAllocation, Distribution, WarehouseTransfer, StockCard, OrderNote, OrderNoteItem
+from .models import SalesOrder, SalesOrderAllocation, Distribution, DistributionItem, WarehouseTransfer, StockCard, OrderNote, OrderNoteItem
 from .signals import recompute_stock_balance
 from .forms import (
     SalesOrderForm, AllocationFormSet, 
-    DistributionForm, WarehouseTransferForm, 
+    DistributionForm, DistributionItemFormSet,
+    WarehouseTransferForm, 
     StockOpnameForm, OrderNoteForm, OrderNoteItemFormSet
 )
-from core.models import CompanyProfile, JenisPupuk, Kios, Kabupaten
+from django.core.exceptions import ValidationError
+from core.models import CompanyProfile, JenisPupuk, Kios, Kabupaten, KiosAllocation
 from core.utils import scope_by_kabupaten, get_scope_kabupaten
 
 # ==========================================
@@ -33,7 +35,10 @@ def so_list(request):
                             .order_by('-date')
     if kab:
         orders = orders.filter(allocations__kecamatan__kabupaten=kab).distinct()
-    
+    # Tambahkan saldo virtual terkini per SO
+    for so in orders:
+        so.virtual_balance = so.get_virtual_balance()
+
     return render(request, 'gudang/so_list.html', {
         'orders': orders,
         'kab_options': kab_options,
@@ -126,13 +131,63 @@ def transfer_create(request):
 # ==========================================
 # 3. MODUL DISTRIBUSI (SURAT JALAN)
 # ==========================================
+
+
+def validate_distribution_items(kios, dist_date, items_clean):
+    """Validasi stok virtual/fisik dan kuota kios untuk kumpulan item."""
+    if not items_clean:
+        raise ValidationError("Minimal 1 item pupuk diperlukan.")
+
+    so_balance = {}
+    physical_balance = {}
+    quota_balance = {}
+
+    for item in items_clean:
+        jenis = item['jenis_pupuk']
+        ton = item.get('tonnage') or Decimal('0')
+        source_type = item.get('source_type')
+        so = item.get('source_so')
+
+        if source_type == 'VIRTUAL':
+            if not so:
+                raise ValidationError("Pilih SO untuk sumber stok Pabrik.")
+            if so.id not in so_balance:
+                so_balance[so.id] = so.get_virtual_balance()
+            so_balance[so.id] -= ton
+            if so_balance[so.id] < 0:
+                raise ValidationError(f"Stok virtual SO {so.so_number} tidak cukup (sisa {so_balance[so.id] + ton:,.2f} Ton).")
+        else:
+            key = jenis.id
+            if key not in physical_balance:
+                agg = StockCard.objects.filter(jenis_pupuk=jenis, stock_type='PHYSICAL').aggregate(
+                    total_in=Sum('qty_in'),
+                    total_out=Sum('qty_out'),
+                )
+                physical_balance[key] = (agg['total_in'] or Decimal('0')) - (agg['total_out'] or Decimal('0'))
+            physical_balance[key] -= ton
+            if physical_balance[key] < 0:
+                raise ValidationError(f"Stok fisik {jenis.code} tidak cukup (sisa {physical_balance[key] + ton:,.2f} Ton).")
+
+        qkey = (jenis.id, dist_date.year)
+        if qkey not in quota_balance:
+            alloc = KiosAllocation.objects.filter(kios=kios, jenis_pupuk=jenis, year=dist_date.year).first()
+            if not alloc:
+                raise ValidationError(f"Belum ada alokasi {jenis.code} untuk tahun {dist_date.year} di kios ini.")
+            quota_balance[qkey] = alloc.quota_remaining
+        quota_balance[qkey] -= ton
+        if quota_balance[qkey] < 0:
+            raise ValidationError(f"Kuota {jenis.code} tersisa {quota_balance[qkey] + ton:,.2f} Ton, tidak cukup.")
+
+    return True
+
+
 @login_required
 def distribution_list(request):
     # Tambahkan 'invoice' di select_related/prefetch agar efisien
     # Note: Karena Invoice one-to-one ke Distribution, kita akses via reverse relationship
     data_surat_jalan = Distribution.objects.select_related(
-        'kios', 'armada', 'jenis_pupuk', 'source_so', 'invoice' 
-    ).order_by('-date', '-created_at')
+        'kios', 'armada', 'invoice'
+    ).prefetch_related('items__jenis_pupuk', 'items__source_so').annotate(total_ton=Sum('items__tonnage')).order_by('-date', '-created_at')
     data_surat_jalan = scope_by_kabupaten(data_surat_jalan, request.user, 'kios__kecamatan__kabupaten')
     kab = get_scope_kabupaten(request)
     kab_options = Kabupaten.objects.all().order_by('name') if request.user.is_superuser else Kabupaten.objects.none()
@@ -145,27 +200,58 @@ def distribution_list(request):
 @login_required
 def distribution_create(request):
     kab = get_scope_kabupaten(request)
+    so_qs = SalesOrder.objects.filter(is_closed=False)
+    if kab:
+        so_qs = so_qs.filter(allocations__kecamatan__kabupaten=kab).distinct()
     if request.method == 'POST':
         form = DistributionForm(request.POST)
+        formset = DistributionItemFormSet(request.POST, prefix='items')
         if kab:
             form.fields['kios'].queryset = Kios.objects.filter(is_active=True, kecamatan__kabupaten=kab)
-            form.fields['source_so'].queryset = SalesOrder.objects.filter(is_closed=False, allocations__kecamatan__kabupaten=kab).distinct()
-        if form.is_valid():
+        # Batasi SO di formset
+        for f in formset.forms:
+            f.fields['source_so'].queryset = so_qs
+
+        if form.is_valid() and formset.is_valid():
+            items_clean = []
+            for f in formset.cleaned_data:
+                if not f or f.get('DELETE'):
+                    continue
+                items_clean.append(f)
             try:
-                dist = form.save()
-                messages.success(request, f"Surat Jalan {dist.no_surat_jalan} berhasil diterbitkan.")
-                return redirect('distribution_list')
-            except Exception as e:
-                messages.error(request, f"Gagal Simpan: {e}")
+                validate_distribution_items(form.cleaned_data['kios'], form.cleaned_data['date'], items_clean)
+            except ValidationError as exc:
+                messages.error(request, exc.message)
+            else:
+                try:
+                    with transaction.atomic():
+                        dist = form.save(commit=False)
+                        # Legacy header fields diisi dari item pertama untuk kompatibilitas lama
+                        first = items_clean[0]
+                        dist.source_type = first['source_type']
+                        dist.jenis_pupuk = first['jenis_pupuk']
+                        dist.tonnage = first['tonnage']
+                        dist.source_so = first.get('source_so')
+                        dist.save()
+
+                        formset.instance = dist
+                        formset.save()
+
+                    messages.success(request, f"Surat Jalan {dist.no_surat_jalan} berhasil diterbitkan.")
+                    return redirect('distribution_list')
+                except Exception as e:
+                    messages.error(request, f"Gagal Simpan: {e}")
         else:
-            messages.error(request, "Form tidak valid. Cek apakah Stok Cukup?")
+            messages.error(request, "Form tidak valid. Periksa kolom yang bertanda merah.")
     else:
         form = DistributionForm()
+        formset = DistributionItemFormSet(prefix='items')
         if kab:
             form.fields['kios'].queryset = Kios.objects.filter(is_active=True, kecamatan__kabupaten=kab)
-            form.fields['source_so'].queryset = SalesOrder.objects.filter(is_closed=False, allocations__kecamatan__kabupaten=kab).distinct()
+        for f in formset.forms:
+            f.fields['source_so'].queryset = so_qs
 
-    return render(request, 'gudang/distribution_form.html', {'form': form})
+    return render(request, 'gudang/distribution_form.html', {'form': form, 'formset': formset})
 
 # ==========================================
 # 4. MODUL KARTU STOK & OPNAME

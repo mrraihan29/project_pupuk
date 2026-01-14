@@ -32,7 +32,7 @@ from .forms import (
 from .utils import scope_by_kabupaten, get_scope_kabupaten, get_price_by_code
 User = get_user_model()
 
-from gudang.models import SalesOrder, SalesOrderAllocation, Distribution, StockCard
+from gudang.models import SalesOrder, SalesOrderAllocation, Distribution, DistributionItem, StockCard
 from keuangan.models import Invoice, BiayaOperasional, Payment
 
 # 1. READ (Daftar Kios)
@@ -40,20 +40,25 @@ from keuangan.models import Invoice, BiayaOperasional, Payment
 def kios_list(request):
     # Select related kecamatan agar query efisien
     current_year = date.today().year
-    kios_data = Kios.objects.select_related('kecamatan__kabupaten').prefetch_related('allocations__jenis_pupuk').order_by('-created_at')
+    alloc_qs = KiosAllocation.objects.filter(year=current_year).select_related('jenis_pupuk')
+    kios_data = (
+        Kios.objects.select_related('kecamatan__kabupaten')
+        .prefetch_related(Prefetch('allocations', queryset=alloc_qs))
+        .order_by('-created_at')
+    )
     kios_data = scope_by_kabupaten(kios_data, request.user, 'kecamatan__kabupaten')
 
     # Hitung realisasi distribusi per kios x jenis pupuk di tahun berjalan
     kios_ids = [k.id for k in kios_data]
     dist_map = {}
     if kios_ids:
-        dist_agg = Distribution.objects.filter(
-            kios_id__in=kios_ids,
-            date__year=current_year
-        ).values('kios_id', 'jenis_pupuk_id').annotate(total=Sum('tonnage'))
+        dist_agg = DistributionItem.objects.filter(
+            distribution__kios_id__in=kios_ids,
+            distribution__date__year=current_year
+        ).values('distribution__kios_id', 'jenis_pupuk_id').annotate(total=Sum('tonnage'))
 
         for row in dist_agg:
-            dist_map[(row['kios_id'], row['jenis_pupuk_id'])] = row['total'] or Decimal('0')
+            dist_map[(row['distribution__kios_id'], row['jenis_pupuk_id'])] = row['total'] or Decimal('0')
 
     # Tempelkan nilai realisasi ke setiap allocation agar template sederhana
     for kios in kios_data:
@@ -259,8 +264,16 @@ def raport_kios(request):
 
         # Realisasi (Actual) - Menggunakan relation Distribution -> JenisPupuk
         # Perhatikan path filter: distribution -> jenis_pupuk__name
-        dist_npk = Distribution.objects.filter(kios=k, jenis_pupuk__name='NPK', date__year=current_year).aggregate(Sum('tonnage'))['tonnage__sum'] or 0
-        dist_urea = Distribution.objects.filter(kios=k, jenis_pupuk__name='UREA', date__year=current_year).aggregate(Sum('tonnage'))['tonnage__sum'] or 0
+        dist_npk = DistributionItem.objects.filter(
+            distribution__kios=k,
+            jenis_pupuk__name='NPK',
+            distribution__date__year=current_year
+        ).aggregate(total=Sum('tonnage'))['total'] or 0
+        dist_urea = DistributionItem.objects.filter(
+            distribution__kios=k,
+            jenis_pupuk__name='UREA',
+            distribution__date__year=current_year
+        ).aggregate(total=Sum('tonnage'))['total'] or 0
 
         persen_npk = (dist_npk / alloc_npk * 100) if alloc_npk > 0 else 0
         persen_urea = (dist_urea / alloc_urea * 100) if alloc_urea > 0 else 0
@@ -399,7 +412,7 @@ def master_data_pupuk(request):
 
         has_refs = (
             KiosAllocation.objects.filter(jenis_pupuk=target).exists() or
-            Distribution.objects.filter(jenis_pupuk=target).exists() or
+            DistributionItem.objects.filter(jenis_pupuk=target).exists() or
             SalesOrder.objects.filter(jenis_pupuk=target).exists() or
             StockCard.objects.filter(jenis_pupuk=target).exists()
         )
@@ -475,7 +488,7 @@ def jenis_pupuk_delete(request, pk):
     has_refs = (
         FertilizerPrice.objects.filter(jenis_pupuk=jenis).exists() or
         KiosAllocation.objects.filter(jenis_pupuk=jenis).exists() or
-        Distribution.objects.filter(jenis_pupuk=jenis).exists() or
+        DistributionItem.objects.filter(jenis_pupuk=jenis).exists() or
         SalesOrder.objects.filter(jenis_pupuk=jenis).exists() or
         StockCard.objects.filter(jenis_pupuk=jenis).exists()
     )
@@ -574,11 +587,11 @@ def laporan_keuangan(request):
     ton_to_kg = Decimal('1')
 
     # 3. HITUNG OMZET PENJUALAN (REVENUE) — basis invoice jika ada, fallback ke tonase x harga master
-    dist_qs = Distribution.objects.filter(
-        date__range=[start_date, end_date],
-    ).select_related('kios__kecamatan__kabupaten')
+    dist_qs = DistributionItem.objects.select_related('distribution__kios__kecamatan__kabupaten', 'jenis_pupuk').filter(
+        distribution__date__range=[start_date, end_date],
+    )
     if kab:
-        dist_qs = dist_qs.filter(kios__kecamatan__kabupaten=kab)
+        dist_qs = dist_qs.filter(distribution__kios__kecamatan__kabupaten=kab)
 
     qty_jual_npk = dist_qs.filter(jenis_pupuk__name='NPK').aggregate(total=Coalesce(Sum('tonnage'), Decimal('0')))['total']
 

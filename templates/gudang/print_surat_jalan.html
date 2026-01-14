@@ -89,14 +89,19 @@
                 </tr>
             </thead>
             <tbody>
+                {% for item in dist.items.all %}
                 <tr>
-                    <td>1</td>
+                    <td>{{ forloop.counter }}</td>
                     <td style="text-align: left; padding-left: 20px;">
-                        <strong>PUPUK {{ dist.jenis_pupuk.name }}</strong> ({{ dist.jenis_pupuk.code }})
+                        <strong>PUPUK {{ item.jenis_pupuk.name }}</strong> ({{ item.jenis_pupuk.code }})
+                        {% if item.source_type == 'VIRTUAL' and item.source_so %}
+                            <br><small style="color: #666;">SO: {{ item.source_so.so_number }}</small>
+                        {% endif %}
                     </td>
                     <td>TON</td>
-                    <td style="font-weight: bold; font-size: 16px;">{{ dist.tonnage }}</td>
+                    <td style="font-weight: bold; font-size: 16px;">{{ item.tonnage }}</td>
                 </tr>
+                {% endfor %}
             </tbody>
         </table>
 
