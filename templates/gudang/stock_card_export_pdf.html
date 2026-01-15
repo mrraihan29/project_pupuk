@@ -1,0 +1,87 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <title>Export Stok Fisik</title>
+    <style>
+        body { font-family: Arial, sans-serif; font-size: 12px; color: #222; }
+        .container { width: 100%; padding: 16px 20px; }
+        .header { border-bottom: 2px solid #111; padding-bottom: 10px; margin-bottom: 16px; }
+        .company { font-size: 18px; font-weight: bold; color: #198754; }
+        .company-info { font-size: 10px; color: #555; }
+        .title { text-align: center; font-size: 16px; font-weight: bold; margin: 10px 0 4px; }
+        .subtitle { text-align: center; font-size: 11px; color: #666; margin-bottom: 14px; }
+        table { width: 100%; border-collapse: collapse; margin-top: 8px; }
+        th, td { border: 1px solid #ddd; padding: 6px; }
+        th { background: #f1f4f7; text-align: center; }
+        td { vertical-align: top; }
+        .text-right { text-align: right; }
+        .text-center { text-align: center; }
+        .summary { margin-top: 12px; width: 100%; }
+        .summary td { border: none; padding: 4px 0; }
+        .muted { color: #666; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <div class="company">{{ company.name|default:"NAMA PERUSAHAAN" }}</div>
+            <div class="company-info">
+                {{ company.address|default:"" }}<br>
+                Telp: {{ company.phone|default:"-" }}
+            </div>
+        </div>
+
+        <div class="title">EXPORT KARTU STOK FISIK</div>
+        <div class="subtitle">
+            Periode: {{ month }}/{{ year }} &nbsp;|&nbsp; Tanggal Export: {{ export_date|date:"d M Y" }}
+        </div>
+
+        <table>
+            <thead>
+                <tr>
+                    <th>Tanggal</th>
+                    <th>Jenis Pupuk</th>
+                    <th>Transaksi</th>
+                    <th>Ref</th>
+                    <th>Masuk</th>
+                    <th>Keluar</th>
+                    <th>Saldo</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for row in rows %}
+                <tr>
+                    <td class="text-center">{{ row.date|date:"d M Y" }}</td>
+                    <td>{{ row.jenis }}</td>
+                    <td>{{ row.trx }}</td>
+                    <td class="text-center">{{ row.ref }}</td>
+                    <td class="text-right">{{ row.in|floatformat:2 }}</td>
+                    <td class="text-right">{{ row.out|floatformat:2 }}</td>
+                    <td class="text-right">{{ row.balance|floatformat:2 }}</td>
+                </tr>
+                {% empty %}
+                <tr>
+                    <td colspan="7" class="text-center muted">Tidak ada data pada periode ini.</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+
+        <table class="summary">
+            <tr>
+                <td class="text-right" style="width:80%;"><strong>Total Masuk</strong></td>
+                <td class="text-right"><strong>{{ total_in|floatformat:2 }}</strong></td>
+            </tr>
+            <tr>
+                <td class="text-right"><strong>Total Keluar</strong></td>
+                <td class="text-right"><strong>{{ total_out|floatformat:2 }}</strong></td>
+            </tr>
+            <tr>
+                <td class="text-right"><strong>Netto (Masuk - Keluar)</strong></td>
+                <td class="text-right"><strong>{{ total_net|floatformat:2 }}</strong></td>
+            </tr>
+        </table>
+    </div>
+</body>
+</html>

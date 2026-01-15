@@ -5,6 +5,9 @@ from django.contrib.auth.decorators import login_required
 from django.db import transaction
 from django.db.models import Sum, Prefetch
 from django.utils import timezone
+from django.http import HttpResponse
+from django.template.loader import render_to_string
+from xhtml2pdf import pisa
 
 # Import Models & Forms Baru
 from .models import SalesOrder, SalesOrderAllocation, Distribution, DistributionItem, WarehouseTransfer, StockCard, OrderNote, OrderNoteItem
@@ -341,6 +344,7 @@ def stock_card_list(request):
     
     # 2. Ambil Parameter URL
     jenis_code = request.GET.get('jenis', 'NPK') 
+    stock_filter = request.GET.get('stock', 'PHYSICAL')
     
     # 3. Cari Object Jenis Pupuk (Safe Query)
     # Gunakan filter().first() -> Return Object atau None (Tidak akan error crash)
@@ -349,7 +353,10 @@ def stock_card_list(request):
     # 4. Logic Data (Hanya jalan jika jenis_pupuk DITEMUKAN)
     if jenis_pupuk:
         # Ambil Transaksi (Urut dari lama ke baru untuk hitung saldo)
-        raw_cards = StockCard.objects.filter(jenis_pupuk=jenis_pupuk).order_by('date', 'created_at')
+        raw_cards = StockCard.objects.filter(
+            jenis_pupuk=jenis_pupuk,
+            stock_type=stock_filter
+        ).order_by('date', 'created_at')
         
         # Hitung Running Balance
         for card in raw_cards:
@@ -367,8 +374,80 @@ def stock_card_list(request):
     return render(request, 'gudang/stock_card_list.html', {
         'cards': cards,
         'jenis_selected': jenis_code, # Kirim string kode (NPK/UREA) ke template
-        'saldo_akhir': saldo_akhir
+        'saldo_akhir': saldo_akhir,
+        'stock_selected': stock_filter,
+        'now': timezone.now(),
     })
+
+
+@login_required
+def stock_card_export_physical(request):
+    """Export PDF stok fisik per bulan."""
+    try:
+        year = int(request.GET.get('year', timezone.now().year))
+        month = int(request.GET.get('month', timezone.now().month))
+    except (TypeError, ValueError):
+        year = timezone.now().year
+        month = timezone.now().month
+
+    start_date = timezone.datetime(year, month, 1).date()
+    if month == 12:
+        end_date = timezone.datetime(year + 1, 1, 1).date()
+    else:
+        end_date = timezone.datetime(year, month + 1, 1).date()
+
+    qs = StockCard.objects.filter(
+        stock_type='PHYSICAL',
+        date__gte=start_date,
+        date__lt=end_date
+    ).select_related('jenis_pupuk').order_by('date', 'created_at')
+
+    type_label = dict(StockCard.TRANSACTION_TYPES)
+    running = {}
+    rows = []
+    total_in = Decimal('0')
+    total_out = Decimal('0')
+
+    for card in qs:
+        key = card.jenis_pupuk_id
+        if key not in running:
+            running[key] = Decimal('0')
+        running[key] += (card.qty_in or Decimal('0')) - (card.qty_out or Decimal('0'))
+        total_in += card.qty_in or Decimal('0')
+        total_out += card.qty_out or Decimal('0')
+        rows.append({
+            'date': card.date,
+            'jenis': card.jenis_pupuk.name,
+            'trx': type_label.get(card.transaction_type, card.transaction_type),
+            'ref': card.reference_number,
+            'in': card.qty_in,
+            'out': card.qty_out,
+            'balance': running[key],
+        })
+
+    company = CompanyProfile.objects.first()
+    export_date = timezone.now().date()
+    context = {
+        'company': company,
+        'rows': rows,
+        'year': year,
+        'month': month,
+        'export_date': export_date,
+        'total_in': total_in,
+        'total_out': total_out,
+        'total_net': total_in - total_out,
+    }
+
+    html = render_to_string('gudang/stock_card_export_pdf.html', context)
+    response = HttpResponse(content_type='application/pdf')
+    filename = f"stok_fisik_{year}-{month:02d}.pdf"
+    response['Content-Disposition'] = f'attachment; filename="{filename}"'
+
+    pisa_status = pisa.CreatePDF(html, dest=response)
+    if pisa_status.err:
+        return HttpResponse('Gagal membuat PDF.', status=500)
+
+    return response
 
 @login_required
 def stock_opname(request):

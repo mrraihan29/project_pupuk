@@ -1,0 +1,92 @@
+flowchart TD
+    %% Master Data
+    subgraph MasterData[Master Data]
+        JP[Jenis Pupuk]
+        KH[Harga Pupuk per Kabupaten]
+        KK[Kecamatan & Kios]
+        KA[Kuota Kios Tahunan]
+    end
+
+    %% Penebusan SO
+    subgraph Penebusan["Penebusan (SO)"]
+        SO[Input SO + Alokasi Kecamatan]
+        SO -->|IN_SO| SV[Stok Virtual]
+        SO -->|Auto Close jika saldo 0| SOCLS[Status SO Closed]
+    end
+
+    %% Transfer Gudang
+    subgraph TransferGudang["Tarik ke Gudang (Transfer)"]
+        TRF[Warehouse Transfer]
+        TRF -->|OUT_TRF| SV
+        TRF -->|IN_TRF| SF[Stok Fisik]
+    end
+
+    %% Distribusi ke Kios
+    subgraph Distribusi["Distribusi ke Kios (Surat Jalan)"]
+        DIST[Input Distribusi + Item]
+        DIST -->|Validasi Kuota| KA
+        DIST -->|Validasi Stok Fisik| SF
+        DIST -->|Validasi Stok Virtual| SV
+
+        DOPT{Sumber Stok?}
+        DIST --> DOPT
+
+        DOPT -- VIRTUAL --> DV1[Virtual OUT di Tgl Kirim]
+        DV1 --> SV
+        DV1 --> PF1["Fisik IN di Tgl Kirim (Transit)"]
+        PF1 --> SF
+        PF1 --> PF2[Fisik OUT di Tgl PKP]
+        PF2 --> SF
+
+        DOPT -- PHYSICAL --> PF2B[Fisik OUT di Tgl PKP]
+        PF2B --> SF
+    end
+
+    %% Catatan Order
+    subgraph OrderNote[Catatan Order]
+        ON[Catatan Order + Item]
+        ON -->|Kirim| DIST
+        ON -->|Sisa Pesanan| ONREM[Remaining Qty]
+    end
+
+    %% Invoice & Payment
+    subgraph Keuangan["Invoice & Payment"]
+        INV[Invoice Otomatis dari SJ]
+        PAY[Pembayaran]
+        DIST --> INV
+        INV --> PAY
+    end
+
+    %% Stock Opname
+    subgraph Opname[Stock Opname]
+        OP[Input Opname]
+        OP -->|ADJUST| SF
+        OP -->|ADJUST| SV
+    end
+
+    %% Reporting
+    subgraph Reporting[Laporan & Dashboard]
+        DS[Dashboard Stok Virtual & Fisik]
+        LK[Laporan Keuangan]
+        RK[Raport Kios]
+        KS["Kartu Stok (Ledger)"]
+        KS -->|"Export PDF Bulanan (Fisik)"| EXP[PDF Export]
+    end
+
+    %% Ledger Source of Truth
+    SV --> KS
+    SF --> KS
+    JP --> KS
+    KH --> LK
+    KA --> RK
+    DIST --> RK
+    INV --> LK
+    PAY --> LK
+
+    %% Flow connections
+    MasterData --> Penebusan
+    MasterData --> TransferGudang
+    MasterData --> Distribusi
+    MasterData --> OrderNote
+    MasterData --> Keuangan
+    MasterData --> Reporting

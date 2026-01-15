@@ -290,20 +290,56 @@ def _apply_quota(distribution, jenis_id, ton_delta):
 
 @receiver(post_save, sender=DistributionItem)
 def update_stock_from_distribution_item(sender, instance, created, **kwargs):
-    ref_code = f"SJ-{instance.distribution_id}-{instance.id}"
-    stock_type = 'VIRTUAL' if instance.source_type == 'VIRTUAL' else 'PHYSICAL'
-    trans_type = 'OUT_DIST_V' if stock_type == 'VIRTUAL' else 'OUT_DIST_P'
-    desc = f"Kirim ke {instance.distribution.kios.name} ({stock_type.title()})"
+    dist = instance.distribution
+    ref_virtual = f"SJ-{instance.distribution_id}-{instance.id}-V"
+    ref_pin = f"SJ-{instance.distribution_id}-{instance.id}-P-IN"
+    ref_pout = f"SJ-{instance.distribution_id}-{instance.id}-P-OUT"
+    desc_v = f"Kirim ke {dist.kios.name} (Virtual)"
+    desc_p_in = f"Masuk Gudang (Transit) untuk {dist.kios.name}"
+    desc_p_out = f"Kirim ke {dist.kios.name} (Gudang)"
+    pkp_date = dist.pkp_date or dist.date
 
     with transaction.atomic():
+        # 1) Virtual OUT hanya jika sumber stok VIRTUAL
+        if instance.source_type == 'VIRTUAL':
+            StockCard.objects.update_or_create(
+                reference_number=ref_virtual,
+                defaults={
+                    'date': dist.date,
+                    'jenis_pupuk': instance.jenis_pupuk,
+                    'stock_type': 'VIRTUAL',
+                    'transaction_type': 'OUT_DIST_V',
+                    'description': desc_v,
+                    'qty_in': 0,
+                    'qty_out': instance.tonnage,
+                }
+            )
+        else:
+            StockCard.objects.filter(reference_number=ref_virtual).delete()
+
+        # 2) Fisik IN pada tanggal kirim (dianggap masuk gudang dulu)
         StockCard.objects.update_or_create(
-            reference_number=ref_code,
+            reference_number=ref_pin,
             defaults={
-                'date': instance.distribution.date,
+                'date': dist.date,
                 'jenis_pupuk': instance.jenis_pupuk,
-                'stock_type': stock_type,
-                'transaction_type': trans_type,
-                'description': desc,
+                'stock_type': 'PHYSICAL',
+                'transaction_type': 'IN_DIST_P',
+                'description': desc_p_in,
+                'qty_in': instance.tonnage,
+                'qty_out': 0,
+            }
+        )
+
+        # 3) Fisik OUT pada tanggal PKP
+        StockCard.objects.update_or_create(
+            reference_number=ref_pout,
+            defaults={
+                'date': pkp_date,
+                'jenis_pupuk': instance.jenis_pupuk,
+                'stock_type': 'PHYSICAL',
+                'transaction_type': 'OUT_DIST_P',
+                'description': desc_p_out,
                 'qty_in': 0,
                 'qty_out': instance.tonnage,
             }
@@ -312,14 +348,18 @@ def update_stock_from_distribution_item(sender, instance, created, **kwargs):
         prev = getattr(instance, '_old_state', None)
         if prev:
             # Kembalikan stok/quota lama
-            prev_stock_type = 'VIRTUAL' if prev['source_type'] == 'VIRTUAL' else 'PHYSICAL'
-            recompute_stock_balance(prev['jenis_id'], prev_stock_type)
+            prev_virtual = prev['source_type'] == 'VIRTUAL'
+            if prev_virtual:
+                recompute_stock_balance(prev['jenis_id'], 'VIRTUAL')
+            recompute_stock_balance(prev['jenis_id'], 'PHYSICAL')
             _apply_quota(instance.distribution, prev['jenis_id'], prev['tonnage'])
             if prev['source_type'] == 'VIRTUAL' and prev['source_so_id']:
                 update_so_closure(SalesOrder.objects.filter(pk=prev['source_so_id']).first())
 
         # Kurangi stok/quota baru
-        recompute_stock_balance(instance.jenis_pupuk_id, stock_type)
+        if instance.source_type == 'VIRTUAL':
+            recompute_stock_balance(instance.jenis_pupuk_id, 'VIRTUAL')
+        recompute_stock_balance(instance.jenis_pupuk_id, 'PHYSICAL')
         _apply_quota(instance.distribution, instance.jenis_pupuk_id, -instance.tonnage)
         if instance.source_type == 'VIRTUAL' and instance.source_so:
             update_so_closure(instance.source_so)
@@ -327,12 +367,15 @@ def update_stock_from_distribution_item(sender, instance, created, **kwargs):
 
 @receiver(post_delete, sender=DistributionItem)
 def delete_stock_from_distribution_item(sender, instance, **kwargs):
-    ref_code = f"SJ-{instance.distribution_id}-{instance.id}"
-    StockCard.objects.filter(reference_number=ref_code).delete()
+    ref_virtual = f"SJ-{instance.distribution_id}-{instance.id}-V"
+    ref_pin = f"SJ-{instance.distribution_id}-{instance.id}-P-IN"
+    ref_pout = f"SJ-{instance.distribution_id}-{instance.id}-P-OUT"
+    StockCard.objects.filter(reference_number__in=[ref_virtual, ref_pin, ref_pout]).delete()
     try:
         with transaction.atomic():
-            stock_type = 'VIRTUAL' if instance.source_type == 'VIRTUAL' else 'PHYSICAL'
-            recompute_stock_balance(instance.jenis_pupuk_id, stock_type)
+            if instance.source_type == 'VIRTUAL':
+                recompute_stock_balance(instance.jenis_pupuk_id, 'VIRTUAL')
+            recompute_stock_balance(instance.jenis_pupuk_id, 'PHYSICAL')
             _apply_quota(instance.distribution, instance.jenis_pupuk_id, instance.tonnage)
             if instance.source_type == 'VIRTUAL' and instance.source_so:
                 update_so_closure(instance.source_so)

@@ -307,6 +307,7 @@ class StockCard(models.Model):
         ('IN_SO', 'Penebusan Baru (Virtual In)'),
         ('OUT_TRF', 'Ditarik ke Gudang (Virtual Out)'),
         ('IN_TRF', 'Masuk Gudang (Physical In)'),
+        ('IN_DIST_P', 'Distribusi Masuk Gudang (Physical In)'),
         ('OUT_DIST_V', 'Distribusi Langsung (Virtual Out)'),
         ('OUT_DIST_P', 'Distribusi Gudang (Physical Out)'),
         ('ADJUST', 'Penyesuaian / Opname'),
