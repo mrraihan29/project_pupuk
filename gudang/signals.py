@@ -300,8 +300,8 @@ def update_stock_from_distribution_item(sender, instance, created, **kwargs):
     pkp_date = dist.pkp_date or dist.date
 
     with transaction.atomic():
-        # 1) Virtual OUT hanya jika sumber stok VIRTUAL
         if instance.source_type == 'VIRTUAL':
+            # 1) Virtual OUT
             StockCard.objects.update_or_create(
                 reference_number=ref_virtual,
                 defaults={
@@ -314,24 +314,25 @@ def update_stock_from_distribution_item(sender, instance, created, **kwargs):
                     'qty_out': instance.tonnage,
                 }
             )
+
+            # 2) Fisik IN pada tanggal kirim (dianggap masuk gudang dulu)
+            StockCard.objects.update_or_create(
+                reference_number=ref_pin,
+                defaults={
+                    'date': dist.date,
+                    'jenis_pupuk': instance.jenis_pupuk,
+                    'stock_type': 'PHYSICAL',
+                    'transaction_type': 'IN_DIST_P',
+                    'description': desc_p_in,
+                    'qty_in': instance.tonnage,
+                    'qty_out': 0,
+                }
+            )
         else:
-            StockCard.objects.filter(reference_number=ref_virtual).delete()
+            # Sumber fisik: tidak ada virtual out dan tidak ada fisik IN
+            StockCard.objects.filter(reference_number__in=[ref_virtual, ref_pin]).delete()
 
-        # 2) Fisik IN pada tanggal kirim (dianggap masuk gudang dulu)
-        StockCard.objects.update_or_create(
-            reference_number=ref_pin,
-            defaults={
-                'date': dist.date,
-                'jenis_pupuk': instance.jenis_pupuk,
-                'stock_type': 'PHYSICAL',
-                'transaction_type': 'IN_DIST_P',
-                'description': desc_p_in,
-                'qty_in': instance.tonnage,
-                'qty_out': 0,
-            }
-        )
-
-        # 3) Fisik OUT pada tanggal PKP
+        # 3) Fisik OUT pada tanggal PKP (selalu untuk distribusi ke kios)
         StockCard.objects.update_or_create(
             reference_number=ref_pout,
             defaults={
