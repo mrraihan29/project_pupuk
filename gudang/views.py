@@ -203,21 +203,84 @@ def distribution_create(request):
     so_qs = SalesOrder.objects.filter(is_closed=False)
     if kab:
         so_qs = so_qs.filter(allocations__kecamatan__kabupaten=kab).distinct()
+
+    order_items_qs = OrderNoteItem.objects.filter(order__is_deleted=False, order__status=OrderNote.STATUS_OPEN)
+    if kab:
+        order_items_qs = order_items_qs.filter(order__kios__kecamatan__kabupaten=kab)
+
+    delivered_map = {
+        row['order_item']: row['total'] or Decimal('0')
+        for row in DistributionItem.objects.filter(order_item__isnull=False)
+        .values('order_item').annotate(total=Sum('tonnage'))
+    }
+
+    def remaining_order_qty(oi):
+        delivered = delivered_map.get(oi.id, Decimal('0'))
+        remaining = (oi.tonnage or Decimal('0')) - delivered
+        return remaining if remaining > 0 else Decimal('0')
+
+    open_order_items = []
+    for oi in order_items_qs.select_related('order__kios__kecamatan__kabupaten', 'jenis_pupuk'):
+        rem = remaining_order_qty(oi)
+        if rem > 0:
+            oi.remaining_qty = rem
+            open_order_items.append(oi)
+
+    prefill_order_item = None
+    prefill_initial = None
+    prefill_kios = None
+    prefill_dates = {}
+    if request.method != 'POST':
+        oid_raw = request.GET.get('order_item')
+        try:
+            oid = int(oid_raw) if oid_raw else None
+        except (TypeError, ValueError):
+            oid = None
+        if oid:
+            prefill_order_item = next((o for o in open_order_items if o.id == oid), None)
+            if prefill_order_item:
+                prefill_kios = prefill_order_item.order.kios
+                prefill_initial = [{
+                    'jenis_pupuk': prefill_order_item.jenis_pupuk,
+                    'tonnage': prefill_order_item.remaining_tonnage,
+                    'order_item': prefill_order_item.id,
+                }]
+                today = timezone.now().date()
+                prefill_dates = {'date': today, 'pkp_date': today}
+
     if request.method == 'POST':
         form = DistributionForm(request.POST)
-        formset = DistributionItemFormSet(request.POST, prefix='items')
+        kios_selected = form.data.get('kios') or None
+        formset = DistributionItemFormSet(request.POST, prefix='items', kios=kios_selected)
         if kab:
             form.fields['kios'].queryset = Kios.objects.filter(is_active=True, kecamatan__kabupaten=kab)
         # Batasi SO di formset
         for f in formset.forms:
             f.fields['source_so'].queryset = so_qs
+            f.fields['order_item'].queryset = order_items_qs
 
         if form.is_valid() and formset.is_valid():
             items_clean = []
             for f in formset.cleaned_data:
                 if not f or f.get('DELETE'):
                     continue
+                # Anggap kosong jika semua bidang utama belum diisi
+                if not any([
+                    f.get('jenis_pupuk'),
+                    f.get('source_type'),
+                    f.get('source_so'),
+                    f.get('order_item'),
+                    f.get('tonnage'),
+                ]):
+                    continue
                 items_clean.append(f)
+            if not items_clean:
+                messages.error(request, "Minimal satu item pupuk diperlukan.")
+                return render(request, 'gudang/distribution_form.html', {
+                    'form': form,
+                    'formset': formset,
+                    'open_order_items': open_order_items,
+                })
             try:
                 validate_distribution_items(form.cleaned_data['kios'], form.cleaned_data['date'], items_clean)
             except ValidationError as exc:
@@ -230,7 +293,7 @@ def distribution_create(request):
                         first = items_clean[0]
                         dist.source_type = first['source_type']
                         dist.jenis_pupuk = first['jenis_pupuk']
-                        dist.tonnage = first['tonnage']
+                        dist.tonnage = sum(i['tonnage'] for i in items_clean)
                         dist.source_so = first.get('source_so')
                         dist.save()
 
@@ -244,14 +307,23 @@ def distribution_create(request):
         else:
             messages.error(request, "Form tidak valid. Periksa kolom yang bertanda merah.")
     else:
-        form = DistributionForm()
-        formset = DistributionItemFormSet(prefix='items')
+        form = DistributionForm(initial=prefill_dates if prefill_dates else None)
+        formset = DistributionItemFormSet(prefix='items', kios=prefill_kios.id if prefill_kios else None, initial=prefill_initial)
         if kab:
             form.fields['kios'].queryset = Kios.objects.filter(is_active=True, kecamatan__kabupaten=kab)
+        if prefill_kios and kab and prefill_kios.kecamatan.kabupaten != kab:
+            messages.error(request, "Pesanan tidak sesuai kabupaten akses Anda.")
+        if prefill_kios:
+            form.fields['kios'].initial = prefill_kios.id
         for f in formset.forms:
             f.fields['source_so'].queryset = so_qs
+            f.fields['order_item'].queryset = order_items_qs
 
-    return render(request, 'gudang/distribution_form.html', {'form': form, 'formset': formset})
+    return render(request, 'gudang/distribution_form.html', {
+        'form': form,
+        'formset': formset,
+        'open_order_items': open_order_items,
+    })
 
 # ==========================================
 # 4. MODUL KARTU STOK & OPNAME
@@ -381,10 +453,28 @@ def print_surat_jalan(request, pk):
 # ==========================================
 @login_required
 def order_note_list(request):
-    orders = OrderNote.objects.filter(is_deleted=False).select_related('kecamatan', 'kios').prefetch_related(
+    orders_qs = OrderNote.objects.filter(is_deleted=False).select_related('kecamatan', 'kios').prefetch_related(
         Prefetch('items', queryset=OrderNoteItem.objects.select_related('jenis_pupuk'))
     )
-    orders = scope_by_kabupaten(orders, request.user, 'kecamatan__kabupaten')
+    orders_qs = scope_by_kabupaten(orders_qs, request.user, 'kecamatan__kabupaten')
+
+    delivered_map = {
+        row['order_item']: row['total'] or Decimal('0')
+        for row in DistributionItem.objects.filter(order_item__isnull=False)
+        .values('order_item').annotate(total=Sum('tonnage'))
+    }
+
+    orders = []
+    for order in orders_qs:
+        remaining_any = False
+        for item in order.items.all():
+            delivered = delivered_map.get(item.id, Decimal('0'))
+            item.delivered = delivered
+            item.remaining = max(Decimal('0'), (item.tonnage or Decimal('0')) - delivered)
+            if item.remaining > 0:
+                remaining_any = True
+        if remaining_any:
+            orders.append(order)
     kab = get_scope_kabupaten(request)
     kab_options = Kabupaten.objects.all().order_by('name') if request.user.is_superuser else Kabupaten.objects.none()
     return render(request, 'gudang/order_note_list.html', {

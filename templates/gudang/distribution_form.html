@@ -64,42 +64,67 @@
 
                         <div class="col-md-12">
                             <h6 class="text-success fw-bold d-flex align-items-center justify-content-between">
-                                <span>Detail Barang</span>
-                                <button type="button" id="btnAddRow" class="btn btn-outline-primary btn-sm">+ Tambah Item</button>
+                                <div>
+                                    <span>Detail Barang</span>
+                                    <div class="text-muted small">Satu surat jalan untuk satu kios, bisa beberapa item pupuk.</div>
+                                </div>
+                                <div class="d-flex gap-2">
+                                    {% if open_order_items %}
+                                    <select id="import_order_select" class="form-select form-select-sm" style="min-width:240px;">
+                                        <option value="">Import dari pesanan...</option>
+                                        {% for oi in open_order_items %}
+                                        <option value="{{ oi.id }}" data-kios="{{ oi.order.kios_id }}" data-jenis="{{ oi.jenis_pupuk_id }}" data-ton="{{ oi.remaining_qty }}">
+                                            {{ oi.order.kios.name }} - {{ oi.jenis_pupuk.code }} (sisa {{ oi.remaining_qty }})
+                                        </option>
+                                        {% endfor %}
+                                    </select>
+                                    {% endif %}
+                                    <button type="button" id="btnAddRow" class="btn btn-outline-primary btn-sm">+ Tambah Item</button>
+                                </div>
                             </h6>
                             {{ formset.management_form }}
                             <div id="itemsContainer" class="d-flex flex-column gap-3">
                                 {% for f in formset.forms %}
                                 <div class="border rounded p-3 dist-item" data-index="{{ forloop.counter0 }}">
                                     {{ f.id }}
-                                    <div class="row g-3 align-items-end">
-                                        <div class="col-md-3">
+                                    <div class="d-flex justify-content-between align-items-start dist-head">
+                                        <div class="fw-semibold text-muted small">Detail item</div>
+                                        <div>
+                                            <button type="button" class="btn btn-outline-danger btn-sm btn-remove" aria-label="Hapus item">Hapus</button>
+                                            <span class="visually-hidden">{{ f.DELETE }}</span>
+                                        </div>
+                                    </div>
+                                    <div class="dist-grid">
+                                        <div class="dist-cell span-5">
+                                            <label class="form-label fw-bold">Pesanan</label>
+                                            {{ f.order_item }}
+                                            <div class="form-text text-muted auto-hint order-hint">Pilih pesanan untuk autofill data di bawah.</div>
+                                            {% for err in f.order_item.errors %}<div class="text-danger small">{{ err }}</div>{% endfor %}
+                                        </div>
+                                        <div class="dist-cell span-4">
                                             <label class="form-label fw-bold">Jenis Pupuk</label>
                                             {{ f.jenis_pupuk }}
+                                            <div class="form-text text-muted auto-hint jenis-hint">Terisi otomatis dari pesanan.</div>
                                             {% for err in f.jenis_pupuk.errors %}<div class="text-danger small">{{ err }}</div>{% endfor %}
                                         </div>
-                                        <div class="col-md-3">
+                                        <div class="dist-cell span-3">
                                             <label class="form-label fw-bold">Sumber Stok</label>
                                             {{ f.source_type }}
+                                            <div class="form-text text-muted auto-hint source-hint">Terisi otomatis dari pesanan.</div>
                                             {% for err in f.source_type.errors %}<div class="text-danger small">{{ err }}</div>{% endfor %}
                                         </div>
-        
-                                        <div class="col-md-3 source-so-wrap">
-                                            <label class="form-label fw-bold">Nomor SO (jika Pabrik)</label>
-                                            {{ f.source_so }}
-                                            {% for err in f.source_so.errors %}<div class="text-danger small">{{ err }}</div>{% endfor %}
-                                        </div>
-                                        <div class="col-md-2">
+                                        <div class="dist-cell span-3">
                                             <label class="form-label fw-bold">Tonase</label>
-                                            <div class="input-group">
+                                            <div class="input-group tonnage-group">
                                                 {{ f.tonnage }}
                                                 <span class="input-group-text">Ton</span>
                                             </div>
                                             {% for err in f.tonnage.errors %}<div class="text-danger small">{{ err }}</div>{% endfor %}
                                         </div>
-                                        <div class="col-md-1 text-end">
-                                            <button type="button" class="btn btn-outline-danger btn-sm btn-remove">Hapus</button>
-                                            <span class="visually-hidden">{{ f.DELETE }}</span>
+                                        <div class="dist-cell span-4 source-so-wrap">
+                                            <label class="form-label fw-bold">Nomor SO (jika sumber Pabrik)</label>
+                                            {{ f.source_so }}
+                                            {% for err in f.source_so.errors %}<div class="text-danger small">{{ err }}</div>{% endfor %}
                                         </div>
                                     </div>
                                 </div>
@@ -226,6 +251,53 @@
     .form-control:focus, .form-select:focus {
         border-color: #2ecc71;
         box-shadow: 0 0 0 4px rgba(46, 204, 113, 0.1);
+    }
+
+    /* Detail barang rows */
+    .dist-item {
+        background: #fbfcfd;
+        border: 1px solid #edf1f4;
+        border-radius: 14px;
+        box-shadow: 0 6px 16px rgba(0,0,0,0.04);
+        position: relative;
+    }
+
+    .dist-grid {
+        display: grid;
+        grid-template-columns: repeat(12, 1fr);
+        gap: 14px 16px;
+        align-items: end;
+    }
+
+    .dist-head { margin-bottom: 8px; }
+
+    .dist-cell { min-width: 0; }
+    .dist-cell .form-select, .dist-cell .form-control { height: 48px; }
+
+    .dist-cell.span-5 { grid-column: span 5; }
+    .dist-cell.span-4 { grid-column: span 4; }
+    .dist-cell.span-3 { grid-column: span 3; }
+    .dist-cell.span-2 { grid-column: span 2; }
+
+    .auto-hint { display: none; }
+
+    .tonnage-group .form-control,
+    .tonnage-group .input-group-text {
+        height: 48px;
+        align-items: center;
+        display: flex;
+    }
+
+    @media (max-width: 991px) {
+        .dist-cell.span-5 { grid-column: span 12; }
+        .dist-cell.span-4 { grid-column: span 12; }
+        .dist-cell.span-3 { grid-column: span 6; }
+        .dist-cell.span-2 { grid-column: span 6; }
+        .dist-grid { gap: 12px 12px; }
+    }
+
+    @media (max-width: 575px) {
+        .dist-cell.span-3, .dist-cell.span-2 { grid-column: span 12; }
     }
     
     textarea.form-control {
@@ -556,13 +628,32 @@
         const itemsContainer = document.getElementById('itemsContainer');
         const totalForms = document.getElementById('id_items-TOTAL_FORMS');
         const btnAdd = document.getElementById('btnAddRow');
+        const importSelect = document.getElementById('import_order_select');
+
+        function filterOrderOptionsByKios(selectEl) {
+            if (!selectEl || !kiosSelect) return;
+            Array.from(selectEl.options).forEach(opt => {
+                if (!opt.value) return;
+                const optKios = opt.dataset.kios;
+                if (kiosSelect.value && optKios && optKios !== kiosSelect.value) {
+                    opt.style.display = 'none';
+                } else {
+                    opt.style.display = 'block';
+                }
+            });
+        }
 
         function bindRow(row) {
             const sourceTypeSel = row.querySelector('.item-source-type');
             const soWrap = row.querySelector('.source-so-wrap');
             const soSelect = row.querySelector('.item-source-so');
+            const orderSelect = row.querySelector('.item-order-item');
             const delInput = row.querySelector('input[type="checkbox"][name$="-DELETE"]');
             const btnRemove = row.querySelector('.btn-remove');
+            const tonInput = row.querySelector('.item-tonnage');
+            const tonHint = row.querySelector('.tonnage-hint');
+            const jenisHint = row.querySelector('.jenis-hint');
+            const sourceHint = row.querySelector('.source-hint');
 
             const toggleSO = () => {
                 if (sourceTypeSel.value === 'VIRTUAL') {
@@ -581,9 +672,75 @@
                     row.style.display = 'none';
                 }
             });
+
+            if (orderSelect && kiosSelect) {
+                filterOrderOptionsByKios(orderSelect);
+
+                // Tambah data remaining jika bisa diparse dari teks
+                Array.from(orderSelect.options).forEach(opt => {
+                    if (!opt.value) return;
+                    if (!opt.dataset.remaining) {
+                        const match = opt.text.match(/sisa\s+([\d.,]+)/i);
+                        if (match) opt.dataset.remaining = match[1];
+                    }
+                });
+
+                const updateFromOrder = () => {
+                    const opt = orderSelect.options[orderSelect.selectedIndex];
+                    if (!opt || !opt.value) {
+                        if (tonHint) tonHint.textContent = 'Sisa kuota: -';
+                        if (jenisHint) jenisHint.style.display = 'none';
+                        if (sourceHint) sourceHint.style.display = 'none';
+                        return;
+                    }
+                    // Autofill jenis jika id tersedia
+                    const jenisSel = row.querySelector('.item-jenis');
+                    if (jenisSel && opt.dataset.jenis) {
+                        jenisSel.value = opt.dataset.jenis;
+                        if (jenisHint) jenisHint.style.display = 'block';
+                    }
+                    // Autofill sumber jika data-source ada
+                    if (sourceTypeSel && opt.dataset.source) {
+                        sourceTypeSel.value = opt.dataset.source;
+                        if (sourceHint) sourceHint.style.display = 'block';
+                        toggleSO();
+                    }
+                    // Tampilkan sisa
+                    const text = opt.dataset.remaining || (opt.text && (opt.text.match(/sisa\s+([\d.,]+)/i)?.[1] || ''));
+                    if (text && tonHint) {
+                        tonHint.textContent = `Sisa kuota: ${text} Ton`;
+                    }
+                    // Prefill tonase jika ada remaining numerik
+                    if (tonInput && opt.dataset.remaining) {
+                        tonInput.placeholder = `Max ${opt.dataset.remaining}`;
+                    }
+                };
+
+                orderSelect.addEventListener('change', updateFromOrder);
+                updateFromOrder();
+            }
+            // Placeholder teks untuk opsi kosong agar lebih jelas
+            [orderSelect, sourceTypeSel, soSelect, row.querySelector('.item-jenis')].forEach(sel => {
+                if (!sel) return;
+                const first = sel.querySelector('option[value=""]');
+                if (first && first.textContent.trim() === '---------') {
+                    if (sel === orderSelect) first.textContent = 'Pilih pesanan...';
+                    else if (sel === soSelect) first.textContent = 'Pilih nomor SO...';
+                    else if (sel === sourceTypeSel) first.textContent = 'Pilih sumber stok...';
+                    else first.textContent = 'Pilih opsi...';
+                }
+            });
         }
 
         Array.from(itemsContainer.querySelectorAll('.dist-item')).forEach(bindRow);
+
+        kiosSelect.addEventListener('change', () => {
+            // Reset order selects when kios changed to avoid mismatch
+            Array.from(itemsContainer.querySelectorAll('.item-order-item')).forEach(sel => {
+                sel.value = '';
+                filterOrderOptionsByKios(sel);
+            });
+        });
 
         btnAdd.addEventListener('click', () => {
             const currentCount = parseInt(totalForms.value, 10);
@@ -604,6 +761,42 @@
             totalForms.value = currentCount + 1;
             bindRow(clone);
         });
+
+        if (importSelect) {
+            importSelect.addEventListener('change', () => {
+                const val = importSelect.value;
+                if (!val) return;
+                const opt = importSelect.options[importSelect.selectedIndex];
+                const kiosId = opt.dataset.kios;
+                const jenisId = opt.dataset.jenis;
+                const ton = opt.dataset.ton;
+
+                if (kiosSelect && kiosId) {
+                    kiosSelect.value = kiosId;
+                    kiosSelect.dispatchEvent(new Event('change'));
+                }
+
+                const rows = Array.from(itemsContainer.querySelectorAll('.dist-item'));
+                const targetRow = rows.find(r => {
+                    const orderSel = r.querySelector('.item-order-item');
+                    const tonInput = r.querySelector('.item-tonnage');
+                    return orderSel && !orderSel.value && (!tonInput || !tonInput.value);
+                }) || rows[rows.length - 1];
+
+                if (!targetRow) return;
+                const orderSel = targetRow.querySelector('.item-order-item');
+                const jenisSel = targetRow.querySelector('.item-jenis');
+                const tonInput = targetRow.querySelector('.item-tonnage');
+                if (orderSel) {
+                    orderSel.value = val;
+                    orderSel.dispatchEvent(new Event('change'));
+                }
+                if (jenisSel && jenisId) jenisSel.value = jenisId;
+                if (tonInput && ton) tonInput.value = ton;
+
+                importSelect.value = '';
+            });
+        }
     });
 </script>
 {% endblock %}

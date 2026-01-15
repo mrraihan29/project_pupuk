@@ -47,8 +47,15 @@
                         <td>
                             {% for item in order.items.all %}
                                 <div class="d-flex justify-content-between align-items-center border-bottom small py-1">
-                                    <span>{{ item.jenis_pupuk.name }} ({{ item.jenis_pupuk.code }})</span>
-                                    <span class="fw-bold">{{ item.tonnage }} Ton</span>
+                                    <div>
+                                        <span class="fw-bold">{{ item.jenis_pupuk.code }}</span>
+                                        <span class="text-muted">{{ item.jenis_pupuk.name }}</span>
+                                        <span class="badge bg-light text-dark ms-1">Sisa {{ item.remaining|floatformat:2 }} Ton</span>
+                                    </div>
+                                    <div class="fw-bold">{{ item.tonnage }} Ton</div>
+                                    <a class="btn btn-sm btn-outline-primary" href="{% url 'distribution_create' %}?order_item={{ item.id }}" title="Kirim dari pesanan ini">
+                                        Kirim
+                                    </a>
                                 </div>
                             {% empty %}
                                 <span class="text-muted">Belum ada item</span>

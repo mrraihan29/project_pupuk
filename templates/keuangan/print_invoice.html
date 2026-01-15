@@ -106,23 +106,34 @@
                 </tr>
             </thead>
             <tbody>
-                <tr>
-                    <td>
-                        <strong>PUPUK {{ inv.distribution.jenis_pupuk.name }}</strong>
-                        <br><small style="color: #666;">Ref Surat Jalan: {{ inv.distribution.no_surat_jalan }}</small>
-                    </td>
-                    <td class="text-center">{{ inv.distribution.tonnage }} TON</td>
-                    <td class="text-right">
-                        {% widthratio inv.total_amount inv.distribution.tonnage 1 as harga_satuan %}
-                        Rp {{ harga_satuan|intcomma }}
-                    </td>
-                    <td class="text-right fw-bold">Rp {{ inv.total_amount|intcomma }}</td>
-                </tr>
+                {% if items %}
+                    {% for it in items %}
+                    <tr>
+                        <td>
+                            <strong>PUPUK {{ it.name }}</strong>
+                            <br><small style="color: #666;">Ref Surat Jalan: {{ inv.distribution.no_surat_jalan }}</small>
+                        </td>
+                        <td class="text-center">{{ it.tonnage }} TON</td>
+                        <td class="text-right">Rp {{ it.price|intcomma }}</td>
+                        <td class="text-right fw-bold">Rp {{ it.total|intcomma }}</td>
+                    </tr>
+                    {% endfor %}
+                {% else %}
+                    <tr>
+                        <td>
+                            <strong>PUPUK {{ inv.distribution.jenis_pupuk.name }}</strong>
+                            <br><small style="color: #666;">Ref Surat Jalan: {{ inv.distribution.no_surat_jalan }}</small>
+                        </td>
+                        <td class="text-center">{{ inv.distribution.tonnage }} TON</td>
+                        <td class="text-right">Rp {{ inv.total_amount|intcomma }}</td>
+                        <td class="text-right fw-bold">Rp {{ inv.total_amount|intcomma }}</td>
+                    </tr>
+                {% endif %}
             </tbody>
             <tfoot>
                 <tr class="total-row">
                     <td colspan="3" class="text-right">Subtotal</td>
-                    <td class="text-right">Rp {{ inv.total_amount|intcomma }}</td>
+                    <td class="text-right">Rp {{ subtotal|default:inv.total_amount|intcomma }}</td>
                 </tr>
                 <tr class="total-row">
                     <td colspan="3" class="text-right">Sudah Dibayar (-)</td>

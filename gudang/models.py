@@ -273,6 +273,7 @@ class DistributionItem(models.Model):
     jenis_pupuk = models.ForeignKey(JenisPupuk, on_delete=models.PROTECT, verbose_name="Jenis Pupuk")
     source_type = models.CharField("Sumber Stok", max_length=10, choices=Distribution.SOURCE_CHOICES, default='VIRTUAL')
     source_so = models.ForeignKey(SalesOrder, on_delete=models.PROTECT, null=True, blank=True, verbose_name="Ambil dari SO", related_name='distribution_items')
+    order_item = models.ForeignKey('gudang.OrderNoteItem', on_delete=models.SET_NULL, null=True, blank=True, related_name='deliveries')
     tonnage = models.DecimalField("Jumlah Kirim (Ton)", max_digits=10, decimal_places=2)
     created_at = models.DateTimeField(auto_now_add=True)
 
@@ -385,6 +386,24 @@ class OrderNoteItem(models.Model):
     linked_distribution = models.ForeignKey(Distribution, on_delete=models.SET_NULL, null=True, blank=True, related_name='order_note_items')
 
     created_at = models.DateTimeField(auto_now_add=True)
+
+    @property
+    def delivered_tonnage(self):
+        return (
+            DistributionItem.objects.filter(order_item=self)
+            .aggregate(total=Sum('tonnage'))['total']
+            or Decimal('0')
+        )
+
+    @property
+    def remaining_tonnage(self):
+        delivered = self.delivered_tonnage
+        remaining = (self.tonnage or Decimal('0')) - delivered
+        return remaining if remaining > 0 else Decimal('0')
+
+    @property
+    def is_fulfilled(self):
+        return self.remaining_tonnage <= 0
 
     class Meta:
         verbose_name = "Item Catatan Order"

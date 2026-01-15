@@ -1,5 +1,5 @@
 from django import forms
-from django.forms import inlineformset_factory
+from django.forms import inlineformset_factory, BaseInlineFormSet
 from django.core.exceptions import ValidationError
 from datetime import date
 
@@ -70,38 +70,66 @@ class DistributionForm(forms.ModelForm):
 class DistributionItemForm(forms.ModelForm):
     class Meta:
         model = DistributionItem
-        fields = ['jenis_pupuk', 'source_type', 'source_so', 'tonnage']
+        fields = ['jenis_pupuk', 'source_type', 'source_so', 'order_item', 'tonnage']
         widgets = {
             'jenis_pupuk': forms.Select(attrs={'class': 'form-select item-jenis'}),
             'source_type': forms.Select(attrs={'class': 'form-select item-source-type'}),
             'source_so': forms.Select(attrs={'class': 'form-select item-source-so'}),
+            'order_item': forms.Select(attrs={'class': 'form-select item-order-item'}),
             'tonnage': forms.NumberInput(attrs={'class': 'form-control item-tonnage', 'placeholder': 'Ton', 'step': '0.01', 'min': '0.01'}),
         }
 
     def __init__(self, *args, **kwargs):
+        self.kios_value = kwargs.pop('kios', None)
         super().__init__(*args, **kwargs)
         self.fields['jenis_pupuk'].queryset = JenisPupuk.objects.filter(is_active=True)
         self.fields['source_so'].queryset = SalesOrder.objects.filter(is_closed=False)
+        self.fields['order_item'].queryset = OrderNoteItem.objects.filter(order__is_deleted=False, order__status=OrderNote.STATUS_OPEN)
+        # Filter order_item by kios jika tersedia
+        if self.kios_value:
+            self.fields['order_item'].queryset = self.fields['order_item'].queryset.filter(order__kios_id=self.kios_value)
 
     def clean(self):
         data = super().clean()
         stype = data.get('source_type')
         so = data.get('source_so')
         ton = data.get('tonnage')
+        order_item = data.get('order_item')
+        jenis = data.get('jenis_pupuk')
         if stype == 'VIRTUAL' and not so:
             self.add_error('source_so', 'Pilih SO jika sumber stok Pabrik.')
         if stype == 'PHYSICAL':
             data['source_so'] = None
         if ton is not None and ton <= 0:
             self.add_error('tonnage', 'Tonase harus lebih dari 0')
+        if order_item:
+            if self.kios_value and order_item.order.kios_id != int(self.kios_value):
+                self.add_error('order_item', 'Pesanan tidak sesuai kios yang dipilih.')
+            if jenis and order_item.jenis_pupuk_id != jenis.id:
+                self.add_error('order_item', 'Pesanan berbeda jenis pupuk.')
+            remaining = order_item.remaining_tonnage
+            if ton and ton > remaining:
+                self.add_error('tonnage', f'Tonase melebihi sisa pesanan ({remaining} Ton).')
         return data
+
+
+class _DistributionItemFormSet(BaseInlineFormSet):
+    def __init__(self, *args, kios=None, **kwargs):
+        self.kios = kios
+        super().__init__(*args, **kwargs)
+
+    def get_form_kwargs(self, index):
+        kwargs = super().get_form_kwargs(index)
+        kwargs['kios'] = self.kios
+        return kwargs
 
 
 DistributionItemFormSet = inlineformset_factory(
     Distribution,
     DistributionItem,
     form=DistributionItemForm,
-    fields=('jenis_pupuk', 'source_type', 'source_so', 'tonnage'),
+    formset=_DistributionItemFormSet,
+    fields=('jenis_pupuk', 'source_type', 'source_so', 'order_item', 'tonnage'),
     extra=1,
     can_delete=True,
 )

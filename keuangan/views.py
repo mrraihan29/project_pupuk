@@ -6,11 +6,13 @@ from django.db.models import Sum
 from django.http import JsonResponse
 from datetime import date
 from django.utils import timezone
+from decimal import Decimal
 # Import Models & Forms
 from .models import Invoice, Payment, BiayaOperasional
 from .forms import PaymentForm, BiayaOperasionalForm
 from core.models import Armada, CompanyProfile, Kabupaten
 from core.utils import get_scope_kabupaten, scope_by_kabupaten
+from core.utils import get_price_for
 
 # Decorator Custom (Pastikan Anda punya file ini, jika tidak, hapus baris ini)
 from core.decorators import owner_required
@@ -178,10 +180,27 @@ def print_invoice(request, pk):
     """
     inv = get_object_or_404(Invoice, pk=pk)
     company = CompanyProfile.objects.first()
+    kab = getattr(getattr(inv.distribution.kios, 'kecamatan', None), 'kabupaten', None)
+
+    items = []
+    subtotal = Decimal('0')
+    for item in inv.distribution.items.select_related('jenis_pupuk'):
+        price_obj = get_price_for(item.jenis_pupuk, kab)
+        harga_per_ton = price_obj.price_sell if price_obj else Decimal('0')
+        line_total = (item.tonnage or Decimal('0')) * harga_per_ton
+        subtotal += line_total
+        items.append({
+            'name': item.jenis_pupuk.name,
+            'tonnage': item.tonnage,
+            'price': harga_per_ton,
+            'total': line_total,
+        })
     
     context = {
         'inv': inv,
         'company': company,
-        'title': f"INV_{inv.inv_number}"
+        'title': f"INV_{inv.inv_number}",
+        'items': items,
+        'subtotal': subtotal,
     }
     return render(request, 'keuangan/print_invoice.html', context)
