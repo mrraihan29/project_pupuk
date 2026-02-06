@@ -103,14 +103,12 @@
                         <span class="badge bg-success-subtle text-success">Pendapatan & HPP (basis harga master)</span>
                     </div>
                     <table class="table table-sm table-borderless mb-3 table-kpi">
+                        {% for p in produk_data %}
                         <tr>
-                            <td>Penjualan NPK</td>
-                            <td class="text-end fw-bold">Rp {{ omzet_npk|floatformat:0|intcomma }}</td>
+                            <td>Penjualan {{ p.name }}</td>
+                            <td class="text-end fw-bold">Rp {{ p.omzet|floatformat:0|intcomma }}</td>
                         </tr>
-                        <tr>
-                            <td>Penjualan UREA</td>
-                            <td class="text-end fw-bold">Rp {{ omzet_urea|floatformat:0|intcomma }}</td>
-                        </tr>
+                        {% endfor %}
                         <tr class="table-separator-top">
                             <td class="fw-bold">TOTAL OMZET</td>
                             <td class="text-end fw-bold text-success">Rp {{ total_omzet|floatformat:0|intcomma }}</td>
@@ -119,14 +117,12 @@
 
                     <h6 class="fw-bold text-danger mt-4 mb-2"><i class="bi bi-arrow-down-circle me-2"></i>HARGA POKOK (HPP)</h6>
                     <table class="table table-sm table-borderless mb-0 table-kpi">
+                        {% for p in produk_data %}
                         <tr>
-                            <td>Penebusan NPK</td>
-                            <td class="text-end fw-bold">Rp {{ modal_npk|floatformat:0|intcomma }}</td>
+                            <td>Penebusan {{ p.name }}</td>
+                            <td class="text-end fw-bold">Rp {{ p.modal|floatformat:0|intcomma }}</td>
                         </tr>
-                        <tr>
-                            <td>Penebusan UREA</td>
-                            <td class="text-end fw-bold">Rp {{ modal_urea|floatformat:0|intcomma }}</td>
-                        </tr>
+                        {% endfor %}
                         <tr class="table-separator-top">
                             <td class="fw-bold">TOTAL HPP</td>
                             <td class="text-end fw-bold text-danger">Rp {{ total_modal|floatformat:0|intcomma }}</td>
@@ -188,38 +184,26 @@
                         <span class="badge bg-info-subtle text-info">Harga rata-rata per ton</span>
                     </div>
                     <div class="row g-3">
+                        {% for p in produk_data %}
                         <div class="col-sm-6">
                             <div class="p-3 rounded border bg-light">
                                 <div class="d-flex justify-content-between align-items-center mb-2">
-                                    <strong>NPK</strong>
-                                    <span class="badge bg-success-subtle text-success">{{ qty_jual_npk|floatformat:2 }} Ton</span>
+                                    <strong>{{ p.name }}</strong>
+                                    <span class="badge bg-success-subtle text-success">{{ p.qty_jual|floatformat:2 }} Ton</span>
                                 </div>
                                 <div class="small text-muted">Omzet</div>
-                                <div class="fw-bold">Rp {{ omzet_npk|floatformat:0|intcomma }}</div>
+                                <div class="fw-bold">Rp {{ p.omzet|floatformat:0|intcomma }}</div>
                                 <div class="small text-muted mt-2">HPP</div>
-                                <div class="fw-bold">Rp {{ modal_npk|floatformat:0|intcomma }}</div>
+                                <div class="fw-bold">Rp {{ p.modal|floatformat:0|intcomma }}</div>
                                 <div class="small text-muted mt-2">Gross Profit</div>
-                                <div class="fw-bold text-success">Rp {{ gp_npk|floatformat:0|intcomma }}</div>
+                                <div class="fw-bold text-success">Rp {{ p.gp|floatformat:0|intcomma }}</div>
                                 <div class="small text-muted mt-2">Avg Sell / Avg Cost</div>
-                                <div class="fw-bold">Rp {{ avg_sell_npk|floatformat:0|intcomma }} / Rp {{ avg_cost_npk|floatformat:0|intcomma }}</div>
+                                <div class="fw-bold">Rp {{ p.avg_sell|floatformat:0|intcomma }} / Rp {{ p.avg_cost|floatformat:0|intcomma }}</div>
                             </div>
                         </div>
-                        <div class="col-sm-6">
-                            <div class="p-3 rounded border bg-light">
-                                <div class="d-flex justify-content-between align-items-center mb-2">
-                                    <strong>UREA</strong>
-                                    <span class="badge bg-primary-subtle text-primary">{{ qty_jual_urea|floatformat:2 }} Ton</span>
-                                </div>
-                                <div class="small text-muted">Omzet</div>
-                                <div class="fw-bold">Rp {{ omzet_urea|floatformat:0|intcomma }}</div>
-                                <div class="small text-muted mt-2">HPP</div>
-                                <div class="fw-bold">Rp {{ modal_urea|floatformat:0|intcomma }}</div>
-                                <div class="small text-muted mt-2">Gross Profit</div>
-                                <div class="fw-bold text-success">Rp {{ gp_urea|floatformat:0|intcomma }}</div>
-                                <div class="small text-muted mt-2">Avg Sell / Avg Cost</div>
-                                <div class="fw-bold">Rp {{ avg_sell_urea|floatformat:0|intcomma }} / Rp {{ avg_cost_urea|floatformat:0|intcomma }}</div>
-                            </div>
-                        </div>
+                        {% empty %}
+                        <div class="col-12 text-muted text-center">Belum ada data produk.</div>
+                        {% endfor %}
                     </div>
                 </div>
             </div>
@@ -287,14 +271,12 @@
             <div class="card h-100 border-0 bg-light">
                 <div class="card-body">
                     <h6 class="fw-bold text-primary mb-3"><i class="bi bi-box-seam me-2"></i>Stok & Valuasi</h6>
+                    {% for p in produk_data %}
                     <div class="d-flex justify-content-between mb-2">
-                        <span>Sisa Stok NPK</span>
-                        <span class="fw-bold">{{ stok_sisa_npk|floatformat:2 }} Ton • Rp {{ aset_npk|floatformat:0|intcomma }}</span>
+                        <span>Sisa Stok {{ p.name }}</span>
+                        <span class="fw-bold">{{ p.stok_sisa|floatformat:2 }} Ton &bull; Rp {{ p.aset|floatformat:0|intcomma }}</span>
                     </div>
-                    <div class="d-flex justify-content-between mb-3">
-                        <span>Sisa Stok UREA</span>
-                        <span class="fw-bold">{{ stok_sisa_urea|floatformat:2 }} Ton • Rp {{ aset_urea|floatformat:0|intcomma }}</span>
-                    </div>
+                    {% endfor %}
                     <div class="d-flex justify-content-between border-top pt-2">
                         <strong>Total Aset Persediaan</strong>
                         <strong>Rp {{ total_aset|floatformat:0|intcomma }}</strong>
@@ -307,11 +289,11 @@
                 <div class="card-body">
                     <h6 class="fw-bold mb-2">Catatan & Satuan</h6>
                     <ul class="text-muted mb-0 small">
-                        <li>Harga pupuk di master adalah per KG; tonase dikonversi ke KG (×1000) untuk omzet/COGS.</li>
+                        <li>Harga pupuk disimpan per ton di master; perhitungan otomatis untuk semua jenis pupuk aktif.</li>
                         <li>Omzet utama mengambil nilai invoice terbit di periode; jika tidak ada invoice, dipakai tonase distribusi × harga jual master.</li>
-                        <li>COGS memakai tonase distribusi × harga beli master (per KG); untuk akurasi penuh perlu costing historis (FIFO/average).</li>
+                        <li>COGS memakai tonase distribusi × harga beli master; untuk akurasi penuh perlu costing historis (FIFO/average).</li>
                         <li>Kas estimasi = pembayaran APPROVED periode - opex SELESAI periode; bukan saldo kas riil.</li>
-                        <li>Persediaan dinilai dari stok fisik (StockCard PHYSICAL) × harga beli master per KG.</li>
+                        <li>Persediaan dinilai dari stok fisik (StockCard PHYSICAL) × harga beli master.</li>
                         <li>Liabilitas saat ini hanya Biaya Operasional status PROSES; belum termasuk hutang lain.</li>
                         <li>Gunakan filter tanggal untuk melihat periode lain dan validasi stok dengan kartu stok.</li>
                     </ul>

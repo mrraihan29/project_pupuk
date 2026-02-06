@@ -29,7 +29,7 @@ from .forms import (
     UserCreateForm,
     UserSetPasswordForm,
 )
-from .utils import scope_by_kabupaten, get_scope_kabupaten, get_price_by_code
+from .utils import scope_by_kabupaten, get_scope_kabupaten, get_price_for
 User = get_user_model()
 
 from gudang.models import SalesOrder, SalesOrderAllocation, Distribution, DistributionItem, StockCard
@@ -563,6 +563,7 @@ def laporan_keuangan(request):
             'end_date': end_date,
             'kab_options': kab_options,
             'selected_kabupaten': kab.id if kab else None,
+            'produk_data': [],
             'net_profit': zero,
             'gross_margin_pct': zero,
             'net_margin_pct': zero,
@@ -570,19 +571,7 @@ def laporan_keuangan(request):
             'total_ops': zero,
             'gross_profit': zero,
             'total_omzet': zero,
-            'omzet_npk': zero,
-            'omzet_urea': zero,
-            'modal_npk': zero,
-            'modal_urea': zero,
             'total_modal': zero,
-            'qty_jual_npk': zero,
-            'qty_jual_urea': zero,
-            'gp_npk': zero,
-            'gp_urea': zero,
-            'avg_sell_npk': zero,
-            'avg_sell_urea': zero,
-            'avg_cost_npk': zero,
-            'avg_cost_urea': zero,
             'ops_armada': zero,
             'ops_kantor': zero,
             'ops_lain': zero,
@@ -590,44 +579,80 @@ def laporan_keuangan(request):
             'total_piutang': zero,
             'assets_total': zero,
             'total_aset': zero,
-            'stok_sisa_npk': zero,
-            'stok_sisa_urea': zero,
+            'liabilities_total': zero,
+            'equity_total': zero,
+            'liab_equity_total': zero,
+            'balance_gap': zero,
             'is_balanced': True,
         }
 
-    # 2. SIAPKAN HARGA ACUAN (Master Price) - gunakan FK langsung + kabupaten
-    harga_npk = get_price_by_code('NPK', kab)
-    harga_urea = get_price_by_code('UREA', kab)
-
-    # Validasi harga master
+    # 2. VALIDASI KABUPATEN
     if not kab:
         messages.error(request, "Pilih kabupaten terlebih dahulu untuk melihat laporan.")
         return render(request, 'core/laporan_keuangan.html', empty_context())
-    if not harga_npk or not harga_urea:
-        messages.error(request, "Harga pupuk belum dikonfigurasi untuk kabupaten ini. Silakan set di Master Harga.")
-        return render(request, 'core/laporan_keuangan.html', empty_context())
-    if harga_npk.price_buy <= 0 or harga_npk.price_sell <= 0 or harga_urea.price_buy <= 0 or harga_urea.price_sell <= 0:
-        messages.error(request, "Harga pupuk harus lebih dari 0. Perbarui di Master Harga.")
+
+    # 3. SIAPKAN HARGA ACUAN (Master Price) — DINAMIS untuk semua jenis pupuk aktif
+    active_types = JenisPupuk.objects.filter(is_active=True).order_by('name')
+    prices = {}  # {jp.id: FertilizerPrice}
+    for jp in active_types:
+        p = get_price_for(jp, kab)
+        if not p or p.price_buy <= 0 or p.price_sell <= 0:
+            messages.error(request, f"Harga {jp.name} belum dikonfigurasi atau masih 0 untuk kabupaten ini. Silakan set di Master Harga.")
+            return render(request, 'core/laporan_keuangan.html', empty_context())
+        prices[jp.id] = p
+
+    if not active_types.exists():
+        messages.error(request, "Belum ada jenis pupuk aktif. Tambahkan di Master Data Pupuk.")
         return render(request, 'core/laporan_keuangan.html', empty_context())
 
-    # Harga master disimpan per ton; distribusi tonnage juga dalam ton.
-    ton_to_kg = Decimal('1')
-
-    # 3. HITUNG OMZET PENJUALAN (REVENUE) — basis invoice jika ada, fallback ke tonase x harga master
+    # 4. HITUNG OMZET & HPP PER PRODUK (DINAMIS)
     dist_qs = DistributionItem.objects.select_related('distribution__kios__kecamatan__kabupaten', 'jenis_pupuk').filter(
         distribution__date__range=[start_date, end_date],
     )
     if kab:
         dist_qs = dist_qs.filter(distribution__kios__kecamatan__kabupaten=kab)
 
-    qty_jual_npk = dist_qs.filter(jenis_pupuk__name='NPK').aggregate(total=Coalesce(Sum('tonnage'), Decimal('0')))['total']
+    produk_data = []
+    total_omzet_distribution = Decimal('0')
+    total_modal = Decimal('0')
 
-    qty_jual_urea = dist_qs.filter(jenis_pupuk__name='UREA').aggregate(total=Coalesce(Sum('tonnage'), Decimal('0')))['total']
+    for jp in active_types:
+        price = prices[jp.id]
+        qty_jual = dist_qs.filter(jenis_pupuk=jp).aggregate(total=Coalesce(Sum('tonnage'), Decimal('0')))['total']
+        omzet = qty_jual * price.price_sell
+        modal = qty_jual * price.price_buy
+        gp = omzet - modal
+        avg_sell = omzet / qty_jual if qty_jual else Decimal('0')
+        avg_cost = modal / qty_jual if qty_jual else Decimal('0')
 
-    # Per produk (asumsi harga master per KG; konversi ton -> kg)
-    omzet_npk = qty_jual_npk * harga_npk.price_sell * ton_to_kg
-    omzet_urea = qty_jual_urea * harga_urea.price_sell * ton_to_kg
-    total_omzet_distribution = omzet_npk + omzet_urea
+        # Valuasi stok
+        agg_stok = StockCard.objects.filter(
+            date__lte=end_date,
+            jenis_pupuk=jp,
+            stock_type='PHYSICAL'
+        ).aggregate(
+            masuk=Coalesce(Sum('qty_in'), Decimal('0')),
+            keluar=Coalesce(Sum('qty_out'), Decimal('0'))
+        )
+        stok_sisa = agg_stok['masuk'] - agg_stok['keluar']
+        aset = stok_sisa * price.price_buy
+
+        produk_data.append({
+            'name': jp.name,
+            'code': jp.code,
+            'qty_jual': qty_jual,
+            'omzet': omzet,
+            'modal': modal,
+            'gp': gp,
+            'avg_sell': avg_sell,
+            'avg_cost': avg_cost,
+            'stok_sisa': stok_sisa,
+            'aset': aset,
+        })
+        total_omzet_distribution += omzet
+        total_modal += modal
+
+    total_aset = sum(p['aset'] for p in produk_data)
 
     # Total omzet prefer Invoice (lebih akurat nilai tagihan); jika tidak ada invoice periode ini, pakai distribusi
     inv_qs = Invoice.objects.filter(issue_date__range=[start_date, end_date]).select_related('distribution__kios__kecamatan__kabupaten')
@@ -637,15 +662,6 @@ def laporan_keuangan(request):
     total_omzet_invoice = inv_qs.aggregate(total=Coalesce(Sum('total_amount'), Decimal('0')))['total']
 
     total_omzet = total_omzet_invoice if total_omzet_invoice else total_omzet_distribution
-
-    # 4. HITUNG MODAL PENEBUSAN (HPP / COGS) — gunakan qty terjual x harga beli master (per KG)
-    modal_npk = qty_jual_npk * harga_npk.price_buy * ton_to_kg
-    modal_urea = qty_jual_urea * harga_urea.price_buy * ton_to_kg
-    total_modal = modal_npk + modal_urea
-
-    # Kompatibilitas context lama (tidak dipakai di template): samakan pembelian dengan qty terjual
-    qty_beli_npk = qty_jual_npk
-    qty_beli_urea = qty_jual_urea
 
     # 5. HITUNG BIAYA OPERASIONAL
     # Logic: Sum Nominal dari BiayaOperasional group by Kategori Utama
@@ -670,35 +686,7 @@ def laporan_keuangan(request):
     net_margin_pct = (net_profit / total_omzet * 100) if total_omzet else Decimal('0')
     opex_ratio_pct = (total_ops / total_omzet * 100) if total_omzet else Decimal('0')
 
-    gp_npk = omzet_npk - modal_npk
-    gp_urea = omzet_urea - modal_urea
-
-    avg_sell_npk = omzet_npk / qty_jual_npk if qty_jual_npk else Decimal('0')
-    avg_sell_urea = omzet_urea / qty_jual_urea if qty_jual_urea else Decimal('0')
-    avg_cost_npk = modal_npk / qty_jual_npk if qty_jual_npk else Decimal('0')
-    avg_cost_urea = modal_urea / qty_jual_urea if qty_jual_urea else Decimal('0')
-
-    # 7. VALUASI ASET (SISA STOK REAL-TIME)
-    # Menggunakan StockCard sebagai 'Single Source of Truth'
-    # Rumus: (Total Masuk - Total Keluar) sampai hari ini
-    
-    def get_stock_balance(pupuk_name):
-        agg = StockCard.objects.filter(
-            date__lte=end_date, # Saldo per tanggal akhir laporan
-            jenis_pupuk__name=pupuk_name,
-            stock_type='PHYSICAL'  # hanya stok fisik siap kirim
-        ).aggregate(
-            masuk=Coalesce(Sum('qty_in'), Decimal('0')),
-            keluar=Coalesce(Sum('qty_out'), Decimal('0'))
-        )
-        return agg['masuk'] - agg['keluar']
-
-    stok_sisa_npk = get_stock_balance('NPK')
-    stok_sisa_urea = get_stock_balance('UREA')
-
-    aset_npk = stok_sisa_npk * harga_npk.price_buy
-    aset_urea = stok_sisa_urea * harga_urea.price_buy
-    total_aset = aset_npk + aset_urea
+    # 7. VALUASI ASET — sudah dihitung di loop produk_data di atas (total_aset)
 
     # 8. SNAPSHOT PIUTANG & KAS (periode laporan)
     piutang_qs = Invoice.objects.filter(
@@ -742,19 +730,12 @@ def laporan_keuangan(request):
         'start_date': start_date,
         'end_date': end_date,
         
-        # Pendapatan
-        'omzet_npk': omzet_npk,
-        'omzet_urea': omzet_urea,
-        'total_omzet': total_omzet,
-        'qty_jual_npk': qty_jual_npk,
-        'qty_jual_urea': qty_jual_urea,
+        # Per-Produk (dinamis)
+        'produk_data': produk_data,
         
-        # Pengeluaran (HPP)
-        'modal_npk': modal_npk,
-        'modal_urea': modal_urea,
+        # Pendapatan & HPP aggregat
+        'total_omzet': total_omzet,
         'total_modal': total_modal,
-        'qty_beli_npk': qty_beli_npk,
-        'qty_beli_urea': qty_beli_urea,
         
         # Biaya Ops
         'ops_armada': biaya_armada,
@@ -768,19 +749,9 @@ def laporan_keuangan(request):
         'gross_margin_pct': gross_margin_pct,
         'net_margin_pct': net_margin_pct,
         'opex_ratio_pct': opex_ratio_pct,
-        'gp_npk': gp_npk,
-        'gp_urea': gp_urea,
-        'avg_sell_npk': avg_sell_npk,
-        'avg_sell_urea': avg_sell_urea,
-        'avg_cost_npk': avg_cost_npk,
-        'avg_cost_urea': avg_cost_urea,
         
         # Aset
-        'aset_npk': aset_npk,
-        'aset_urea': aset_urea,
         'total_aset': total_aset,
-        'stok_sisa_npk': stok_sisa_npk,
-        'stok_sisa_urea': stok_sisa_urea,
 
         # Balance Snapshot
         'cash_estimate': cash_estimate,
