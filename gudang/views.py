@@ -223,7 +223,7 @@ def distribution_create(request):
         return remaining if remaining > 0 else Decimal('0')
 
     open_order_items = []
-    for oi in order_items_qs.select_related('order__kios__kecamatan__kabupaten', 'jenis_pupuk'):
+    for oi in order_items_qs.select_related('order__kios__kecamatan__kabupaten', 'order__kecamatan', 'jenis_pupuk'):
         rem = remaining_order_qty(oi)
         if rem > 0:
             oi.remaining_qty = rem

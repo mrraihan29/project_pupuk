@@ -51,8 +51,6 @@
                                 <label class="small text-muted">Filter Kecamatan (Bantu Cari Kios):</label>
                                 <select id="filter_kecamatan" class="form-select form-select-sm w-50">
                                     <option value="all">-- Semua Kecamatan --</option>
-                                    {% for k in form.fields.kios.queryset %}
-                                    {% endfor %}
                                 </select>
                             </div>
 
@@ -624,6 +622,25 @@
             });
         });
 
+        // AUTO: Set kecamatan filter jika kios sudah ter-prefill (dari "Kirim" di Catatan Order)
+        if (kiosSelect.value) {
+            const selectedOpt = kiosSelect.options[kiosSelect.selectedIndex];
+            if (selectedOpt && selectedOpt.dataset.kecamatan) {
+                filterKec.value = selectedOpt.dataset.kecamatan;
+                options.forEach(opt => {
+                    if (!opt.value) return;
+                    opt.style.display = (opt.dataset.kecamatan === selectedOpt.dataset.kecamatan) ? 'block' : 'none';
+                });
+            }
+        }
+
+        // Data map order item untuk autofill (dari server)
+        const ORDER_ITEM_MAP = {
+            {% for oi in open_order_items %}
+            '{{ oi.id }}': {jenisId: '{{ oi.jenis_pupuk_id }}', kiosId: '{{ oi.order.kios_id }}', ton: '{{ oi.remaining_qty }}', kecName: '{{ oi.order.kecamatan.name }}'},
+            {% endfor %}
+        };
+
         // 2. FORMSET: tambah/hapus baris & toggle SO per baris
         const itemsContainer = document.getElementById('itemsContainer');
         const totalForms = document.getElementById('id_items-TOTAL_FORMS');
@@ -634,7 +651,7 @@
             if (!selectEl || !kiosSelect) return;
             Array.from(selectEl.options).forEach(opt => {
                 if (!opt.value) return;
-                const optKios = opt.dataset.kios;
+                const optKios = opt.dataset.kios || (ORDER_ITEM_MAP[opt.value] && ORDER_ITEM_MAP[opt.value].kiosId);
                 if (kiosSelect.value && optKios && optKios !== kiosSelect.value) {
                     opt.style.display = 'none';
                 } else {
@@ -693,26 +710,28 @@
                         if (sourceHint) sourceHint.style.display = 'none';
                         return;
                     }
-                    // Autofill jenis jika id tersedia
+                    // Cek data dari map order item (server-side data)
+                    const itemData = ORDER_ITEM_MAP[opt.value];
+                    // Autofill jenis pupuk
                     const jenisSel = row.querySelector('.item-jenis');
-                    if (jenisSel && opt.dataset.jenis) {
-                        jenisSel.value = opt.dataset.jenis;
+                    const jenisId = (itemData && itemData.jenisId) || opt.dataset.jenis;
+                    if (jenisSel && jenisId) {
+                        jenisSel.value = jenisId;
                         if (jenisHint) jenisHint.style.display = 'block';
                     }
-                    // Autofill sumber jika data-source ada
+                    // Autofill sumber stok jika data-source tersedia
                     if (sourceTypeSel && opt.dataset.source) {
                         sourceTypeSel.value = opt.dataset.source;
                         if (sourceHint) sourceHint.style.display = 'block';
                         toggleSO();
                     }
-                    // Tampilkan sisa
-                    const text = opt.dataset.remaining || (opt.text && (opt.text.match(/sisa\s+([\d.,]+)/i)?.[1] || ''));
-                    if (text && tonHint) {
-                        tonHint.textContent = `Sisa kuota: ${text} Ton`;
+                    // Tampilkan sisa & prefill tonase
+                    const remaining = (itemData && itemData.ton) || opt.dataset.remaining || (opt.text && (opt.text.match(/sisa\s+([\d.,]+)/i)?.[1] || ''));
+                    if (remaining && tonHint) {
+                        tonHint.textContent = `Sisa kuota: ${remaining} Ton`;
                     }
-                    // Prefill tonase jika ada remaining numerik
-                    if (tonInput && opt.dataset.remaining) {
-                        tonInput.placeholder = `Max ${opt.dataset.remaining}`;
+                    if (tonInput && remaining) {
+                        tonInput.placeholder = `Max ${remaining}`;
                     }
                 };
 
@@ -735,6 +754,13 @@
         Array.from(itemsContainer.querySelectorAll('.dist-item')).forEach(bindRow);
 
         kiosSelect.addEventListener('change', () => {
+            // Sync kecamatan filter saat kios berubah
+            if (kiosSelect.value) {
+                const selOpt = kiosSelect.options[kiosSelect.selectedIndex];
+                if (selOpt && selOpt.dataset.kecamatan) {
+                    filterKec.value = selOpt.dataset.kecamatan;
+                }
+            }
             // Reset order selects when kios changed to avoid mismatch
             Array.from(itemsContainer.querySelectorAll('.item-order-item')).forEach(sel => {
                 sel.value = '';
