@@ -1,0 +1,25 @@
+{% extends 'base.html' %}
+{% block page_title %}Hapus Armada{% endblock %}
+
+{% block content %}
+<div class="row justify-content-center mt-5">
+    <div class="col-md-6">
+        <div class="card p-5 text-center shadow-sm">
+            <div class="mb-4">
+                <i class="bi bi-exclamation-circle text-danger display-1"></i>
+            </div>
+            <h3 class="fw-bold">Yakin ingin menghapus?</h3>
+            <p class="text-muted">
+                Anda akan menghapus data armada <strong>{{ armada.plate_number }}</strong> ({{ armada.driver_name }}).
+                Jika armada sudah dipakai di data distribusi, status akan dinonaktifkan.
+            </p>
+            
+            <form method="post" class="mt-4">
+                {% csrf_token %}
+                <a href="{% url 'armada_list' %}" class="btn btn-light border px-4">Batal</a>
+                <button type="submit" class="btn btn-danger px-4">Ya, Hapus</button>
+            </form>
+        </div>
+    </div>
+</div>
+{% endblock %}

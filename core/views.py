@@ -187,28 +187,25 @@ def dashboard(request):
     total_piutang = piutang_data['total_sisa'] or 0
 
     # 2. HITUNG STOK TERPISAH (FIXED: Tambahkan output_field pada Coalesce)
-    def get_stock_balance(jenis_nama, tipe_stok):
+    def get_stock_balance(jenis_pupuk, tipe_stok):
         qs = StockCard.objects.filter(
-            jenis_pupuk__name=jenis_nama,
+            jenis_pupuk=jenis_pupuk,
             stock_type=tipe_stok
         )
-        # StockCard belum menyimpan kabupaten; tetap global.
         val = qs.aggregate(
-            # Logic: (Total Masuk atau 0) - (Total Keluar atau 0)
-            # Kita paksa 0 dianggap DecimalField agar tidak error mixed types
             saldo=Coalesce(Sum('qty_in'), 0, output_field=DecimalField()) - 
                   Coalesce(Sum('qty_out'), 0, output_field=DecimalField())
         )['saldo']
         
         return val if val is not None else 0
 
-    # -- Stok Virtual (Masih di Pabrik) --
-    virt_npk = get_stock_balance('NPK', 'VIRTUAL')
-    virt_urea = get_stock_balance('UREA', 'VIRTUAL')
-    
-    # -- Stok Fisik (Siap Kirim di Gudang) --
-    phys_npk = get_stock_balance('NPK', 'PHYSICAL')
-    phys_urea = get_stock_balance('UREA', 'PHYSICAL')
+    # Ambil semua jenis pupuk aktif untuk stok dinamis
+    jenis_aktif = JenisPupuk.objects.filter(is_active=True).order_by('name')
+    stok_virtual = []
+    stok_fisik = []
+    for jp in jenis_aktif:
+        stok_virtual.append({'jenis': jp, 'saldo': get_stock_balance(jp, 'VIRTUAL')})
+        stok_fisik.append({'jenis': jp, 'saldo': get_stock_balance(jp, 'PHYSICAL')})
 
     # 3. DATA LAINNYA
     invoice_overdue_count = Invoice.objects.filter(
@@ -231,11 +228,9 @@ def dashboard(request):
         'total_piutang': total_piutang,
         'invoice_overdue_count': invoice_overdue_count,
         
-        # Kirim data terpisah ke HTML
-        'virt_npk': virt_npk,
-        'virt_urea': virt_urea,
-        'phys_npk': phys_npk,
-        'phys_urea': phys_urea,
+        # Stok dinamis per jenis pupuk
+        'stok_virtual': stok_virtual,
+        'stok_fisik': stok_fisik,
         
         'invoices_list': invoices_list,
         'so_expiring': so_expiring,
@@ -251,41 +246,43 @@ def dashboard(request):
 def raport_kios(request):
     """
     Laporan Kinerja Kios: Alokasi vs Realisasi.
+    Dinamis — semua jenis pupuk aktif ditampilkan.
     """
     current_year = date.today().year
     kios_data = Kios.objects.filter(is_active=True).prefetch_related('allocations', 'kecamatan__kabupaten')
     kios_data = scope_by_kabupaten(kios_data, request.user, 'kecamatan__kabupaten')
+
+    jenis_list = list(JenisPupuk.objects.filter(is_active=True).order_by('name'))
     report_data = []
 
     for k in kios_data:
-        # Alokasi (Target) - Menggunakan relation ke JenisPupuk
-        alloc_npk = k.allocations.filter(jenis_pupuk__name='NPK', year=current_year).aggregate(Sum('quota_original'))['quota_original__sum'] or 0
-        alloc_urea = k.allocations.filter(jenis_pupuk__name='UREA', year=current_year).aggregate(Sum('quota_original'))['quota_original__sum'] or 0
-
-        # Realisasi (Actual) - Menggunakan relation Distribution -> JenisPupuk
-        # Perhatikan path filter: distribution -> jenis_pupuk__name
-        dist_npk = DistributionItem.objects.filter(
-            distribution__kios=k,
-            jenis_pupuk__name='NPK',
-            distribution__date__year=current_year
-        ).aggregate(total=Sum('tonnage'))['total'] or 0
-        dist_urea = DistributionItem.objects.filter(
-            distribution__kios=k,
-            jenis_pupuk__name='UREA',
-            distribution__date__year=current_year
-        ).aggregate(total=Sum('tonnage'))['total'] or 0
-
-        persen_npk = (dist_npk / alloc_npk * 100) if alloc_npk > 0 else 0
-        persen_urea = (dist_urea / alloc_urea * 100) if alloc_urea > 0 else 0
-
+        pupuk_data = []
+        for jp in jenis_list:
+            alloc_val = k.allocations.filter(jenis_pupuk=jp, year=current_year).aggregate(
+                Sum('quota_original'))['quota_original__sum'] or 0
+            dist_val = DistributionItem.objects.filter(
+                distribution__kios=k,
+                jenis_pupuk=jp,
+                distribution__date__year=current_year
+            ).aggregate(total=Sum('tonnage'))['total'] or 0
+            persen = (dist_val / alloc_val * 100) if alloc_val > 0 else 0
+            pupuk_data.append({
+                'jenis': jp,
+                'target': alloc_val,
+                'real': dist_val,
+                'persen': persen,
+            })
         report_data.append({
             'name': k.name,
-            'district': k.kecamatan.name, # Ambil dari relation
-            'npk': {'target': alloc_npk, 'real': dist_npk, 'persen': persen_npk},
-            'urea': {'target': alloc_urea, 'real': dist_urea, 'persen': persen_urea},
+            'district': k.kecamatan.name,
+            'pupuk': pupuk_data,
         })
 
-    return render(request, 'core/raport_kios.html', {'report': report_data})
+    return render(request, 'core/raport_kios.html', {
+        'report': report_data,
+        'jenis_list': jenis_list,
+        'current_year': current_year,
+    })
 
 @login_required
 def armada_list(request):
@@ -295,14 +292,43 @@ def armada_list(request):
 @login_required
 def armada_create(request):
     if request.method == 'POST':
-        form = ArmadaForm(request.POST, request.FILES) # request.FILES for photo
+        form = ArmadaForm(request.POST, request.FILES)
         if form.is_valid():
             form.save()
             messages.success(request, "Armada berhasil ditambahkan.")
             return redirect('armada_list')
     else:
         form = ArmadaForm()
-    return render(request, 'core/armada_form.html', {'form': form})
+    return render(request, 'core/armada_form.html', {'form': form, 'title': 'Tambah Armada Baru'})
+
+@login_required
+def armada_update(request, pk):
+    armada = get_object_or_404(Armada, pk=pk)
+    if request.method == 'POST':
+        form = ArmadaForm(request.POST, request.FILES, instance=armada)
+        if form.is_valid():
+            form.save()
+            messages.success(request, "Data armada berhasil diperbarui.")
+            return redirect('armada_list')
+    else:
+        form = ArmadaForm(instance=armada)
+    return render(request, 'core/armada_form.html', {'form': form, 'title': f'Edit Armada: {armada.plate_number}'})
+
+@login_required
+def armada_delete(request, pk):
+    armada = get_object_or_404(Armada, pk=pk)
+    if request.method == 'POST':
+        # Cek apakah armada masih dipakai di distribusi
+        if Distribution.objects.filter(armada=armada).exists():
+            # Soft-delete: nonaktifkan saja
+            armada.is_active = False
+            armada.save(update_fields=['is_active'])
+            messages.warning(request, f"Armada {armada.plate_number} masih dipakai di distribusi, status dinonaktifkan.")
+        else:
+            armada.delete()
+            messages.success(request, "Armada berhasil dihapus.")
+        return redirect('armada_list')
+    return render(request, 'core/armada_confirm_delete.html', {'armada': armada})
 
 @login_required
 def master_harga(request):
@@ -484,9 +510,9 @@ def jenis_pupuk_delete(request, pk):
         messages.error(request, "Gunakan tombol hapus untuk mengarsipkan jenis pupuk.")
         return redirect('jenis_pupuk_list')
 
-    # Cek referensi; jika terpakai, set inactive saja
+    # Cek referensi transaksional; jika terpakai, set inactive saja
+    # FertilizerPrice tidak dihitung sebagai referensi karena itu master data pendukung
     has_refs = (
-        FertilizerPrice.objects.filter(jenis_pupuk=jenis).exists() or
         KiosAllocation.objects.filter(jenis_pupuk=jenis).exists() or
         DistributionItem.objects.filter(jenis_pupuk=jenis).exists() or
         SalesOrder.objects.filter(jenis_pupuk=jenis).exists() or
@@ -498,6 +524,7 @@ def jenis_pupuk_delete(request, pk):
         jenis.save(update_fields=['is_active'])
         messages.warning(request, "Jenis pupuk sudah dipakai; status di-nonaktifkan.")
     else:
+        FertilizerPrice.objects.filter(jenis_pupuk=jenis).delete()
         jenis.delete()
         messages.success(request, "Jenis pupuk dihapus.")
 
@@ -622,20 +649,6 @@ def laporan_keuangan(request):
 
     # 5. HITUNG BIAYA OPERASIONAL
     # Logic: Sum Nominal dari BiayaOperasional group by Kategori Utama
-    
-    biaya_armada = BiayaOperasional.objects.filter(
-        tanggal__range=[start_date, end_date],
-        kategori_utama='ARMADA',
-        status='SELESAI'
-    ).aggregate(total=Coalesce(Sum('nominal'), Decimal('0')))['total']
-
-    biaya_kantor = BiayaOperasional.objects.filter(
-        tanggal__range=[start_date, end_date],
-        kategori_utama='KANTOR',
-        status='SELESAI'
-    ).aggregate(total=Coalesce(Sum('nominal'), Decimal('0')))['total']
-    
-    # Biaya Lainnya (Opsional)
     biaya_qs = BiayaOperasional.objects.filter(
         tanggal__range=[start_date, end_date],
         status='SELESAI'
@@ -648,7 +661,14 @@ def laporan_keuangan(request):
     biaya_kantor = biaya_qs.filter(kategori_utama='KANTOR').aggregate(total=Coalesce(Sum('nominal'), Decimal('0')))['total']
     
     biaya_lain = biaya_qs.filter(kategori_utama='LAINNYA').aggregate(total=Coalesce(Sum('nominal'), Decimal('0')))['total']
-    opex_ratio_pct = safe_pct(total_ops, total_omzet)
+
+    # 6. HITUNG TOTAL, LABA, MARGIN
+    total_ops = biaya_armada + biaya_kantor + biaya_lain
+    gross_profit = total_omzet - total_modal
+    net_profit = gross_profit - total_ops
+    gross_margin_pct = (gross_profit / total_omzet * 100) if total_omzet else Decimal('0')
+    net_margin_pct = (net_profit / total_omzet * 100) if total_omzet else Decimal('0')
+    opex_ratio_pct = (total_ops / total_omzet * 100) if total_omzet else Decimal('0')
 
     gp_npk = omzet_npk - modal_npk
     gp_urea = omzet_urea - modal_urea

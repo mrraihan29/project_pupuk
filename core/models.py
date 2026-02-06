@@ -61,10 +61,6 @@ class Kecamatan(models.Model):
 class JenisPupuk(models.Model):
     name = models.CharField("Nama Pupuk", max_length=50, unique=True) # NPK, UREA
     code = models.CharField("Kode Singkatan", max_length=10, unique=True) 
-    
-    # TAMBAHAN DARI SAYA: Warna untuk UI Dashboard
-    color = models.CharField("Warna Label (Bootstrap/Hex)", max_length=20, default="primary", help_text="primary, success, danger, warning, atau kode Hex")
-    
     is_active = models.BooleanField(default=True)
     
     def __str__(self):

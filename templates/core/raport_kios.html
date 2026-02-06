@@ -3,22 +3,22 @@
 
 {% block content %}
 <div class="card p-4">
-    <h5 class="fw-bold mb-4">Realisasi Penyaluran Pupuk Subsidi 2025</h5>
+    <h5 class="fw-bold mb-4">Realisasi Penyaluran Pupuk Subsidi {{ current_year }}</h5>
     <div class="table-responsive table-sim-wrapper">
         <table class="table table-bordered table-hover align-middle text-center table-sim">
             <thead>
                 <tr>
                     <th rowspan="2" class="align-middle">Kios / Kecamatan</th>
-                    <th colspan="3">NPK (Merah)</th>
-                    <th colspan="3">UREA (Biru)</th>
+                    {% for jp in jenis_list %}
+                    <th colspan="3">{{ jp.name }} ({{ jp.code }})</th>
+                    {% endfor %}
                 </tr>
                 <tr>
+                    {% for jp in jenis_list %}
                     <th>Alokasi</th>
                     <th>Salur</th>
                     <th>%</th>
-                    <th>Alokasi</th>
-                    <th>Salur</th>
-                    <th>%</th>
+                    {% endfor %}
                 </tr>
             </thead>
             <tbody>
@@ -28,29 +28,20 @@
                         <div class="fw-bold">{{ row.name }}</div>
                         <small class="text-muted">{{ row.district }}</small>
                     </td>
-
-                    <td class="bg-light">{{ row.npk.target }}</td>
-                    <td class="fw-bold text-danger">{{ row.npk.real }}</td>
+                    {% for p in row.pupuk %}
+                    <td class="bg-light">{{ p.target }}</td>
+                    <td class="fw-bold">{{ p.real }}</td>
                     <td>
-                        {% if row.npk.persen >= 100 %}
+                        {% if p.persen >= 100 %}
                             <span class="badge bg-success">100%</span>
                         {% else %}
-                            {{ row.npk.persen|floatformat:1 }}%
+                            {{ p.persen|floatformat:1 }}%
                         {% endif %}
                     </td>
-
-                    <td class="bg-light">{{ row.urea.target }}</td>
-                    <td class="fw-bold text-primary">{{ row.urea.real }}</td>
-                    <td>
-                        {% if row.urea.persen >= 100 %}
-                            <span class="badge bg-success">100%</span>
-                        {% else %}
-                            {{ row.urea.persen|floatformat:1 }}%
-                        {% endif %}
-                    </td>
+                    {% endfor %}
                 </tr>
                 {% empty %}
-                <tr><td colspan="7">Belum ada data.</td></tr>
+                <tr><td colspan="{{ jenis_list|length|add:jenis_list|length|add:jenis_list|length|add:1 }}">Belum ada data.</td></tr>
                 {% endfor %}
             </tbody>
         </table>

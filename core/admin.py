@@ -26,8 +26,8 @@ class KabupatenAdmin(admin.ModelAdmin):
 
 @admin.register(JenisPupuk)
 class JenisPupukAdmin(admin.ModelAdmin):
-    list_display = ('name', 'code', 'color', 'is_active')
-    list_editable = ('color', 'is_active')
+    list_display = ('name', 'code', 'is_active')
+    list_editable = ('is_active',)
 
 # ==========================================
 # 2. MASTER KIOS & ALOKASI

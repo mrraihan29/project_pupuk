@@ -1,13 +1,13 @@
 {% extends 'base.html' %}
-{% block page_title %}Input Armada Baru{% endblock %}
+{% block page_title %}{{ title|default:"Input Armada Baru" }}{% endblock %}
 
 {% block content %}
 <div class="row justify-content-center">
     <div class="col-md-6">
         <div class="card p-4 shadow-sm">
-            <h5 class="fw-bold mb-4">Form Data Kendaraan</h5>
+            <h5 class="fw-bold mb-4">{{ title|default:"Form Data Kendaraan" }}</h5>
             
-            <form method="post">
+            <form method="post" enctype="multipart/form-data">
                 {% csrf_token %}
                 
                 <div class="mb-3">
@@ -24,6 +24,11 @@
                 <div class="mb-3">
                     <label class="form-label">Nama Supir Tetap</label>
                     {{ form.driver_name }}
+                </div>
+
+                <div class="mb-3">
+                    <label class="form-label">Foto Kendaraan (Opsional)</label>
+                    {{ form.photo_url }}
                 </div>
 
                 <div class="mb-3 form-check">

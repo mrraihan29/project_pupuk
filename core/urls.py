@@ -12,6 +12,8 @@ urlpatterns = [
     
     path('armada/', views.armada_list, name='armada_list'),
     path('armada/add/', views.armada_create, name='armada_create'),
+    path('armada/edit/<int:pk>/', views.armada_update, name='armada_update'),
+    path('armada/delete/<int:pk>/', views.armada_delete, name='armada_delete'),
     
     path('master/pupuk/', views.jenis_pupuk_list, name='jenis_pupuk_list'),
     path('master/pupuk/<int:pk>/edit/', views.jenis_pupuk_edit, name='jenis_pupuk_edit'),
