@@ -44,8 +44,9 @@ def _upsert_invoice(dist):
         invoice.total_amount = total_tagihan
         invoice.issue_date = dist.date
         invoice.due_date = tgl_jatuh_tempo
+        # update_status() sudah memanggil self.save() secara internal,
+        # sehingga tidak perlu invoice.save() tambahan.
         invoice.update_status()
-    invoice.save()
 
 
 @receiver(post_save, sender=Distribution)
@@ -122,9 +123,17 @@ def rollback_invoice_status(sender, instance, **kwargs):
 
 @receiver(post_save, sender=DistributionItem)
 def sync_invoice_on_item_save(sender, instance, created, **kwargs):
-    _upsert_invoice(instance.distribution)
+    """
+    Sinkronisasi invoice saat item distribusi disimpan (edit/tambah via admin dll).
+    Menggunakan on_commit agar invoice dihitung setelah semua perubahan selesai,
+    menghindari kalkulasi berulang di tengah transaksi.
+    """
+    dist = instance.distribution
+    transaction.on_commit(lambda: _upsert_invoice(dist))
 
 
 @receiver(post_delete, sender=DistributionItem)
 def sync_invoice_on_item_delete(sender, instance, **kwargs):
-    _upsert_invoice(instance.distribution)
+    """Sinkronisasi invoice saat item distribusi dihapus."""
+    dist = instance.distribution
+    transaction.on_commit(lambda: _upsert_invoice(dist))

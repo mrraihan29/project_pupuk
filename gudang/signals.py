@@ -149,10 +149,17 @@ def delete_stock_from_transfer(sender, instance, **kwargs):
 @receiver(post_save, sender=Distribution)
 def update_stock_from_distribution(sender, instance, created, **kwargs):
     """
-    Saat Surat Jalan dibuat:
-    - Jika VIRTUAL: Catat OUT_DIST_V
-    - Jika PHYSICAL: Catat OUT_DIST_P
+    LEGACY handler untuk distribusi TANPA detail items (data lama).
+    Distribusi baru selalu menggunakan DistributionItem → signal per-item
+    yang menangani StockCard dan kuota secara mandiri.
+
+    Guard:
+    1. created=True  → skip, items akan disimpan setelah ini dan signal
+       per-item yang menangani stok & kuota.
+    2. items.exists() → skip, per-item signal sudah aktif.
     """
+    if created:
+        return  # Items belum ada saat header baru disimpan; per-item signal akan handle
     # Jika sudah pakai detail items, stock & quota ditangani di signal DistributionItem
     if instance.items.exists():
         return
@@ -213,11 +220,36 @@ def update_stock_from_distribution(sender, instance, created, **kwargs):
 
 @receiver(post_delete, sender=Distribution)
 def delete_stock_from_distribution(sender, instance, **kwargs):
-    if instance.items.exists():
-        # Stock handled by DistributionItem signals; ensure header stockcards removed if any legacy
-        StockCard.objects.filter(reference_number__startswith=f"SJ-{instance.id}").delete()
+    """
+    LEGACY delete handler.
+    Saat Distribution dihapus (CASCADE), Django menghapus DistributionItem
+    terlebih dahulu — signal per-item sudah me-restore kuota & hapus StockCard.
+    
+    Untuk menghindari double-restore kuota, kita cek apakah legacy StockCard
+    (ref SJ-{id}) masih ada. Jika tidak ada, artinya distribusi ini
+    menggunakan per-item flow dan kuota sudah di-restore oleh signal item.
+    """
+    legacy_ref = f"SJ-{instance.id}"
+    legacy_exists = StockCard.objects.filter(reference_number=legacy_ref).exists()
+
+    # Bersihkan semua StockCard terkait distribusi ini:
+    # - Legacy card: exact match "SJ-{id}"
+    # - Per-item cards: prefix "SJ-{id}-" (dengan trailing dash agar tidak
+    #   menghapus distribusi lain, misal SJ-1 vs SJ-10)
+    StockCard.objects.filter(reference_number=legacy_ref).delete()
+    StockCard.objects.filter(reference_number__startswith=f"SJ-{instance.id}-").delete()
+
+    if not legacy_exists:
+        # Per-item signals sudah handle restore kuota & recompute balance
+        # Cukup recompute saldo akhir saja untuk memastikan konsistensi
+        recompute_stock_balance(instance.jenis_pupuk_id, 'PHYSICAL')
+        if instance.source_type == 'VIRTUAL':
+            recompute_stock_balance(instance.jenis_pupuk_id, 'VIRTUAL')
+            if instance.source_so:
+                update_so_closure(instance.source_so)
         return
-    StockCard.objects.filter(reference_number=f"SJ-{instance.id}").delete()
+
+    # === LEGACY PATH: distribusi lama tanpa items ===
     try:
         with transaction.atomic():
             alloc = KiosAllocation.objects.select_for_update().filter(
