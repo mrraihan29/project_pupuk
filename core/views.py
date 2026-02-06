@@ -848,8 +848,18 @@ def setup_kabupaten_delete(request, pk):
         return setup_forbidden(request)
 
     kab = get_object_or_404(Kabupaten, pk=pk)
+    # Cek semua relasi PROTECT sebelum hapus
+    refs = []
     if kab.kecamatan_list.exists():
-        messages.error(request, "Tidak bisa hapus: kabupaten masih memiliki kecamatan.")
+        refs.append('kecamatan')
+    if kab.fertilizer_prices.exists():
+        refs.append('harga pupuk')
+    if kab.users.exists():
+        refs.append('user profile')
+    if kab.ops_list.exists():
+        refs.append('biaya operasional')
+    if refs:
+        messages.error(request, f"Tidak bisa hapus: kabupaten masih dipakai di data {', '.join(refs)}.")
     else:
         kab.delete()
         messages.success(request, "Kabupaten dihapus.")
@@ -898,8 +908,17 @@ def setup_kecamatan_delete(request, pk):
         return setup_forbidden(request)
 
     kec = get_object_or_404(Kecamatan, pk=pk)
+    # Cek semua relasi PROTECT sebelum hapus
+    from gudang.models import SalesOrderAllocation, OrderNote
+    refs = []
     if kec.kios_list.exists():
-        messages.error(request, "Tidak bisa hapus: kecamatan sudah dipakai di data kios.")
+        refs.append('kios')
+    if SalesOrderAllocation.objects.filter(kecamatan=kec).exists():
+        refs.append('alokasi SO')
+    if OrderNote.objects.filter(kecamatan=kec).exists():
+        refs.append('catatan order')
+    if refs:
+        messages.error(request, f"Tidak bisa hapus: kecamatan masih dipakai di data {', '.join(refs)}.")
     else:
         kec.delete()
         messages.success(request, "Kecamatan dihapus.")
@@ -918,9 +937,7 @@ def setup_users(request):
         return setup_forbidden(request)
 
     _ensure_default_groups()
-    users = User.objects.filter(is_superuser=False).order_by('username')
-    for usr in users:
-        UserProfile.objects.get_or_create(user=usr)
+    users = User.objects.filter(is_superuser=False).select_related('profile__kabupaten').prefetch_related('groups').order_by('username')
     form = UserCreateForm(request.POST or None)
     if request.method == 'POST':
         if form.is_valid():
@@ -930,6 +947,50 @@ def setup_users(request):
         messages.error(request, "Periksa kembali input Anda.")
 
     return render(request, 'setup/user_list.html', {'form': form, 'users': users})
+
+
+@login_required
+@never_cache
+def setup_user_edit(request, user_id):
+    if not _staff_required(request):
+        return setup_forbidden(request)
+
+    target_user = get_object_or_404(User, pk=user_id, is_superuser=False)
+    from .forms import UserEditForm
+    if request.method == 'POST':
+        form = UserEditForm(request.POST, instance=target_user)
+        if form.is_valid():
+            form.save()
+            messages.success(request, f"User '{target_user.username}' berhasil diperbarui.")
+            return redirect('setup_users')
+        messages.error(request, "Periksa kembali input Anda.")
+    else:
+        profile = getattr(target_user, 'profile', None)
+        group = target_user.groups.first()
+        initial = {
+            'kabupaten': profile.kabupaten if profile else None,
+            'role': 'admin' if group and group.name == 'Admin' else 'staff',
+        }
+        form = UserEditForm(instance=target_user, initial=initial)
+
+    return render(request, 'setup/user_edit.html', {'form': form, 'target_user': target_user})
+
+
+@login_required
+@require_http_methods(["POST"])
+def setup_user_delete(request, user_id):
+    if not _staff_required(request):
+        return setup_forbidden(request)
+
+    target_user = get_object_or_404(User, pk=user_id, is_superuser=False)
+    # Jangan izinkan hapus diri sendiri
+    if target_user == request.user:
+        messages.error(request, "Tidak bisa menghapus akun Anda sendiri.")
+        return redirect('setup_users')
+    username = target_user.username
+    target_user.delete()
+    messages.success(request, f"User '{username}' berhasil dihapus.")
+    return redirect('setup_users')
 
 
 @login_required

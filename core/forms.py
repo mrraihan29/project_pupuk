@@ -121,6 +121,14 @@ class KecamatanForm(forms.ModelForm):
             'kabupaten': forms.Select(attrs={'class': 'form-select'}),
         }
 
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        # Hanya tampilkan kabupaten aktif, kecuali saat edit (tetap tampilkan kabupaten yang sudah dipilih)
+        qs = Kabupaten.objects.filter(is_active=True)
+        if self.instance and self.instance.pk and self.instance.kabupaten_id:
+            qs = qs | Kabupaten.objects.filter(pk=self.instance.kabupaten_id)
+        self.fields['kabupaten'].queryset = qs.distinct().order_by('name')
+
 
 # ==========================================
 # FORM KABUPATEN
@@ -213,3 +221,72 @@ class UserSetPasswordForm(SetPasswordForm):
         super().__init__(*args, **kwargs)
         for field in self.fields.values():
             field.widget.attrs.update({'class': 'form-control'})
+
+
+# ==========================================
+# FORM USER EDIT (Update role, kabupaten, status)
+# ==========================================
+class UserEditForm(forms.ModelForm):
+    role = forms.ChoiceField(
+        choices=(
+            ('admin', 'Admin (akses luas, bukan superuser)'),
+            ('staff', 'Staff (akses terbatas)'),
+        ),
+        widget=forms.Select(attrs={'class': 'form-select'}),
+        label='Peran',
+    )
+
+    kabupaten = forms.ModelChoiceField(
+        queryset=Kabupaten.objects.filter(is_active=True),
+        required=False,
+        widget=forms.Select(attrs={'class': 'form-select'}),
+        label='Kabupaten',
+    )
+
+    class Meta:
+        model = User
+        fields = ['username', 'email', 'is_active']
+        widgets = {
+            'username': forms.TextInput(attrs={'class': 'form-control'}),
+            'email': forms.EmailInput(attrs={'class': 'form-control'}),
+        }
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        # Jika user sudah punya kabupaten yang nonaktif, tetap tampilkan
+        if self.instance and self.instance.pk:
+            profile = getattr(self.instance, 'profile', None)
+            if profile and profile.kabupaten_id:
+                qs = Kabupaten.objects.filter(is_active=True) | Kabupaten.objects.filter(pk=profile.kabupaten_id)
+                self.fields['kabupaten'].queryset = qs.distinct().order_by('name')
+
+    def clean(self):
+        cleaned = super().clean()
+        kabupaten = cleaned.get('kabupaten')
+        if not kabupaten:
+            raise forms.ValidationError('Kabupaten wajib diisi.')
+        return cleaned
+
+    def save(self, commit=True):
+        user = super().save(commit=False)
+        user.is_staff = True
+        user.is_superuser = False
+        if commit:
+            user.save()
+            self._assign_group(user)
+            self._assign_kabupaten(user)
+        return user
+
+    def _assign_group(self, user):
+        from django.contrib.auth.models import Group
+        role = self.cleaned_data.get('role')
+        group_name = 'Admin' if role == 'admin' else 'Staff'
+        group, _ = Group.objects.get_or_create(name=group_name)
+        user.groups.clear()
+        user.groups.add(group)
+
+    def _assign_kabupaten(self, user):
+        kab = self.cleaned_data.get('kabupaten')
+        profile, _ = UserProfile.objects.get_or_create(user=user)
+        profile.kabupaten = kab
+        profile.save(update_fields=['kabupaten'])

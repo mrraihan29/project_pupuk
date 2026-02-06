@@ -24,6 +24,10 @@ from django.conf.urls.static import static
 urlpatterns = [
     path('admin/', admin.site.urls),
     path('accounts/logout/', auth_views.LogoutView.as_view(next_page='/accounts/login/'), name='logout'),
+    path('accounts/password_change/', auth_views.PasswordChangeView.as_view(
+        success_url='/accounts/password_change/done/',
+    ), name='password_change'),
+    path('accounts/password_change/done/', auth_views.PasswordChangeDoneView.as_view(), name='password_change_done'),
     path('accounts/', include('django.contrib.auth.urls')),
     path('', dashboard, name='dashboard'), # Halaman awal = dashboard
     path('', include('core.urls')),

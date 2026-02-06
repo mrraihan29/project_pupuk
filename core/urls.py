@@ -31,5 +31,7 @@ urlpatterns = [
     path('setup/kecamatan/<int:pk>/edit/', views.setup_kecamatan_edit, name='setup_kecamatan_edit'),
     path('setup/kecamatan/<int:pk>/delete/', views.setup_kecamatan_delete, name='setup_kecamatan_delete'),
     path('setup/users/', views.setup_users, name='setup_users'),
+    path('setup/users/<int:user_id>/edit/', views.setup_user_edit, name='setup_user_edit'),
+    path('setup/users/<int:user_id>/delete/', views.setup_user_delete, name='setup_user_delete'),
     path('setup/users/<int:user_id>/password/', views.setup_user_set_password, name='setup_user_set_password'),
 ]

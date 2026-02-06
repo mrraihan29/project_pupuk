@@ -8,15 +8,24 @@
         <h6 class="mb-0 fw-bold">Tambah / Edit Kabupaten</h6>
       </div>
       <div class="card-body">
+        {% if form.non_field_errors %}
+        <div class="alert alert-danger py-2">
+          {% for error in form.non_field_errors %}
+            <div>{{ error }}</div>
+          {% endfor %}
+        </div>
+        {% endif %}
         <form method="post" class="row g-3">
           {% csrf_token %}
           <div class="col-12">
             <label class="form-label">Nama Kabupaten</label>
             {{ form.name }}
+            {% if form.name.errors %}<div class="text-danger small">{{ form.name.errors|striptags }}</div>{% endif %}
           </div>
           <div class="col-md-6">
             <label class="form-label">Kode (opsional)</label>
             {{ form.code }}
+            {% if form.code.errors %}<div class="text-danger small">{{ form.code.errors|striptags }}</div>{% endif %}
           </div>
           <div class="col-md-6 d-flex align-items-center pt-3">
             <div class="form-check mt-2">
