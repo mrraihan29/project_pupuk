@@ -1,7 +1,7 @@
 from decimal import Decimal
 from django.shortcuts import render, redirect, get_object_or_404
 from django.contrib import messages
-from django.contrib.auth.decorators import login_required
+from django.contrib.auth.decorators import login_required, user_passes_test
 from django.db import transaction
 from django.db.models import Sum, Prefetch
 from django.utils import timezone
@@ -102,17 +102,28 @@ def so_create(request):
 def transfer_list(request):
     """Riwayat Perpindahan Stok (Virtual -> Fisik)"""
     kab = get_scope_kabupaten(request)
+    kab_options = Kabupaten.objects.all().order_by('name') if request.user.is_superuser else Kabupaten.objects.none()
     transfers = WarehouseTransfer.objects.select_related('source_so__jenis_pupuk') \
                                          .order_by('-date')
     if kab:
         transfers = transfers.filter(source_so__allocations__kecamatan__kabupaten=kab).distinct()
-    return render(request, 'gudang/transfer_list.html', {'transfers': transfers})
+    return render(request, 'gudang/transfer_list.html', {
+        'transfers': transfers,
+        'kab_options': kab_options,
+        'selected_kabupaten': kab.id if kab else None,
+    })
 
 @login_required
 def transfer_create(request):
     """Form menarik stok dari Virtual SO ke Fisik Gudang"""
+    kab = get_scope_kabupaten(request)
+    so_qs = SalesOrder.objects.filter(is_closed=False)
+    if kab:
+        so_qs = so_qs.filter(allocations__kecamatan__kabupaten=kab).distinct()
+
     if request.method == 'POST':
         form = WarehouseTransferForm(request.POST)
+        form.fields['source_so'].queryset = so_qs
         if form.is_valid():
             try:
                 # Validasi logika (Cukup stok kah?) sudah ditangani di models.py clean()
@@ -128,6 +139,7 @@ def transfer_create(request):
             messages.error(request, "Gagal menarik stok. Periksa pesan error di bawah.")
     else:
         form = WarehouseTransferForm()
+        form.fields['source_so'].queryset = so_qs
     
     return render(request, 'gudang/transfer_form.html', {'form': form, 'title': 'Tarik Stok ke Gudang'})
 
@@ -162,7 +174,7 @@ def validate_distribution_items(kios, dist_date, items_clean):
         else:
             key = jenis.id
             if key not in physical_balance:
-                agg = StockCard.objects.filter(jenis_pupuk=jenis, stock_type='PHYSICAL').aggregate(
+                agg = StockCard.objects.select_for_update().filter(jenis_pupuk=jenis, stock_type='PHYSICAL').aggregate(
                     total_in=Sum('qty_in'),
                     total_out=Sum('qty_out'),
                 )
@@ -173,7 +185,7 @@ def validate_distribution_items(kios, dist_date, items_clean):
 
         qkey = (jenis.id, dist_date.year)
         if qkey not in quota_balance:
-            alloc = KiosAllocation.objects.filter(kios=kios, jenis_pupuk=jenis, year=dist_date.year).first()
+            alloc = KiosAllocation.objects.select_for_update().filter(kios=kios, jenis_pupuk=jenis, year=dist_date.year).first()
             if not alloc:
                 raise ValidationError(f"Belum ada alokasi {jenis.code} untuk tahun {dist_date.year} di kios ini.")
             quota_balance[qkey] = alloc.quota_remaining
@@ -347,8 +359,8 @@ def stock_card_list(request):
     stock_filter = request.GET.get('stock', 'PHYSICAL')
     
     # 3. Cari Object Jenis Pupuk (Safe Query)
-    # Gunakan filter().first() -> Return Object atau None (Tidak akan error crash)
-    jenis_pupuk = JenisPupuk.objects.filter(name__iexact=jenis_code).first()
+    # Filter by CODE (bukan name), karena dropdown mengirim kode seperti 'NPK', 'UREA'
+    jenis_pupuk = JenisPupuk.objects.filter(code__iexact=jenis_code).first()
     
     # 4. Logic Data (Hanya jalan jika jenis_pupuk DITEMUKAN)
     if jenis_pupuk:
@@ -377,12 +389,17 @@ def stock_card_list(request):
         'saldo_akhir': saldo_akhir,
         'stock_selected': stock_filter,
         'now': timezone.now(),
+        'jenis_list': JenisPupuk.objects.filter(is_active=True).order_by('name'),
     })
 
 
 @login_required
 def stock_card_export_physical(request):
-    """Export PDF stok fisik per bulan."""
+    """Export PDF stok per bulan (fisik atau virtual)."""
+    stock_type = request.GET.get('stock', 'PHYSICAL')
+    if stock_type not in ('PHYSICAL', 'VIRTUAL'):
+        stock_type = 'PHYSICAL'
+
     try:
         year = int(request.GET.get('year', timezone.now().year))
         month = int(request.GET.get('month', timezone.now().month))
@@ -397,7 +414,7 @@ def stock_card_export_physical(request):
         end_date = timezone.datetime(year, month + 1, 1).date()
 
     qs = StockCard.objects.filter(
-        stock_type='PHYSICAL',
+        stock_type=stock_type,
         date__gte=start_date,
         date__lt=end_date
     ).select_related('jenis_pupuk').order_by('date', 'created_at')
@@ -440,7 +457,8 @@ def stock_card_export_physical(request):
 
     html = render_to_string('gudang/stock_card_export_pdf.html', context)
     response = HttpResponse(content_type='application/pdf')
-    filename = f"stok_fisik_{year}-{month:02d}.pdf"
+    type_label_str = 'fisik' if stock_type == 'PHYSICAL' else 'virtual'
+    filename = f"stok_{type_label_str}_{year}-{month:02d}.pdf"
     response['Content-Disposition'] = f'attachment; filename="{filename}"'
 
     pisa_status = pisa.CreatePDF(html, dest=response)
@@ -450,6 +468,7 @@ def stock_card_export_physical(request):
     return response
 
 @login_required
+@user_passes_test(lambda u: u.is_staff)
 def stock_opname(request):
     """
     Input penyesuaian stok manual (ADJUST) dari hasil opname fisik.

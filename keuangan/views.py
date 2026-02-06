@@ -1,6 +1,7 @@
 from django.shortcuts import render, redirect, get_object_or_404
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
+from django.views.decorators.http import require_http_methods
 from django.db import transaction
 from django.db.models import Sum
 from django.http import JsonResponse
@@ -38,6 +39,7 @@ def invoice_list(request):
     return render(request, 'keuangan/invoice_list.html', {
         'invoices': invoices,
         'total_piutang': sisa_piutang,
+        'today': date.today(),
         'kab_options': kab_options,
         'selected_kabupaten': kab.id if kab else None,
     })
@@ -45,6 +47,14 @@ def invoice_list(request):
 @login_required
 def payment_create(request, pk):
     invoice = get_object_or_404(Invoice, pk=pk)
+    # Scope check: non-superuser hanya bisa bayar invoice kabupaten sendiri
+    if not request.user.is_superuser:
+        kab = get_scope_kabupaten(request)
+        inv_kab = getattr(getattr(getattr(invoice.distribution.kios, 'kecamatan', None), 'kabupaten', None), 'pk', None)
+        if kab and inv_kab and kab.pk != inv_kab:
+            messages.error(request, "Anda tidak memiliki akses ke invoice ini.")
+            return redirect('invoice_list')
+
     if request.method == 'POST':
         form = PaymentForm(request.POST, request.FILES, invoice=invoice)
         if form.is_valid():
@@ -103,18 +113,70 @@ def ops_create(request):
 
     return render(request, 'keuangan/ops_form.html', {'form': form})
 
+
+@login_required
+def ops_edit(request, pk):
+    ops = get_object_or_404(BiayaOperasional, pk=pk)
+    # Hanya bisa edit jika masih berstatus PROSES
+    if ops.status != 'PROSES':
+        messages.error(request, "Tidak bisa mengedit biaya yang sudah disetujui/ditolak.")
+        return redirect('ops_list')
+
+    kab = get_scope_kabupaten(request)
+    if request.method == 'POST':
+        form = BiayaOperasionalForm(request.POST, request.FILES, instance=ops)
+        if kab and not request.user.is_superuser:
+            form.fields['kabupaten'].queryset = form.fields['kabupaten'].queryset.filter(pk=kab.pk)
+            form.data = form.data.copy()
+            form.data['kabupaten'] = kab.pk
+        if form.is_valid():
+            biaya = form.save(commit=False)
+            if kab and not request.user.is_superuser:
+                biaya.kabupaten = kab
+            biaya.save()
+            messages.success(request, 'Pengeluaran berhasil diperbarui.')
+            return redirect('ops_list')
+        else:
+            messages.error(request, 'Gagal menyimpan. Periksa form kembali.')
+    else:
+        form = BiayaOperasionalForm(instance=ops)
+        if kab and not request.user.is_superuser:
+            form.fields['kabupaten'].queryset = form.fields['kabupaten'].queryset.filter(pk=kab.pk)
+
+    return render(request, 'keuangan/ops_form.html', {'form': form, 'edit_mode': True, 'ops_obj': ops})
+
+
 # ==========================================
-# 3. ACTION OWNER (APPROVE & DELETE)
+# 3. ACTION OWNER (APPROVE, REJECT & DELETE)
 # ==========================================
 @owner_required
+@require_http_methods(["POST"])
 def ops_approve(request, pk):
     ops = get_object_or_404(BiayaOperasional, pk=pk)
+    if ops.status != 'PROSES':
+        messages.error(request, "Hanya biaya berstatus 'Menunggu Approval' yang bisa disetujui.")
+        return redirect('ops_list')
     ops.status = 'SELESAI'
     ops.save()
     messages.success(request, "Biaya disetujui.")
     return redirect('ops_list')
 
+
 @owner_required
+@require_http_methods(["POST"])
+def ops_reject(request, pk):
+    ops = get_object_or_404(BiayaOperasional, pk=pk)
+    if ops.status != 'PROSES':
+        messages.error(request, "Hanya biaya berstatus 'Menunggu Approval' yang bisa ditolak.")
+        return redirect('ops_list')
+    ops.status = 'TOLAK'
+    ops.save()
+    messages.warning(request, "Biaya ditolak.")
+    return redirect('ops_list')
+
+
+@owner_required
+@require_http_methods(["POST"])
 def ops_delete(request, pk):
     ops = get_object_or_404(BiayaOperasional, pk=pk)
     ops.delete()
@@ -185,8 +247,12 @@ def print_invoice(request, pk):
     items = []
     subtotal = Decimal('0')
     for item in inv.distribution.items.select_related('jenis_pupuk'):
-        price_obj = get_price_for(item.jenis_pupuk, kab)
-        harga_per_ton = price_obj.price_sell if price_obj else Decimal('0')
+        # Prioritas: snapshot price (terkunci saat transaksi), fallback master price
+        if item.price_sell_snapshot:
+            harga_per_ton = item.price_sell_snapshot
+        else:
+            price_obj = get_price_for(item.jenis_pupuk, kab)
+            harga_per_ton = price_obj.price_sell if price_obj else Decimal('0')
         line_total = (item.tonnage or Decimal('0')) * harga_per_ton
         subtotal += line_total
         items.append({

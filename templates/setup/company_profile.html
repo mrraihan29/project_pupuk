@@ -36,6 +36,10 @@
         {{ form.bank_account }}
       </div>
       <div class="col-md-6">
+        <label class="form-label">Atas Nama Rekening</label>
+        {{ form.bank_account_name }}
+      </div>
+      <div class="col-md-6">
         <label class="form-label">Logo</label>
         {{ form.logo }}
         {% if form.instance.logo %}

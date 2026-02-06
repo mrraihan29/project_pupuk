@@ -39,6 +39,9 @@
         /* TOTAL ROW */
         .total-row td { padding: 5px 12px; }
         .grand-total { font-size: 16px; font-weight: bold; background-color: #f8f9fa; }
+        .fw-bold { font-weight: bold; }
+        .text-success { color: #198754; }
+        .text-danger { color: #dc3545; }
         
         /* PAYMENT INFO */
         .payment-info { margin-top: 40px; padding: 15px; background-color: #f9f9f9; border-left: 4px solid #198754; font-size: 13px; }
@@ -65,8 +68,8 @@
                 <h1 class="company-name">{{ company.name|default:"NAMA PERUSAHAAN" }}</h1>
             </div>
             <div class="company-info">
-                {{ company.address }}<br>
-                Telp: {{ company.phone }}
+                {{ company.address|default:"Alamat belum diisi" }}<br>
+                Telp: {{ company.phone|default:"-" }}
             </div>
         </header>
 
@@ -106,29 +109,21 @@
                 </tr>
             </thead>
             <tbody>
-                {% if items %}
-                    {% for it in items %}
-                    <tr>
-                        <td>
-                            <strong>PUPUK {{ it.name }}</strong>
-                            <br><small style="color: #666;">Ref Surat Jalan: {{ inv.distribution.no_surat_jalan }}</small>
-                        </td>
-                        <td class="text-center">{{ it.tonnage }} TON</td>
-                        <td class="text-right">Rp {{ it.price|intcomma }}</td>
-                        <td class="text-right fw-bold">Rp {{ it.total|intcomma }}</td>
-                    </tr>
-                    {% endfor %}
-                {% else %}
-                    <tr>
-                        <td>
-                            <strong>PUPUK {{ inv.distribution.jenis_pupuk.name }}</strong>
-                            <br><small style="color: #666;">Ref Surat Jalan: {{ inv.distribution.no_surat_jalan }}</small>
-                        </td>
-                        <td class="text-center">{{ inv.distribution.tonnage }} TON</td>
-                        <td class="text-right">Rp {{ inv.total_amount|intcomma }}</td>
-                        <td class="text-right fw-bold">Rp {{ inv.total_amount|intcomma }}</td>
-                    </tr>
-                {% endif %}
+                {% for it in items %}
+                <tr>
+                    <td>
+                        <strong>PUPUK {{ it.name }}</strong>
+                        <br><small style="color: #666;">Ref Surat Jalan: {{ inv.distribution.no_surat_jalan }}</small>
+                    </td>
+                    <td class="text-center">{{ it.tonnage }} TON</td>
+                    <td class="text-right">Rp {{ it.price|intcomma }}</td>
+                    <td class="text-right fw-bold">Rp {{ it.total|intcomma }}</td>
+                </tr>
+                {% empty %}
+                <tr>
+                    <td colspan="4" class="text-center" style="color: #999;">Tidak ada item</td>
+                </tr>
+                {% endfor %}
             </tbody>
             <tfoot>
                 <tr class="total-row">

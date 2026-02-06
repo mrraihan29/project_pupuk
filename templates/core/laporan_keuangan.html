@@ -41,6 +41,7 @@
         </form>
     </div>
 
+    {# ── EXECUTIVE SUMMARY CARDS ── #}
     <div class="row g-3 mb-4">
         <div class="col-lg-4">
             <div class="card h-100 border-0 text-white" style="background: linear-gradient(135deg, #0d6efd 0%, #0b5ed7 100%);">
@@ -86,21 +87,22 @@
         <div class="col-lg-2 col-sm-6">
             <div class="card h-100 border-0 bg-light">
                 <div class="card-body">
-                    <div class="text-muted small">Kas bersih periode (estimasi)</div>
-                    <div class="h5 fw-bold mb-0">Rp {{ cash_estimate|floatformat:0|intcomma }}</div>
-                    <div class="small text-muted">Pembayaran APPROVED - Opex SELESAI</div>
+                    <div class="text-muted small">Arus Kas Bersih</div>
+                    <div class="h5 fw-bold mb-0 {% if cash_estimate < 0 %}text-danger{% else %}text-success{% endif %}">Rp {{ cash_estimate|floatformat:0|intcomma }}</div>
+                    <div class="small text-muted">Kas masuk - Opex periode</div>
                 </div>
             </div>
         </div>
     </div>
 
+    {# ── LABA RUGI & OPEX ── #}
     <div class="row g-4 mb-4">
         <div class="col-lg-6">
             <div class="card h-100 border-0 bg-light">
                 <div class="card-body">
                     <div class="d-flex justify-content-between align-items-center mb-3">
                         <h6 class="fw-bold text-success mb-0"><i class="bi bi-arrow-up-circle me-2"></i>Laba Rugi</h6>
-                        <span class="badge bg-success-subtle text-success">Pendapatan & HPP (basis harga master)</span>
+                        <span class="badge bg-success-subtle text-success">Harga terkunci saat transaksi</span>
                     </div>
                     <table class="table table-sm table-borderless mb-3 table-kpi">
                         {% for p in produk_data %}
@@ -166,7 +168,7 @@
                     <div class="border-top pt-3">
                         <div class="d-flex justify-content-between mb-2">
                             <span class="fw-bold">Laba Bersih</span>
-                            <span class="fw-bold text-primary">Rp {{ net_profit|floatformat:0|intcomma }}</span>
+                            <span class="fw-bold {% if net_profit < 0 %}text-danger{% else %}text-primary{% endif %}">Rp {{ net_profit|floatformat:0|intcomma }}</span>
                         </div>
                         <small class="text-muted">Net Margin {{ net_margin_pct|floatformat:1 }}%</small>
                     </div>
@@ -175,6 +177,7 @@
         </div>
     </div>
 
+    {# ── PER PRODUK & POSISI KEUANGAN ── #}
     <div class="row g-4 mb-4">
         <div class="col-lg-6">
             <div class="card h-100 border-0">
@@ -213,64 +216,70 @@
             <div class="card h-100 border-0">
                 <div class="card-body">
                     <div class="d-flex justify-content-between align-items-center mb-3">
-                        <h6 class="fw-bold mb-0">Neraca Singkat (internal)</h6>
-                        {% if is_balanced %}
-                            <span class="badge bg-success"><i class="bi bi-check-lg me-1"></i>Seimbang</span>
-                        {% else %}
-                            <span class="badge bg-warning text-dark"><i class="bi bi-exclamation-triangle me-1"></i>Periksa</span>
-                        {% endif %}
+                        <h6 class="fw-bold mb-0">Posisi Keuangan (Snapshot)</h6>
+                        <span class="badge bg-secondary-subtle text-secondary">Per {{ end_date|date:"d M Y" }}</span>
                     </div>
 
                     <div class="row g-3">
+                        {# ── ASET ── #}
                         <div class="col-sm-6">
                             <div class="p-3 rounded border bg-light h-100">
                                 <div class="d-flex justify-content-between mb-2">
-                                    <strong>Aset</strong>
-                                    <span class="text-primary">Rp {{ assets_total|floatformat:0|intcomma }}</span>
+                                    <strong>Aset Terukur</strong>
+                                    <span class="text-primary fw-bold">Rp {{ assets_total|floatformat:0|intcomma }}</span>
                                 </div>
                                 <div class="d-flex justify-content-between small mb-1">
-                                    <span>Kas (estimasi)</span>
-                                    <span>Rp {{ cash_estimate|floatformat:0|intcomma }}</span>
-                                </div>
-                                <div class="d-flex justify-content-between small mb-1">
-                                    <span>Piutang</span>
+                                    <span>Piutang Usaha</span>
                                     <span>Rp {{ total_piutang|floatformat:0|intcomma }}</span>
                                 </div>
                                 <div class="d-flex justify-content-between small">
-                                    <span>Persediaan</span>
+                                    <span>Persediaan {% if stok_is_global %}<i class="bi bi-globe2 text-warning" title="Data stok gudang bersifat global (semua kabupaten)"></i>{% endif %}</span>
                                     <span>Rp {{ total_aset|floatformat:0|intcomma }}</span>
                                 </div>
                             </div>
                         </div>
+                        {# ── KEWAJIBAN & ARUS KAS ── #}
                         <div class="col-sm-6">
                             <div class="p-3 rounded border bg-light h-100">
                                 <div class="d-flex justify-content-between mb-2">
-                                    <strong>Liabilitas + Ekuitas</strong>
-                                    <span class="text-secondary">Rp {{ liab_equity_total|floatformat:0|intcomma }}</span>
+                                    <strong>Kewajiban & Kas</strong>
                                 </div>
                                 <div class="d-flex justify-content-between small mb-1">
-                                    <span>Liabilitas</span>
-                                    <span>Rp {{ liabilities_total|floatformat:0|intcomma }}</span>
+                                    <span>Kewajiban (Ops Pending)</span>
+                                    <span class="{% if liabilities_total > 0 %}text-danger{% endif %}">Rp {{ liabilities_total|floatformat:0|intcomma }}</span>
+                                </div>
+                                <div class="d-flex justify-content-between small mb-1">
+                                    <span>Kas Masuk Periode</span>
+                                    <span>Rp {{ payment_total|floatformat:0|intcomma }}</span>
                                 </div>
                                 <div class="d-flex justify-content-between small">
-                                    <span>Ekuitas (residual)</span>
-                                    <span>Rp {{ equity_total|floatformat:0|intcomma }}</span>
+                                    <span>Arus Kas Bersih</span>
+                                    <span class="fw-bold {% if cash_estimate < 0 %}text-danger{% else %}text-success{% endif %}">Rp {{ cash_estimate|floatformat:0|intcomma }}</span>
                                 </div>
-                                <div class="mt-2 small text-muted">Gap: Rp {{ balance_gap|floatformat:0|intcomma }}</div>
                             </div>
                         </div>
                     </div>
-                    <div class="small text-muted mt-2">Catatan: Liabilitas berasal dari Biaya Operasional berstatus PROSES; ekuitas dihitung residual setelah liabilitas tersebut.</div>
+                    <div class="small text-muted mt-2">
+                        <i class="bi bi-info-circle me-1"></i>
+                        Piutang dihitung historis per tanggal akhir laporan (tagihan - pembayaran s/d {{ end_date|date:"d/m/Y" }}).
+                        Kewajiban = biaya operasional berstatus PROSES.
+                    </div>
                 </div>
             </div>
         </div>
     </div>
 
+    {# ── STOK & VALUASI + CATATAN ── #}
     <div class="row g-4">
         <div class="col-lg-6">
             <div class="card h-100 border-0 bg-light">
                 <div class="card-body">
-                    <h6 class="fw-bold text-primary mb-3"><i class="bi bi-box-seam me-2"></i>Stok & Valuasi</h6>
+                    <h6 class="fw-bold text-primary mb-3">
+                        <i class="bi bi-box-seam me-2"></i>Stok & Valuasi
+                        {% if stok_is_global %}
+                        <span class="badge bg-warning-subtle text-warning ms-2 fw-normal small">Global (semua kabupaten)</span>
+                        {% endif %}
+                    </h6>
                     {% for p in produk_data %}
                     <div class="d-flex justify-content-between mb-2">
                         <span>Sisa Stok {{ p.name }}</span>
@@ -287,15 +296,15 @@
         <div class="col-lg-6">
             <div class="card h-100 border-0">
                 <div class="card-body">
-                    <h6 class="fw-bold mb-2">Catatan & Satuan</h6>
+                    <h6 class="fw-bold mb-2">Catatan & Metodologi</h6>
                     <ul class="text-muted mb-0 small">
-                        <li>Harga pupuk disimpan per ton di master; perhitungan otomatis untuk semua jenis pupuk aktif.</li>
-                        <li>Omzet utama mengambil nilai invoice terbit di periode; jika tidak ada invoice, dipakai tonase distribusi × harga jual master.</li>
-                        <li>COGS memakai tonase distribusi × harga beli master; untuk akurasi penuh perlu costing historis (FIFO/average).</li>
-                        <li>Kas estimasi = pembayaran APPROVED periode - opex SELESAI periode; bukan saldo kas riil.</li>
-                        <li>Persediaan dinilai dari stok fisik (StockCard PHYSICAL) × harga beli master.</li>
-                        <li>Liabilitas saat ini hanya Biaya Operasional status PROSES; belum termasuk hutang lain.</li>
-                        <li>Gunakan filter tanggal untuk melihat periode lain dan validasi stok dengan kartu stok.</li>
+                        <li><strong>Omzet & HPP</strong> menggunakan harga yang terkunci (snapshot) saat surat jalan dibuat, sehingga perubahan harga master tidak mengubah laporan historis.</li>
+                        <li><strong>Gross Profit</strong> = Omzet &minus; HPP. Detail per produk menjumlahkan tepat ke total (sumber konsisten).</li>
+                        <li><strong>Biaya Operasional</strong> hanya mencakup yang berstatus SELESAI (disetujui) dalam periode.</li>
+                        <li><strong>Persediaan</strong> dinilai dari stok fisik (StockCard PHYSICAL) &times; harga beli master saat ini. Data stok bersifat global (gudang penyangga melayani semua kabupaten).</li>
+                        <li><strong>Piutang</strong> dihitung historis: total tagihan invoice s/d tanggal akhir &minus; total pembayaran APPROVED s/d tanggal akhir.</li>
+                        <li><strong>Arus Kas Bersih</strong> = pembayaran APPROVED periode &minus; opex SELESAI periode. Ini bukan saldo kas riil (bank), melainkan proxy arus kas operasional.</li>
+                        <li><strong>Kewajiban</strong> saat ini hanya biaya operasional status PROSES; belum termasuk hutang supplier atau kewajiban lain.</li>
                     </ul>
                 </div>
             </div>

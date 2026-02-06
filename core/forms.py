@@ -96,7 +96,7 @@ class JenisPupukForm(forms.ModelForm):
 class CompanyProfileForm(forms.ModelForm):
     class Meta:
         model = CompanyProfile
-        fields = ['name', 'address', 'phone', 'email', 'logo', 'bank_name', 'bank_account']
+        fields = ['name', 'address', 'phone', 'email', 'logo', 'bank_name', 'bank_account', 'bank_account_name']
         widgets = {
             'name': forms.TextInput(attrs={'class': 'form-control'}),
             'address': forms.Textarea(attrs={'class': 'form-control', 'rows': 3}),
@@ -104,6 +104,7 @@ class CompanyProfileForm(forms.ModelForm):
             'email': forms.EmailInput(attrs={'class': 'form-control'}),
             'bank_name': forms.TextInput(attrs={'class': 'form-control'}),
             'bank_account': forms.TextInput(attrs={'class': 'form-control'}),
+            'bank_account_name': forms.TextInput(attrs={'class': 'form-control', 'placeholder': 'Atas nama pemilik rekening'}),
             'logo': forms.FileInput(attrs={'class': 'form-control'}),
         }
 

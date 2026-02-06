@@ -12,7 +12,7 @@
                 <option value="">-- Pilih Armada --</option>
                 {% for arm in armada_list %}
                 <option value="{{ arm.id }}" {% if selected_armada.id == arm.id %}selected{% endif %}>
-                    {{ arm.nopol }} - {{ arm.driver_name }}
+                    {{ arm.plate_number }} - {{ arm.driver_name }}
                 </option>
                 {% endfor %}
             </select>
@@ -23,8 +23,8 @@
     <div class="alert alert-info d-flex align-items-center mb-4">
         <i class="bi bi-truck fs-3 me-3"></i>
         <div>
-            <h6 class="mb-0 fw-bold">RIWAYAT PERBAIKAN: {{ selected_armada.nopol }}</h6>
-            <small>Supir: {{ selected_armada.driver_name }}</small>
+            <h6 class="mb-0 fw-bold">RIWAYAT PERBAIKAN: {{ selected_armada.plate_number }}</h6>
+            <small>Supir: {{ selected_armada.driver_name }} &bull; {{ selected_armada.vehicle_type }}</small>
         </div>
     </div>
 
@@ -32,27 +32,21 @@
         <table class="table table-hover align-middle table-sim">
             <thead>
                 <tr>
-                    <th>TGL LAPORAN</th>
-                    <th>URGENSI</th>
-                    <th>BUKTI</th>
+                    <th>TANGGAL</th>
+                    <th>KABUPATEN</th>
                     <th>DESKRIPSI / KELUHAN</th>
-                    <th>BIAYA</th>
-                    <th>STATUS</th>
-                    <th>TGL SELESAI</th>
+                    <th class="text-end">BIAYA</th>
+                    <th class="text-center">BUKTI</th>
                 </tr>
             </thead>
             <tbody>
                 {% for log in logs %}
                 <tr>
                     <td>{{ log.tanggal|date:"d M Y" }}</td>
-                    <td>
-                        {% if log.urgensi == 'URGENT' %}
-                            <span class="badge bg-danger">URGENT</span>
-                        {% else %}
-                            <span class="badge bg-secondary">Normal</span>
-                        {% endif %}
-                    </td>
-                    <td>
+                    <td>{{ log.kabupaten|default:"-" }}</td>
+                    <td class="fw-bold text-dark">{{ log.deskripsi }}</td>
+                    <td class="text-end">Rp {{ log.nominal|intcomma }}</td>
+                    <td class="text-center">
                         {% if log.bukti_foto %}
                             <a href="{{ log.bukti_foto.url }}" target="_blank" class="btn btn-sm btn-outline-primary">
                                 <i class="bi bi-image"></i> Lihat
@@ -61,22 +55,10 @@
                             <span class="text-muted">-</span>
                         {% endif %}
                     </td>
-                    <td class="fw-bold text-dark">{{ log.description }}</td>
-                    <td>Rp {{ log.nominal|intcomma }}</td>
-                    <td>
-                        {% if log.status == 'SELESAI' %}
-                            <span class="text-success fw-bold"><i class="bi bi-check-circle me-1"></i>Selesai</span>
-                        {% else %}
-                            <span class="badge bg-warning text-dark">Proses</span>
-                        {% endif %}
-                    </td>
-                    <td>
-                        {{ log.tanggal_selesai|date:"d M Y"|default:"-" }}
-                    </td>
                 </tr>
                 {% empty %}
                 <tr>
-                    <td colspan="7" class="text-center py-5 text-muted">
+                    <td colspan="5" class="text-center py-5 text-muted">
                         Belum ada riwayat service untuk armada ini.
                     </td>
                 </tr>

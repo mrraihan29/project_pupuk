@@ -13,11 +13,19 @@ from .models import Invoice, Payment
 # 1. AUTO-CREATE INVOICE (Saat Surat Jalan Terbit)
 # ==========================================
 def _compute_invoice_total(dist):
+    """
+    Hitung total tagihan invoice dari item distribusi.
+    Prioritas: gunakan price_sell_snapshot (harga terkunci saat transaksi).
+    Fallback ke master price jika snapshot belum terisi (data lama).
+    """
     kab = getattr(getattr(dist.kios, 'kecamatan', None), 'kabupaten', None)
     total = Decimal('0')
     for item in dist.items.select_related('jenis_pupuk'):
-        price_obj = get_price_for(item.jenis_pupuk, kab)
-        harga_per_ton = price_obj.price_sell if price_obj else Decimal('0')
+        if item.price_sell_snapshot:
+            harga_per_ton = item.price_sell_snapshot
+        else:
+            price_obj = get_price_for(item.jenis_pupuk, kab)
+            harga_per_ton = price_obj.price_sell if price_obj else Decimal('0')
         total += (item.tonnage or Decimal('0')) * harga_per_ton
     return total
 
@@ -26,7 +34,9 @@ def _upsert_invoice(dist):
     if not dist.items.exists():
         return
     total_tagihan = _compute_invoice_total(dist)
-    no_inv = dist.no_surat_jalan.replace("SJ", "INV")
+    # Robust INV number: extract numeric suffix or generate from SJ number
+    sj_num = dist.no_surat_jalan
+    no_inv = sj_num.replace("SJ/", "INV/").replace("SJ-", "INV-") if "SJ" in sj_num else f"INV-{dist.id}"
     tgl_jatuh_tempo = dist.date + timedelta(days=7)
 
     invoice, created = Invoice.objects.get_or_create(

@@ -7,12 +7,14 @@ urlpatterns = [
     path('invoice/<int:pk>/pay/', views.payment_create, name='payment_create'),
     path('invoice/<int:pk>/print/', views.print_invoice, name='print_invoice'),
 
-    # BIAYA OPERASIONAL (LIST & CREATE)
+    # BIAYA OPERASIONAL (LIST, CREATE & EDIT)
     path('biaya/', views.ops_list, name='ops_list'),
     path('biaya/create/', views.ops_create, name='ops_create'),
+    path('biaya/<int:pk>/edit/', views.ops_edit, name='ops_edit'),
     
-    # ACTION OWNER (APPROVE & DELETE) - FITUR INI TIDAK HILANG!
+    # ACTION OWNER (APPROVE, REJECT & DELETE) - FITUR INI TIDAK HILANG!
     path('biaya/<int:pk>/approve/', views.ops_approve, name='ops_approve'),
+    path('biaya/<int:pk>/reject/', views.ops_reject, name='ops_reject'),
     path('biaya/<int:pk>/delete/', views.ops_delete, name='ops_delete'),
 
     # FITUR KHUSUS ARMADA

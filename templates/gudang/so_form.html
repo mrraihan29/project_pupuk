@@ -1,5 +1,6 @@
 {% extends 'base.html' %}
-{% load humanize %}
+
+{% block page_title %}Input Penebusan{% endblock %}
 
 {% block content %}
 <div class="row justify-content-center">
@@ -46,34 +47,34 @@
                     {{ formset.management_form }}
                     
                     <div id="allocation-form-list">
-                        {% for form in formset %}
+                        {% for alloc_form in formset %}
                         <div class="allocation-item row g-2 align-items-end mb-2">
                             <div class="col-md-7">
-                                {{ form.kecamatan }}
+                                {{ alloc_form.kecamatan }}
                             </div>
                             <div class="col-md-4">
                                 <div class="input-group">
-                                    {{ form.tonnage }}
+                                    {{ alloc_form.tonnage }}
                                     <span class="input-group-text">Ton</span>
                                 </div>
                             </div>
                             <div class="col-md-1 text-center">
                                 {% if formset.can_delete %}
                                     <div class="form-check d-none">
-                                        {{ form.DELETE }}
+                                        {{ alloc_form.DELETE }}
                                     </div>
                                     <button type="button" class="btn btn-danger btn-sm remove-form" title="Hapus Baris">
                                         <i class="bi bi-trash"></i>
                                     </button>
                                 {% endif %}
                             </div>
-                            {% for hidden in form.hidden_fields %}
+                            {% for hidden in alloc_form.hidden_fields %}
                                 {{ hidden }}
                             {% endfor %}
                             
-                            {% if form.errors %}
+                            {% if alloc_form.errors %}
                                 <div class="col-12 text-danger small">
-                                    {{ form.errors }}
+                                    {{ alloc_form.errors }}
                                 </div>
                             {% endif %}
                         </div>

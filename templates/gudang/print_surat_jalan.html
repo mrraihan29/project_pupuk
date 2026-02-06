@@ -55,7 +55,7 @@
             <h1 class="company-name">{{ company.name|default:"NAMA PERUSAHAAN ANDA" }}</h1>
             <div class="company-info">
                 {{ company.address|default:"Alamat Perusahaan Belum Diisi di Database" }}<br>
-                Telp: {{ company.phone }} | Email: {{ company.email }}
+                Telp: {{ company.phone|default:"-" }} | Email: {{ company.email|default:"-" }}
             </div>
         </header>
 

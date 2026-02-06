@@ -219,7 +219,7 @@ class Distribution(models.Model):
             # Logic Cek Stok Fisik (Agak berat query-nya, kita gunakan helper function dari StockCard nanti)
             # Untuk sekarang kita skip validasi fisik di level Model clean() agar tidak circular import atau query berat.
             # Validasi fisik sebaiknya dilakukan di Form/View.
-            agg = StockCard.objects.filter(jenis_pupuk=self.jenis_pupuk, stock_type='PHYSICAL').aggregate(
+            agg = StockCard.objects.select_for_update().filter(jenis_pupuk=self.jenis_pupuk, stock_type='PHYSICAL').aggregate(
                 total_in=Sum('qty_in'),
                 total_out=Sum('qty_out'),
             )
@@ -275,6 +275,21 @@ class DistributionItem(models.Model):
     source_so = models.ForeignKey(SalesOrder, on_delete=models.PROTECT, null=True, blank=True, verbose_name="Ambil dari SO", related_name='distribution_items')
     order_item = models.ForeignKey('gudang.OrderNoteItem', on_delete=models.SET_NULL, null=True, blank=True, related_name='deliveries')
     tonnage = models.DecimalField("Jumlah Kirim (Ton)", max_digits=10, decimal_places=2)
+
+    # Harga terkunci saat transaksi (price locking / historical cost)
+    # Diisi otomatis oleh signal saat item disimpan pertama kali.
+    # Mencegah perubahan harga master mengubah laporan historis.
+    price_sell_snapshot = models.DecimalField(
+        "Harga Jual per Ton (saat transaksi)", max_digits=15, decimal_places=2,
+        null=True, blank=True,
+        help_text="Harga jual per ton yang berlaku saat surat jalan dibuat."
+    )
+    price_buy_snapshot = models.DecimalField(
+        "Harga Beli per Ton (saat transaksi)", max_digits=15, decimal_places=2,
+        null=True, blank=True,
+        help_text="Harga beli per ton yang berlaku saat surat jalan dibuat."
+    )
+
     created_at = models.DateTimeField(auto_now_add=True)
 
     def __str__(self):

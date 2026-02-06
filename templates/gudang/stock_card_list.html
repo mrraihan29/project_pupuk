@@ -1,5 +1,6 @@
 {% extends 'base.html' %}
-{% load humanize %}
+
+{% block page_title %}Kartu Stok{% endblock %}
 
 {% block content %}
 <div class="card shadow-sm border-0">
@@ -54,8 +55,9 @@
             <div class="d-flex align-items-end gap-2 stock-jenis">
                 <label class="small text-muted mb-1">Jenis Pupuk</label>
                 <select class="form-select form-select-sm stock-jenis-select" onchange="window.location='?stock={{ stock_selected }}&jenis='+this.value">
-                    <option value="NPK" {% if jenis_selected == 'NPK' %}selected{% endif %}>NPK</option>
-                    <option value="UREA" {% if jenis_selected == 'UREA' %}selected{% endif %}>UREA</option>
+                    {% for jp in jenis_list %}
+                    <option value="{{ jp.code }}" {% if jenis_selected == jp.code %}selected{% endif %}>{{ jp.name }}</option>
+                    {% endfor %}
                 </select>
             </div>
         </div>

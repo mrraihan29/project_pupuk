@@ -8,7 +8,7 @@ from django.contrib.auth.mixins import LoginRequiredMixin
 from django.views.decorators.http import require_http_methods
 from django.views.decorators.cache import never_cache
 from django.forms import modelformset_factory
-from django.db.models import Sum, Prefetch, F, DecimalField
+from django.db.models import Sum, Prefetch, F, DecimalField, ProtectedError
 from django.db.models.functions import Coalesce
 from decimal import Decimal
 from datetime import date
@@ -162,8 +162,15 @@ def kios_update(request, pk):
 def kios_delete(request, pk):
     kios = get_object_or_404(Kios, pk=pk)
     if request.method == 'POST':
-        kios.delete()
-        messages.success(request, "Kios berhasil dihapus.")
+        try:
+            kios.delete()
+            messages.success(request, "Kios berhasil dihapus.")
+        except ProtectedError:
+            messages.error(
+                request,
+                "Kios tidak bisa dihapus karena masih memiliki data distribusi, "
+                "alokasi, atau transaksi terkait. Nonaktifkan kios sebagai gantinya."
+            )
         return redirect('kios_list')
     
     return render(request, 'core/kios_confirm_delete.html', {'kios': kios})
@@ -177,11 +184,14 @@ def dashboard(request):
     kab = get_scope_kabupaten(request)
     kab_options = Kabupaten.objects.all().order_by('name') if request.user.is_superuser else Kabupaten.objects.none()
     
-    # 1. HITUNG UANG (FIXED: Tambahkan output_field)
-    piutang_data = Invoice.objects.filter(status__in=['UNPAID', 'PARTIAL']).aggregate(
+    # 1. HITUNG UANG (scoped by kabupaten)
+    piutang_qs = Invoice.objects.filter(status__in=['UNPAID', 'PARTIAL'])
+    if kab:
+        piutang_qs = piutang_qs.filter(distribution__kios__kecamatan__kabupaten=kab)
+    piutang_data = piutang_qs.aggregate(
         total_sisa=Sum(
             F('total_amount') - F('total_paid'), 
-            output_field=DecimalField() # <--- WAJIB ADA
+            output_field=DecimalField()
         )
     )
     total_piutang = piutang_data['total_sisa'] or 0
@@ -208,10 +218,13 @@ def dashboard(request):
         stok_fisik.append({'jenis': jp, 'saldo': get_stock_balance(jp, 'PHYSICAL')})
 
     # 3. DATA LAINNYA
-    invoice_overdue_count = Invoice.objects.filter(
+    overdue_qs = Invoice.objects.filter(
         status__in=['UNPAID', 'PARTIAL'], 
         due_date__lte=today
-    ).count()
+    )
+    if kab:
+        overdue_qs = overdue_qs.filter(distribution__kios__kecamatan__kabupaten=kab)
+    invoice_overdue_count = overdue_qs.count()
 
     invoices_qs = Invoice.objects.filter(status__in=['UNPAID', 'PARTIAL']) \
                                     .select_related('distribution__kios__kecamatan__kabupaten')
@@ -247,10 +260,25 @@ def raport_kios(request):
     """
     Laporan Kinerja Kios: Alokasi vs Realisasi.
     Dinamis — semua jenis pupuk aktif ditampilkan.
+    Superuser bisa filter per kabupaten via dropdown.
     """
     current_year = date.today().year
+
+    # Kabupaten filter (superuser only)
+    kab_options = Kabupaten.objects.filter(is_active=True).order_by('name') if request.user.is_superuser else Kabupaten.objects.none()
+    selected_kab_id = request.GET.get('kabupaten', '')
+    selected_kab = None
+
     kios_data = Kios.objects.filter(is_active=True).prefetch_related('allocations', 'kecamatan__kabupaten')
-    kios_data = scope_by_kabupaten(kios_data, request.user, 'kecamatan__kabupaten')
+
+    if request.user.is_superuser:
+        if selected_kab_id:
+            selected_kab = Kabupaten.objects.filter(pk=selected_kab_id, is_active=True).first()
+            if selected_kab:
+                kios_data = kios_data.filter(kecamatan__kabupaten=selected_kab)
+        # Jika tidak ada filter, tampilkan semua (default superuser)
+    else:
+        kios_data = scope_by_kabupaten(kios_data, request.user, 'kecamatan__kabupaten')
 
     jenis_list = list(JenisPupuk.objects.filter(is_active=True).order_by('name'))
     report_data = []
@@ -282,6 +310,8 @@ def raport_kios(request):
         'report': report_data,
         'jenis_list': jenis_list,
         'current_year': current_year,
+        'kab_options': kab_options,
+        'selected_kabupaten': selected_kab.id if selected_kab else '',
     })
 
 @login_required
@@ -504,6 +534,7 @@ def jenis_pupuk_edit(request, pk):
 
 
 @login_required
+@user_passes_test(lambda u: u.is_staff)
 def jenis_pupuk_delete(request, pk):
     jenis = get_object_or_404(JenisPupuk, pk=pk)
     if request.method != 'POST':
@@ -537,8 +568,19 @@ def jenis_pupuk_delete(request, pk):
 @user_passes_test(lambda u: u.is_staff)
 def laporan_keuangan(request):
     """
-    Laporan Laba Rugi (Profit & Loss Statement).
-    Menghitung: Omzet - HPP - Biaya Ops = Laba Bersih.
+    Laporan Laba Rugi & Posisi Keuangan (Profit & Loss + Balance Snapshot).
+
+    Prinsip akuntansi yang diterapkan:
+    ─────────────────────────────────
+    1. Revenue Recognition — Omzet dihitung dari harga terkunci (price snapshot)
+       saat surat jalan dibuat, bukan harga master saat laporan dilihat.
+    2. Matching Principle — HPP menggunakan sumber yang sama (price snapshot)
+       sehingga Omzet detail & total selalu konsisten.
+    3. Historical Cost — Persediaan dinilai berdasar harga beli master saat ini
+       (approx. weighted-average) karena stok tidak mencatat harga perolehan
+       per transaksi masuk.
+    4. Piutang Historis — Saldo piutang dihitung per tanggal akhir laporan
+       (bukan status terkini) agar laporan masa lalu tetap akurat.
     """
     kab = get_scope_kabupaten(request)
     kab_options = Kabupaten.objects.all().order_by('name') if request.user.is_superuser else Kabupaten.objects.none()
@@ -546,7 +588,7 @@ def laporan_keuangan(request):
     kab_param = request.GET.get('kabupaten')
     if request.user.is_superuser and kab_param:
         kab = kab_options.filter(pk=kab_param).first()
-    
+
     # 1. SETUP TANGGAL (Default: Awal Bulan s/d Hari Ini)
     today = date.today()
     default_start = today.replace(day=1).strftime('%Y-%m-%d')
@@ -584,6 +626,7 @@ def laporan_keuangan(request):
             'liab_equity_total': zero,
             'balance_gap': zero,
             'is_balanced': True,
+            'stok_is_global': False,
         }
 
     # 2. VALIDASI KABUPATEN
@@ -591,7 +634,7 @@ def laporan_keuangan(request):
         messages.error(request, "Pilih kabupaten terlebih dahulu untuk melihat laporan.")
         return render(request, 'core/laporan_keuangan.html', empty_context())
 
-    # 3. SIAPKAN HARGA ACUAN (Master Price) — DINAMIS untuk semua jenis pupuk aktif
+    # 3. SIAPKAN HARGA ACUAN (Master Price) — untuk fallback & valuasi stok
     active_types = JenisPupuk.objects.filter(is_active=True).order_by('name')
     prices = {}  # {jp.id: FertilizerPrice}
     for jp in active_types:
@@ -605,27 +648,46 @@ def laporan_keuangan(request):
         messages.error(request, "Belum ada jenis pupuk aktif. Tambahkan di Master Data Pupuk.")
         return render(request, 'core/laporan_keuangan.html', empty_context())
 
-    # 4. HITUNG OMZET & HPP PER PRODUK (DINAMIS)
-    dist_qs = DistributionItem.objects.select_related('distribution__kios__kecamatan__kabupaten', 'jenis_pupuk').filter(
+    # ═══════════════════════════════════════════════════════
+    # 4. HITUNG OMZET & HPP PER PRODUK (Sumber Konsisten)
+    # ═══════════════════════════════════════════════════════
+    # Menggunakan DistributionItem dengan price snapshot yang terkunci
+    # saat surat jalan dibuat. Jika snapshot belum terisi (data lama),
+    # fallback ke harga master saat ini.
+    dist_qs = DistributionItem.objects.select_related(
+        'distribution__kios__kecamatan__kabupaten', 'jenis_pupuk'
+    ).filter(
         distribution__date__range=[start_date, end_date],
     )
     if kab:
         dist_qs = dist_qs.filter(distribution__kios__kecamatan__kabupaten=kab)
 
     produk_data = []
-    total_omzet_distribution = Decimal('0')
+    total_omzet = Decimal('0')
     total_modal = Decimal('0')
 
     for jp in active_types:
         price = prices[jp.id]
-        qty_jual = dist_qs.filter(jenis_pupuk=jp).aggregate(total=Coalesce(Sum('tonnage'), Decimal('0')))['total']
-        omzet = qty_jual * price.price_sell
-        modal = qty_jual * price.price_buy
+        items = dist_qs.filter(jenis_pupuk=jp)
+
+        # Hitung omzet & HPP per item menggunakan harga snapshot
+        qty_jual = Decimal('0')
+        omzet = Decimal('0')
+        modal = Decimal('0')
+        for item in items:
+            ton = item.tonnage or Decimal('0')
+            # Gunakan harga terkunci; fallback ke master price
+            sell_price = item.price_sell_snapshot if item.price_sell_snapshot else price.price_sell
+            buy_price = item.price_buy_snapshot if item.price_buy_snapshot else price.price_buy
+            qty_jual += ton
+            omzet += ton * sell_price
+            modal += ton * buy_price
+
         gp = omzet - modal
         avg_sell = omzet / qty_jual if qty_jual else Decimal('0')
         avg_cost = modal / qty_jual if qty_jual else Decimal('0')
 
-        # Valuasi stok
+        # Valuasi stok fisik (gudang penyangga — shared, bukan per kabupaten)
         agg_stok = StockCard.objects.filter(
             date__lte=end_date,
             jenis_pupuk=jp,
@@ -635,6 +697,7 @@ def laporan_keuangan(request):
             keluar=Coalesce(Sum('qty_out'), Decimal('0'))
         )
         stok_sisa = agg_stok['masuk'] - agg_stok['keluar']
+        # Valuasi persediaan menggunakan harga beli master (approx. weighted-average)
         aset = stok_sisa * price.price_buy
 
         produk_data.append({
@@ -649,22 +712,14 @@ def laporan_keuangan(request):
             'stok_sisa': stok_sisa,
             'aset': aset,
         })
-        total_omzet_distribution += omzet
+        total_omzet += omzet
         total_modal += modal
 
     total_aset = sum(p['aset'] for p in produk_data)
 
-    # Total omzet prefer Invoice (lebih akurat nilai tagihan); jika tidak ada invoice periode ini, pakai distribusi
-    inv_qs = Invoice.objects.filter(issue_date__range=[start_date, end_date]).select_related('distribution__kios__kecamatan__kabupaten')
-    if kab:
-        inv_qs = inv_qs.filter(distribution__kios__kecamatan__kabupaten=kab)
-
-    total_omzet_invoice = inv_qs.aggregate(total=Coalesce(Sum('total_amount'), Decimal('0')))['total']
-
-    total_omzet = total_omzet_invoice if total_omzet_invoice else total_omzet_distribution
-
+    # ═══════════════════════════════════════════════════════
     # 5. HITUNG BIAYA OPERASIONAL
-    # Logic: Sum Nominal dari BiayaOperasional group by Kategori Utama
+    # ═══════════════════════════════════════════════════════
     biaya_qs = BiayaOperasional.objects.filter(
         tanggal__range=[start_date, end_date],
         status='SELESAI'
@@ -673,12 +728,12 @@ def laporan_keuangan(request):
         biaya_qs = biaya_qs.filter(kabupaten=kab)
 
     biaya_armada = biaya_qs.filter(kategori_utama='ARMADA').aggregate(total=Coalesce(Sum('nominal'), Decimal('0')))['total']
-
     biaya_kantor = biaya_qs.filter(kategori_utama='KANTOR').aggregate(total=Coalesce(Sum('nominal'), Decimal('0')))['total']
-    
     biaya_lain = biaya_qs.filter(kategori_utama='LAINNYA').aggregate(total=Coalesce(Sum('nominal'), Decimal('0')))['total']
 
+    # ═══════════════════════════════════════════════════════
     # 6. HITUNG TOTAL, LABA, MARGIN
+    # ═══════════════════════════════════════════════════════
     total_ops = biaya_armada + biaya_kantor + biaya_lain
     gross_profit = total_omzet - total_modal
     net_profit = gross_profit - total_ops
@@ -686,19 +741,38 @@ def laporan_keuangan(request):
     net_margin_pct = (net_profit / total_omzet * 100) if total_omzet else Decimal('0')
     opex_ratio_pct = (total_ops / total_omzet * 100) if total_omzet else Decimal('0')
 
-    # 7. VALUASI ASET — sudah dihitung di loop produk_data di atas (total_aset)
-
-    # 8. SNAPSHOT PIUTANG & KAS (periode laporan)
-    piutang_qs = Invoice.objects.filter(
-        status__in=['UNPAID', 'PARTIAL'],
+    # ═══════════════════════════════════════════════════════
+    # 7. SNAPSHOT PIUTANG HISTORIS
+    # ═══════════════════════════════════════════════════════
+    # Piutang = total tagihan invoice s/d end_date DIKURANGI total pembayaran
+    # APPROVED s/d end_date. Ini memberikan snapshot akurat per tanggal laporan,
+    # bukan status terkini.
+    inv_piutang_qs = Invoice.objects.filter(
         issue_date__lte=end_date
     ).select_related('distribution__kios__kecamatan__kabupaten')
     if kab:
-        piutang_qs = piutang_qs.filter(distribution__kios__kecamatan__kabupaten=kab)
+        inv_piutang_qs = inv_piutang_qs.filter(distribution__kios__kecamatan__kabupaten=kab)
 
-    piutang_data = piutang_qs.aggregate(total_sisa=Coalesce(Sum(F('total_amount') - F('total_paid'), output_field=DecimalField()), Decimal('0')))
-    total_piutang = piutang_data['total_sisa'] or Decimal('0')
+    total_tagihan_all = inv_piutang_qs.aggregate(
+        total=Coalesce(Sum('total_amount'), Decimal('0'))
+    )['total']
 
+    # Total pembayaran APPROVED s/d end_date untuk invoice-invoice di atas
+    total_bayar_all = Payment.objects.filter(
+        status='APPROVED',
+        date__lte=end_date,
+        invoice__in=inv_piutang_qs
+    ).aggregate(
+        total=Coalesce(Sum('amount'), Decimal('0'))
+    )['total']
+
+    total_piutang = max(Decimal('0'), total_tagihan_all - total_bayar_all)
+
+    # ═══════════════════════════════════════════════════════
+    # 8. KAS MASUK PERIODE (Arus Kas Operasional)
+    # ═══════════════════════════════════════════════════════
+    # Kas = pembayaran masuk APPROVED dalam periode - opex SELESAI dalam periode
+    # Ini adalah ARUS KAS BERSIH periode, bukan saldo kas riil.
     pay_qs = Payment.objects.filter(
         status='APPROVED',
         date__range=[start_date, end_date]
@@ -708,60 +782,76 @@ def laporan_keuangan(request):
     payment_total = pay_qs.aggregate(total=Coalesce(Sum('amount'), Decimal('0')))['total']
     cash_estimate = payment_total - total_ops
 
-    # 9. NERACA SINGKAT (Aset = Liabilitas + Ekuitas)
+    # ═══════════════════════════════════════════════════════
+    # 9. POSISI KEUANGAN (Ringkasan Aset & Kewajiban)
+    # ═══════════════════════════════════════════════════════
+    # Catatan: Ini BUKAN neraca akuntansi lengkap karena:
+    # - Tidak ada pencatatan modal awal / ekuitas pemilik
+    # - Liabilitas hanya mencakup biaya ops yang belum di-approve
+    # - Kas adalah estimasi arus kas, bukan saldo bank riil
+    # Namun tetap berguna sebagai snapshot posisi keuangan operasional.
+
+    # Liabilitas = biaya operasional yang masih pending (belum disetujui)
     pending_ops_qs = BiayaOperasional.objects.filter(
         status='PROSES',
         tanggal__lte=end_date
     ).select_related('kabupaten')
     if kab:
         pending_ops_qs = pending_ops_qs.filter(kabupaten=kab)
-    pending_ops = pending_ops_qs.aggregate(total=Coalesce(Sum('nominal'), Decimal('0')))['total']
+    liabilities_total = pending_ops_qs.aggregate(total=Coalesce(Sum('nominal'), Decimal('0')))['total']
 
-    liabilities_total = pending_ops
-    assets_total = cash_estimate + total_piutang + total_aset
+    # Total Aset Terukur = Piutang + Persediaan
+    # (Kas tidak dimasukkan karena hanya estimasi arus kas, bukan saldo riil)
+    assets_total = total_piutang + total_aset
+
+    # Equity dihitung sebagai residual — TIDAK digunakan untuk "balance check"
+    # karena tanpa modal awal dan saldo kas riil, neraca tidak bisa seimbang.
     equity_total = assets_total - liabilities_total
     liab_equity_total = liabilities_total + equity_total
-    balance_gap = assets_total - liab_equity_total
-    is_balanced = abs(balance_gap) <= Decimal('0.01')
+
+    # ═══════════════════════════════════════════════════════
+    # Deteksi apakah stok bersifat global (tidak per-kabupaten)
+    # ═══════════════════════════════════════════════════════
+    stok_is_global = True  # StockCard tidak punya relasi kabupaten
 
     # --- BUNGKUS DATA (CONTEXT) ---
     context = {
         # Filter
         'start_date': start_date,
         'end_date': end_date,
-        
+
         # Per-Produk (dinamis)
         'produk_data': produk_data,
-        
+
         # Pendapatan & HPP aggregat
         'total_omzet': total_omzet,
         'total_modal': total_modal,
-        
+
         # Biaya Ops
         'ops_armada': biaya_armada,
         'ops_kantor': biaya_kantor,
         'ops_lain': biaya_lain,
         'total_ops': total_ops,
-        
+
         # Hasil Akhir
         'gross_profit': gross_profit,
         'net_profit': net_profit,
         'gross_margin_pct': gross_margin_pct,
         'net_margin_pct': net_margin_pct,
         'opex_ratio_pct': opex_ratio_pct,
-        
+
         # Aset
         'total_aset': total_aset,
 
         # Balance Snapshot
         'cash_estimate': cash_estimate,
+        'payment_total': payment_total,
         'total_piutang': total_piutang,
         'assets_total': assets_total,
         'liabilities_total': liabilities_total,
         'equity_total': equity_total,
         'liab_equity_total': liab_equity_total,
-        'balance_gap': balance_gap,
-        'is_balanced': is_balanced,
+        'stok_is_global': stok_is_global,
         'kab_options': kab_options,
         'selected_kabupaten': kab.id if kab else None,
     }
@@ -1014,9 +1104,59 @@ def setup_user_set_password(request, user_id):
 def export_laporan_xls(start, end, data):
     response = HttpResponse(content_type='text/csv')
     response['Content-Disposition'] = f'attachment; filename="Laporan_Keuangan_{start}_{end}.csv"'
+    response.write('\ufeff')  # BOM agar Excel baca UTF-8 dengan benar
     writer = csv.writer(response)
-    # (Isi CSV bisa disesuaikan dengan data context di atas)
+
     writer.writerow(['LAPORAN KEUANGAN SIM BADA TANI'])
     writer.writerow([f'Periode: {start} s/d {end}'])
+    writer.writerow([])
+
+    # === LABA RUGI ===
+    writer.writerow(['LABA RUGI'])
+    writer.writerow(['Komponen', 'Nilai (Rp)'])
+    for p in data.get('produk_data', []):
+        writer.writerow([f'Penjualan {p["name"]}', p['omzet']])
+    writer.writerow(['TOTAL OMZET', data['total_omzet']])
+    writer.writerow([])
+    for p in data.get('produk_data', []):
+        writer.writerow([f'HPP {p["name"]}', p['modal']])
+    writer.writerow(['TOTAL HPP', data['total_modal']])
+    writer.writerow([])
+    writer.writerow(['LABA KOTOR', data['gross_profit']])
+    writer.writerow(['Gross Margin (%)', data['gross_margin_pct']])
+    writer.writerow([])
+
+    # === BIAYA OPERASIONAL ===
+    writer.writerow(['BIAYA OPERASIONAL'])
+    writer.writerow(['Biaya Armada', data['ops_armada']])
+    writer.writerow(['Biaya Kantor', data['ops_kantor']])
+    writer.writerow(['Biaya Lainnya', data['ops_lain']])
+    writer.writerow(['TOTAL OPEX', data['total_ops']])
+    writer.writerow(['Opex Ratio (%)', data['opex_ratio_pct']])
+    writer.writerow([])
+
+    # === HASIL AKHIR ===
     writer.writerow(['LABA BERSIH', data['net_profit']])
+    writer.writerow(['Net Margin (%)', data['net_margin_pct']])
+    writer.writerow([])
+
+    # === PER PRODUK ===
+    writer.writerow(['DETAIL PER PRODUK'])
+    writer.writerow(['Produk', 'Qty Jual (Ton)', 'Omzet', 'HPP', 'Gross Profit', 'Avg Sell/Ton', 'Avg Cost/Ton', 'Sisa Stok (Ton)', 'Nilai Persediaan'])
+    for p in data.get('produk_data', []):
+        writer.writerow([
+            p['name'], p['qty_jual'], p['omzet'], p['modal'], p['gp'],
+            p['avg_sell'], p['avg_cost'], p['stok_sisa'], p['aset']
+        ])
+    writer.writerow([])
+
+    # === POSISI KEUANGAN ===
+    writer.writerow(['POSISI KEUANGAN'])
+    writer.writerow(['Piutang Usaha', data['total_piutang']])
+    writer.writerow(['Persediaan (Gudang)', data['total_aset']])
+    writer.writerow(['Total Aset Terukur', data['assets_total']])
+    writer.writerow([])
+    writer.writerow(['Arus Kas Bersih Periode', data['cash_estimate']])
+    writer.writerow(['Liabilitas (Ops Pending)', data['liabilities_total']])
+
     return response

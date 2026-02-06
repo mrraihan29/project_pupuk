@@ -1,12 +1,12 @@
 {% extends 'base.html' %}
-{% block page_title %}Input Biaya Operasional{% endblock %}
+{% block page_title %}{% if edit_mode %}Edit{% else %}Input{% endif %} Biaya Operasional{% endblock %}
 
 {% block content %}
 <div class="row justify-content-center">
     <div class="col-md-8">
         <div class="card shadow-sm border-0">
             <div class="card-header bg-danger text-white py-3">
-                <h5 class="mb-0 fw-bold"><i class="bi bi-cash-stack me-2"></i>Input Biaya Operasional</h5>
+                <h5 class="mb-0 fw-bold"><i class="bi bi-cash-stack me-2"></i>{% if edit_mode %}Edit{% else %}Input{% endif %} Biaya Operasional</h5>
             </div>
             <div class="card-body p-4">
                 
@@ -57,7 +57,7 @@
                     <div class="mb-3">
                         <label class="form-label fw-bold">Bukti Foto / Struk</label>
                         {{ form.bukti_foto }}
-                        <small class="text-muted d-block mt-1">*Wajib upload foto bukti</small>
+                        <small class="text-muted d-block mt-1">Upload foto bukti (opsional)</small>
                     </div>
 
                     <div class="d-grid gap-2 mt-4">

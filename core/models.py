@@ -16,6 +16,7 @@ class CompanyProfile(models.Model):
     # Info Bank untuk Footer Invoice
     bank_name = models.CharField("Nama Bank", max_length=50, blank=True)
     bank_account = models.CharField("No. Rekening", max_length=50, blank=True)
+    bank_account_name = models.CharField("Atas Nama Rekening", max_length=100, blank=True)
     
     def __str__(self):
         return self.name
@@ -131,6 +132,12 @@ class KiosAllocation(models.Model):
     class Meta:
         unique_together = ('kios', 'year', 'jenis_pupuk')
         verbose_name_plural = "Alokasi Kuota Kios"
+        constraints = [
+            models.CheckConstraint(
+                check=models.Q(quota_remaining__gte=Decimal('0')),
+                name='quota_remaining_non_negative',
+            ),
+        ]
 
 # ==========================================
 # 6. MASTER ARMADA

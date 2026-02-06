@@ -9,7 +9,16 @@ from .models import (
     WarehouseTransfer, Distribution, DistributionItem,
     StockCard
 )
+from core.utils import get_price_for
 from core.models import KiosAllocation
+
+
+def _get_stock_balance(jenis_id, stock_type):
+    """Helper: hitung saldo stok terkini dari StockCard ledger."""
+    agg = StockCard.objects.filter(
+        jenis_pupuk_id=jenis_id, stock_type=stock_type
+    ).aggregate(total_in=Sum('qty_in'), total_out=Sum('qty_out'))
+    return (agg['total_in'] or Decimal('0')) - (agg['total_out'] or Decimal('0'))
 
 
 def recompute_stock_balance(jenis_id, stock_type):
@@ -100,6 +109,14 @@ def update_stock_from_transfer(sender, instance, created, **kwargs):
     1. Buat Kartu Stok VIRTUAL OUT (Mengurangi stok pabrik)
     2. Buat Kartu Stok PHYSICAL IN (Menambah stok gudang)
     """
+    # Safety net: cek sisa virtual balance sebelum create/update kartu stok
+    virtual_balance = instance.source_so.get_virtual_balance()
+    if created and virtual_balance < 0:
+        raise ValueError(
+            f"Stok virtual SO {instance.source_so.so_number} tidak cukup! "
+            f"Sisa: {virtual_balance + instance.tonnage:,.2f} Ton."
+        )
+
     with transaction.atomic():
         # KARTU 1: VIRTUAL OUT
         ref_v = f"TRF-{instance.id}-V"
@@ -293,17 +310,32 @@ def cache_old_distribution(sender, instance, **kwargs):
 def cache_old_distribution_item(sender, instance, **kwargs):
     if not instance.pk:
         instance._old_state = None
-        return
-    try:
-        old = DistributionItem.objects.get(pk=instance.pk)
-        instance._old_state = {
-            'jenis_id': old.jenis_pupuk_id,
-            'tonnage': old.tonnage,
-            'source_type': old.source_type,
-            'source_so_id': old.source_so_id,
-        }
-    except DistributionItem.DoesNotExist:
-        instance._old_state = None
+    else:
+        try:
+            old = DistributionItem.objects.get(pk=instance.pk)
+            instance._old_state = {
+                'jenis_id': old.jenis_pupuk_id,
+                'tonnage': old.tonnage,
+                'source_type': old.source_type,
+                'source_so_id': old.source_so_id,
+            }
+        except DistributionItem.DoesNotExist:
+            instance._old_state = None
+
+    # === PRICE LOCKING: Isi harga snapshot saat pertama kali disimpan ===
+    # Harga di-lock saat transaksi dibuat agar laporan historis tidak berubah
+    # ketika master price diupdate di kemudian hari.
+    if instance.price_sell_snapshot is None or instance.price_buy_snapshot is None:
+        kab = getattr(
+            getattr(instance.distribution.kios, 'kecamatan', None),
+            'kabupaten', None
+        )
+        price_obj = get_price_for(instance.jenis_pupuk, kab)
+        if price_obj:
+            if instance.price_sell_snapshot is None:
+                instance.price_sell_snapshot = price_obj.price_sell
+            if instance.price_buy_snapshot is None:
+                instance.price_buy_snapshot = price_obj.price_buy
 
 
 def _apply_quota(distribution, jenis_id, ton_delta):
@@ -332,6 +364,29 @@ def update_stock_from_distribution_item(sender, instance, created, **kwargs):
     pkp_date = dist.pkp_date or dist.date
 
     with transaction.atomic():
+        # Safety net: cek stok cukup sebelum membuat kartu stok keluar
+        prev = getattr(instance, '_old_state', None)
+        old_tonnage = prev['tonnage'] if prev else Decimal('0')
+        delta = instance.tonnage - old_tonnage  # tambahan tonase baru
+
+        if delta > 0:  # hanya cek saat tonase bertambah
+            if instance.source_type == 'VIRTUAL' and instance.source_so:
+                vbal = instance.source_so.get_virtual_balance()
+                # Pada create, signal dipanggil setelah save, jadi balance belum terpotong oleh record ini
+                # Pada edit, balance sudah reflect old state
+                if created:
+                    pass  # get_virtual_balance sudah memperhitungkan item ini via query
+                if vbal < 0:
+                    raise ValueError(
+                        f"Stok virtual SO {instance.source_so.so_number} tidak cukup!"
+                    )
+            elif instance.source_type == 'PHYSICAL':
+                phys_bal = _get_stock_balance(instance.jenis_pupuk_id, 'PHYSICAL')
+                if phys_bal - delta < 0:
+                    raise ValueError(
+                        f"Stok fisik {instance.jenis_pupuk.code} tidak cukup! "
+                        f"Sisa: {phys_bal:,.2f} Ton, diminta tambahan {delta:,.2f} Ton."
+                    )
         if instance.source_type == 'VIRTUAL':
             # 1) Virtual OUT
             StockCard.objects.update_or_create(
@@ -412,5 +467,9 @@ def delete_stock_from_distribution_item(sender, instance, **kwargs):
             _apply_quota(instance.distribution, instance.jenis_pupuk_id, instance.tonnage)
             if instance.source_type == 'VIRTUAL' and instance.source_so:
                 update_so_closure(instance.source_so)
-    except Exception:
-        pass
+    except Exception as e:
+        import logging
+        logging.getLogger(__name__).error(
+            "Error saat restore kuota/stok untuk DistributionItem %s: %s",
+            instance.id, e
+        )

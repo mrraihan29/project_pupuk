@@ -55,9 +55,20 @@
                         {% endif %}
                     </td>
                     <td class="text-center">
-                        {% if item.status == 'PROSES' or item.status == 'PENDING' %}
-                            <a href="{% url 'ops_approve' item.id %}" class="btn btn-sm btn-success" title="Setujui" onclick="return confirm('Setujui pengeluaran ini?')"><i class="bi bi-check"></i></a>
-                            <a href="{% url 'ops_delete' item.id %}" class="btn btn-sm btn-outline-danger" title="Hapus" onclick="return confirm('Hapus data ini?')"><i class="bi bi-trash"></i></a>
+                        {% if item.status == 'PROSES' %}
+                            <a href="{% url 'ops_edit' item.id %}" class="btn btn-sm btn-outline-primary" title="Edit"><i class="bi bi-pencil"></i></a>
+                            <form action="{% url 'ops_approve' item.id %}" method="post" class="d-inline">
+                                {% csrf_token %}
+                                <button type="submit" class="btn btn-sm btn-success" title="Setujui" onclick="return confirm('Setujui pengeluaran ini?')"><i class="bi bi-check"></i></button>
+                            </form>
+                            <form action="{% url 'ops_reject' item.id %}" method="post" class="d-inline">
+                                {% csrf_token %}
+                                <button type="submit" class="btn btn-sm btn-outline-warning" title="Tolak" onclick="return confirm('Tolak pengeluaran ini?')"><i class="bi bi-x-lg"></i></button>
+                            </form>
+                            <form action="{% url 'ops_delete' item.id %}" method="post" class="d-inline">
+                                {% csrf_token %}
+                                <button type="submit" class="btn btn-sm btn-outline-danger" title="Hapus" onclick="return confirm('Hapus data ini?')"><i class="bi bi-trash"></i></button>
+                            </form>
                         {% else %}
                             <button class="btn btn-sm btn-light text-muted" disabled><i class="bi bi-lock"></i></button>
                         {% endif %}
