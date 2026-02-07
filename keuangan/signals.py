@@ -3,6 +3,9 @@ from django.db.models.signals import post_save, post_delete, pre_save
 from django.dispatch import receiver
 from datetime import timedelta
 from decimal import Decimal
+import logging
+
+logger = logging.getLogger(__name__)
 
 # Import Models Baru
 from core.utils import get_price_for
@@ -62,7 +65,12 @@ def _upsert_invoice(dist):
 @receiver(post_save, sender=Distribution)
 def create_invoice_automatis(sender, instance, created, **kwargs):
     # Jalankan setelah transaksi selesai supaya detail item sudah tersimpan
-    transaction.on_commit(lambda: _upsert_invoice(instance))
+    def _safe_upsert(dist=instance):
+        try:
+            _upsert_invoice(dist)
+        except Exception:
+            logger.exception("Gagal upsert invoice untuk Distribution %s", dist.pk)
+    transaction.on_commit(_safe_upsert)
 
 # ==========================================
 # 2. SIMPAN STATE LAMA (untuk deteksi perubahan status/nominal)
@@ -139,11 +147,21 @@ def sync_invoice_on_item_save(sender, instance, created, **kwargs):
     menghindari kalkulasi berulang di tengah transaksi.
     """
     dist = instance.distribution
-    transaction.on_commit(lambda: _upsert_invoice(dist))
+    def _safe_upsert(d=dist):
+        try:
+            _upsert_invoice(d)
+        except Exception:
+            logger.exception("Gagal sync invoice on item save untuk Distribution %s", d.pk)
+    transaction.on_commit(_safe_upsert)
 
 
 @receiver(post_delete, sender=DistributionItem)
 def sync_invoice_on_item_delete(sender, instance, **kwargs):
     """Sinkronisasi invoice saat item distribusi dihapus."""
     dist = instance.distribution
-    transaction.on_commit(lambda: _upsert_invoice(dist))
+    def _safe_upsert(d=dist):
+        try:
+            _upsert_invoice(d)
+        except Exception:
+            logger.exception("Gagal sync invoice on item delete untuk Distribution %s", d.pk)
+    transaction.on_commit(_safe_upsert)

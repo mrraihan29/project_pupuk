@@ -192,30 +192,8 @@ def update_stock_from_distribution(sender, instance, created, **kwargs):
         stk_type = 'PHYSICAL'
         desc = f"Kirim ke {instance.kios.name} (Dari Gudang)"
 
-    StockCard.objects.update_or_create(
-        reference_number=ref_code,
-        defaults={
-            'date': instance.date,
-            'jenis_pupuk': instance.jenis_pupuk,
-            'stock_type': stk_type,
-            'transaction_type': trans_type,
-            'description': desc,
-            'qty_in': 0,
-            'qty_out': instance.tonnage,
-        }
-    )
-
-    prev = getattr(instance, '_old_dist_state', None)
-    if prev:
-        recompute_stock_balance(prev['jenis_id'], prev['stock_type'])
-        if prev['source_type'] == 'VIRTUAL' and prev['source_so_id']:
-            update_so_closure(SalesOrder.objects.filter(pk=prev['source_so_id']).first())
-
-    recompute_stock_balance(instance.jenis_pupuk_id, stk_type)
-    if instance.source_type == 'VIRTUAL' and instance.source_so:
-        update_so_closure(instance.source_so)
-
-    # Update kuota kios (kurangi sesuai tonase)
+    # Gabungkan semua operasi (StockCard + recompute + quota) dalam satu atomic block
+    # agar tidak ada inkonsistensi jika salah satu gagal.
     def adjust_quota(kios_id, jenis_id, year, delta):
         alloc = KiosAllocation.objects.select_for_update().filter(
             kios_id=kios_id, jenis_pupuk_id=jenis_id, year=year
@@ -228,11 +206,33 @@ def update_stock_from_distribution(sender, instance, created, **kwargs):
         alloc.save(update_fields=['quota_remaining'])
 
     with transaction.atomic():
+        StockCard.objects.update_or_create(
+            reference_number=ref_code,
+            defaults={
+                'date': instance.date,
+                'jenis_pupuk': instance.jenis_pupuk,
+                'stock_type': stk_type,
+                'transaction_type': trans_type,
+                'description': desc,
+                'qty_in': 0,
+                'qty_out': instance.tonnage,
+            }
+        )
+
         prev = getattr(instance, '_old_dist_state', None)
-        # Jika update, kembalikan tonase lama ke alokasi sebelumnya
+        if prev:
+            recompute_stock_balance(prev['jenis_id'], prev['stock_type'])
+            if prev['source_type'] == 'VIRTUAL' and prev['source_so_id']:
+                update_so_closure(SalesOrder.objects.filter(pk=prev['source_so_id']).first())
+
+        recompute_stock_balance(instance.jenis_pupuk_id, stk_type)
+        if instance.source_type == 'VIRTUAL' and instance.source_so:
+            update_so_closure(instance.source_so)
+
+        # Update kuota kios
+        prev = getattr(instance, '_old_dist_state', None)
         if prev:
             adjust_quota(prev['kios_id'], prev['jenis_id'], prev['year'], prev['tonnage'])
-        # Kurangi kuota pada alokasi baru
         adjust_quota(instance.kios_id, instance.jenis_pupuk_id, instance.date.year, -instance.tonnage)
 
 @receiver(post_delete, sender=Distribution)

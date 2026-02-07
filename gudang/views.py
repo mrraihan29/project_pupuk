@@ -1,8 +1,9 @@
+import json
 from decimal import Decimal
 from django.shortcuts import render, redirect, get_object_or_404
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required, user_passes_test
-from django.db import transaction
+from django.db import transaction, IntegrityError
 from django.db.models import Sum, Prefetch
 from django.utils import timezone
 from django.http import HttpResponse
@@ -128,7 +129,8 @@ def transfer_create(request):
             try:
                 # Validasi logika (Cukup stok kah?) sudah ditangani di models.py clean()
                 # Form.is_valid() otomatis memanggil clean() tersebut.
-                form.save()
+                with transaction.atomic():
+                    form.save()
                 
                 messages.success(request, "Stok berhasil ditarik ke Gudang Fisik!")
                 return redirect('transfer_list') # Redirect ke list transfer
@@ -174,7 +176,7 @@ def validate_distribution_items(kios, dist_date, items_clean):
         else:
             key = jenis.id
             if key not in physical_balance:
-                agg = StockCard.objects.select_for_update().filter(jenis_pupuk=jenis, stock_type='PHYSICAL').aggregate(
+                agg = StockCard.objects.filter(jenis_pupuk=jenis, stock_type='PHYSICAL').aggregate(
                     total_in=Sum('qty_in'),
                     total_out=Sum('qty_out'),
                 )
@@ -185,7 +187,7 @@ def validate_distribution_items(kios, dist_date, items_clean):
 
         qkey = (jenis.id, dist_date.year)
         if qkey not in quota_balance:
-            alloc = KiosAllocation.objects.select_for_update().filter(kios=kios, jenis_pupuk=jenis, year=dist_date.year).first()
+            alloc = KiosAllocation.objects.filter(kios=kios, jenis_pupuk=jenis, year=dist_date.year).first()
             if not alloc:
                 raise ValidationError(f"Belum ada alokasi {jenis.code} untuk tahun {dist_date.year} di kios ini.")
             quota_balance[qkey] = alloc.quota_remaining
@@ -317,6 +319,8 @@ def distribution_create(request):
 
                     messages.success(request, f"Surat Jalan {dist.no_surat_jalan} berhasil diterbitkan.")
                     return redirect('distribution_list')
+                except IntegrityError:
+                    messages.error(request, "Kuota atau stok tidak mencukupi (transaksi lain mungkin baru saja memotong). Silakan coba lagi.")
                 except Exception as e:
                     messages.error(request, f"Gagal Simpan: {e}")
         else:
@@ -334,10 +338,19 @@ def distribution_create(request):
             f.fields['source_so'].queryset = so_qs
             f.fields['order_item'].queryset = order_items_qs
 
+    # Build SO data map: {so_id: {jenis_pupuk_id, balance}} untuk filter & info sisa di JS
+    so_data_map = {}
+    for so in so_qs.select_related('jenis_pupuk'):
+        so_data_map[str(so.id)] = {
+            'jenis_id': str(so.jenis_pupuk_id),
+            'balance': str(so.get_virtual_balance()),
+        }
+
     return render(request, 'gudang/distribution_form.html', {
         'form': form,
         'formset': formset,
         'open_order_items': open_order_items,
+        'so_data_json': json.dumps(so_data_map),
     })
 
 # ==========================================
@@ -443,6 +456,8 @@ def stock_card_export_physical(request):
         })
 
     company = CompanyProfile.objects.first()
+    if not company:
+        messages.warning(request, "Profil perusahaan belum diatur. Silakan isi di menu Pengaturan.")
     export_date = timezone.now().date()
     context = {
         'company': company,
@@ -536,6 +551,8 @@ def print_surat_jalan(request, pk):
     """
     dist = get_object_or_404(Distribution, pk=pk)
     company = CompanyProfile.objects.first() # Ambil profil perusahaan
+    if not company:
+        messages.warning(request, "Profil perusahaan belum diatur. Silakan isi di menu Pengaturan.")
     
     context = {
         'dist': dist,

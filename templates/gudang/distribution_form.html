@@ -571,6 +571,15 @@
 
 <script>
     document.addEventListener("DOMContentLoaded", function() {
+        // =====================================================
+        // SO DATA MAP (dari server) — untuk filter & sisa stok
+        // =====================================================
+        const SO_DATA = {{ so_data_json|safe }};
+
+        // Simpan label asli SO options agar bisa di-restore
+        // Format: { optionValue: originalText }
+        const SO_ORIGINAL_LABELS = {};
+
         // 1. LOGIKA FILTER KIOS (KECAMATAN -> KIOS)
         const kiosSelect = document.getElementById('id_kios');
         const filterKec = document.getElementById('filter_kecamatan');
@@ -660,6 +669,49 @@
             });
         }
 
+        /**
+         * Filter opsi SO berdasarkan jenis pupuk yang dipilih di baris item.
+         * Juga menampilkan sisa tonase SO di label dropdown.
+         */
+        function filterSOByJenis(soSelect, jenisId) {
+            if (!soSelect) return;
+            const currentVal = soSelect.value;
+            let currentStillValid = false;
+
+            Array.from(soSelect.options).forEach(opt => {
+                if (!opt.value) return; // skip placeholder
+
+                // Simpan label asli sekali saja
+                if (!SO_ORIGINAL_LABELS[opt.value]) {
+                    SO_ORIGINAL_LABELS[opt.value] = opt.textContent;
+                }
+
+                const soInfo = SO_DATA[opt.value];
+                if (!soInfo) {
+                    opt.style.display = 'none';
+                    return;
+                }
+
+                // Update label dengan sisa stok
+                const balance = parseFloat(soInfo.balance);
+                const balanceStr = balance.toLocaleString('id-ID', {minimumFractionDigits: 2, maximumFractionDigits: 2});
+                opt.textContent = `${SO_ORIGINAL_LABELS[opt.value]}  —  Sisa: ${balanceStr} Ton`;
+
+                // Filter: tampilkan hanya yang sesuai jenis pupuk
+                if (jenisId && soInfo.jenis_id !== String(jenisId)) {
+                    opt.style.display = 'none';
+                } else {
+                    opt.style.display = 'block';
+                    if (opt.value === currentVal) currentStillValid = true;
+                }
+            });
+
+            // Reset pilihan jika SO terpilih tidak cocok dengan jenis pupuk baru
+            if (currentVal && !currentStillValid) {
+                soSelect.value = '';
+            }
+        }
+
         function bindRow(row) {
             const sourceTypeSel = row.querySelector('.item-source-type');
             const soWrap = row.querySelector('.source-so-wrap');
@@ -682,6 +734,18 @@
             };
             sourceTypeSel.addEventListener('change', toggleSO);
             toggleSO();
+
+            // Filter SO berdasarkan Jenis Pupuk
+            const jenisSel = row.querySelector('.item-jenis');
+            const applySOFilter = () => {
+                const jenisId = jenisSel ? jenisSel.value : null;
+                filterSOByJenis(soSelect, jenisId);
+            };
+            if (jenisSel) {
+                jenisSel.addEventListener('change', applySOFilter);
+            }
+            // Terapkan filter awal (untuk prefill / POST kembali)
+            applySOFilter();
 
             btnRemove.addEventListener('click', () => {
                 if (delInput) {
@@ -717,6 +781,7 @@
                     const jenisId = (itemData && itemData.jenisId) || opt.dataset.jenis;
                     if (jenisSel && jenisId) {
                         jenisSel.value = jenisId;
+                        jenisSel.dispatchEvent(new Event('change'));
                         if (jenisHint) jenisHint.style.display = 'block';
                     }
                     // Autofill sumber stok jika data-source tersedia
@@ -817,7 +882,10 @@
                     orderSel.value = val;
                     orderSel.dispatchEvent(new Event('change'));
                 }
-                if (jenisSel && jenisId) jenisSel.value = jenisId;
+                if (jenisSel && jenisId) {
+                    jenisSel.value = jenisId;
+                    jenisSel.dispatchEvent(new Event('change'));
+                }
                 if (tonInput && ton) tonInput.value = ton;
 
                 importSelect.value = '';

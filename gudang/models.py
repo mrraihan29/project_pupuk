@@ -122,8 +122,11 @@ class WarehouseTransfer(models.Model):
         
         # Jika sedang edit data lama, kita harus kembalikan nilai tonnage lama dulu ke saldo
         if self.pk:
-            old_record = WarehouseTransfer.objects.get(pk=self.pk)
-            remaining += old_record.tonnage
+            try:
+                old_record = WarehouseTransfer.objects.get(pk=self.pk)
+                remaining += old_record.tonnage
+            except WarehouseTransfer.DoesNotExist:
+                pass
             
         if self.tonnage > remaining:
             raise ValidationError(f"Gagal! Sisa stok virtual SO {self.source_so.so_number} hanya tinggal {remaining:,.2f} Ton. Anda meminta {self.tonnage:,.2f} Ton.")
@@ -206,10 +209,13 @@ class Distribution(models.Model):
             
             # Handle Edit Logic
             if self.pk:
-                old_record = Distribution.objects.get(pk=self.pk)
-                # Kembalikan stok lama ke perhitungan
-                if old_record.source_type == 'VIRTUAL' and old_record.source_so == self.source_so:
-                    remaining += old_record.tonnage
+                try:
+                    old_record = Distribution.objects.get(pk=self.pk)
+                    # Kembalikan stok lama ke perhitungan
+                    if old_record.source_type == 'VIRTUAL' and old_record.source_so == self.source_so:
+                        remaining += old_record.tonnage
+                except Distribution.DoesNotExist:
+                    pass
 
             if self.tonnage > remaining:
                 raise ValidationError({'tonnage': f"Stok Virtual SO {self.source_so.so_number} tidak cukup! Sisa: {remaining:,.2f} Ton."})
@@ -219,16 +225,19 @@ class Distribution(models.Model):
             # Logic Cek Stok Fisik (Agak berat query-nya, kita gunakan helper function dari StockCard nanti)
             # Untuk sekarang kita skip validasi fisik di level Model clean() agar tidak circular import atau query berat.
             # Validasi fisik sebaiknya dilakukan di Form/View.
-            agg = StockCard.objects.select_for_update().filter(jenis_pupuk=self.jenis_pupuk, stock_type='PHYSICAL').aggregate(
+            agg = StockCard.objects.filter(jenis_pupuk=self.jenis_pupuk, stock_type='PHYSICAL').aggregate(
                 total_in=Sum('qty_in'),
                 total_out=Sum('qty_out'),
             )
             physical_remaining = (agg['total_in'] or Decimal('0')) - (agg['total_out'] or Decimal('0'))
 
             if self.pk:
-                old_record = Distribution.objects.get(pk=self.pk)
-                if old_record.source_type == 'PHYSICAL' and old_record.jenis_pupuk_id == self.jenis_pupuk_id:
-                    physical_remaining += old_record.tonnage
+                try:
+                    old_record = Distribution.objects.get(pk=self.pk)
+                    if old_record.source_type == 'PHYSICAL' and old_record.jenis_pupuk_id == self.jenis_pupuk_id:
+                        physical_remaining += old_record.tonnage
+                except Distribution.DoesNotExist:
+                    pass
 
             if self.tonnage and self.tonnage > physical_remaining:
                 raise ValidationError({'tonnage': f"Stok fisik tidak cukup. Sisa {physical_remaining:,.2f} Ton untuk {self.jenis_pupuk.code}."})
@@ -247,13 +256,16 @@ class Distribution(models.Model):
 
         # Jika edit dan alokasi tidak berubah, kembalikan tonase lama ke sisa saat validasi
         if self.pk:
-            old = Distribution.objects.get(pk=self.pk)
-            if (
-                old.kios_id == self.kios_id and
-                old.jenis_pupuk_id == self.jenis_pupuk_id and
-                old.date.year == self.date.year
-            ):
-                remaining_quota += old.tonnage
+            try:
+                old = Distribution.objects.get(pk=self.pk)
+                if (
+                    old.kios_id == self.kios_id and
+                    old.jenis_pupuk_id == self.jenis_pupuk_id and
+                    old.date.year == self.date.year
+                ):
+                    remaining_quota += old.tonnage
+            except Distribution.DoesNotExist:
+                pass
 
         if self.tonnage and self.tonnage > remaining_quota:
             raise ValidationError({'tonnage': f"Kuota tersisa {remaining_quota:,.2f} Ton untuk {self.jenis_pupuk.code} tahun {self.date.year}."})

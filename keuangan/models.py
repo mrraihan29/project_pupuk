@@ -121,8 +121,11 @@ class Payment(models.Model):
         sisa = self.invoice.remaining_balance or Decimal('0')
 
         if self.pk:
-            old_amount = Payment.objects.get(pk=self.pk).amount or Decimal('0')
-            sisa += old_amount
+            try:
+                old_amount = Payment.objects.get(pk=self.pk).amount or Decimal('0')
+                sisa += old_amount
+            except Payment.DoesNotExist:
+                pass
             
         amount = self.amount or Decimal('0')
         if amount > sisa:

@@ -242,6 +242,8 @@ def print_invoice(request, pk):
     """
     inv = get_object_or_404(Invoice, pk=pk)
     company = CompanyProfile.objects.first()
+    if not company:
+        messages.warning(request, "Profil perusahaan belum diatur. Silakan isi di menu Pengaturan.")
     kab = getattr(getattr(inv.distribution.kios, 'kecamatan', None), 'kabupaten', None)
 
     items = []

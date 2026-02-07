@@ -103,8 +103,13 @@ class DistributionItemForm(forms.ModelForm):
         if ton is not None and ton <= 0:
             self.add_error('tonnage', 'Tonase harus lebih dari 0')
         if order_item:
-            if self.kios_value and order_item.order.kios_id != int(self.kios_value):
-                self.add_error('order_item', 'Pesanan tidak sesuai kios yang dipilih.')
+            if self.kios_value:
+                try:
+                    kios_id = int(self.kios_value)
+                except (ValueError, TypeError):
+                    kios_id = None
+                if kios_id and order_item.order.kios_id != kios_id:
+                    self.add_error('order_item', 'Pesanan tidak sesuai kios yang dipilih.')
             if jenis and order_item.jenis_pupuk_id != jenis.id:
                 self.add_error('order_item', 'Pesanan berbeda jenis pupuk.')
             remaining = order_item.remaining_tonnage

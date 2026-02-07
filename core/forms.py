@@ -1,7 +1,8 @@
 from django import forms
-from django.forms import inlineformset_factory
+from django.forms import inlineformset_factory, BaseInlineFormSet
 from django.contrib.auth import get_user_model
 from django.contrib.auth.forms import SetPasswordForm
+from django.core.exceptions import ValidationError
 
 # Import model-model baru
 from .models import Kios, KiosAllocation, Armada, FertilizerPrice, Kecamatan, JenisPupuk, CompanyProfile, Kabupaten, UserProfile
@@ -26,10 +27,34 @@ class KiosForm(forms.ModelForm):
 # ==========================================
 # FORMSET ALOKASI (Update: fertilizer_type -> jenis_pupuk)
 # ==========================================
+class _KiosAllocationBaseFormSet(BaseInlineFormSet):
+    """Custom formset to prevent duplicate (jenis_pupuk, year) per kios."""
+    def clean(self):
+        super().clean()
+        if any(self.errors):
+            return
+        seen = set()
+        for form in self.forms:
+            if self.can_delete and self._should_delete_form(form):
+                continue
+            data = form.cleaned_data
+            if not data:
+                continue
+            jp = data.get('jenis_pupuk')
+            yr = data.get('year')
+            if jp and yr:
+                key = (jp.id, yr)
+                if key in seen:
+                    raise ValidationError(
+                        f"Duplikat alokasi: {jp.code} tahun {yr} sudah ada di baris lain."
+                    )
+                seen.add(key)
+
 KiosAllocationFormSet = inlineformset_factory(
     Kios, KiosAllocation,
     # Perhatikan: 'fertilizer_type' diganti 'jenis_pupuk'
     fields=('jenis_pupuk', 'year', 'quota_original'),
+    formset=_KiosAllocationBaseFormSet,
     extra=1, # Default 1 baris kosong
     can_delete=True,
     widgets={
