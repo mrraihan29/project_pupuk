@@ -21,7 +21,7 @@ from .forms import (
 )
 from django.core.exceptions import ValidationError
 from core.models import CompanyProfile, JenisPupuk, Kios, Kabupaten, KiosAllocation
-from core.utils import scope_by_kabupaten, get_scope_kabupaten
+from core.utils import scope_by_kabupaten, get_scope_kabupaten, get_price_for
 
 # ==========================================
 # 1. MODUL PENEBUSAN (SO)
@@ -151,9 +151,23 @@ def transfer_create(request):
 
 
 def validate_distribution_items(kios, dist_date, items_clean):
-    """Validasi stok virtual/fisik dan kuota kios untuk kumpulan item."""
+    """Validasi stok virtual/fisik, kuota kios, dan harga master untuk kumpulan item."""
     if not items_clean:
         raise ValidationError("Minimal 1 item pupuk diperlukan.")
+
+    # Validasi harga: pastikan setiap jenis pupuk punya harga > 0
+    kab = getattr(getattr(kios, 'kecamatan', None), 'kabupaten', None)
+    checked_jenis = set()
+    for item in items_clean:
+        jenis = item['jenis_pupuk']
+        if jenis.id not in checked_jenis:
+            checked_jenis.add(jenis.id)
+            price_obj = get_price_for(jenis, kab)
+            if not price_obj or price_obj.price_sell <= 0 or price_obj.price_buy <= 0:
+                raise ValidationError(
+                    f"Harga {jenis.name} belum dikonfigurasi atau masih 0 untuk kabupaten ini. "
+                    f"Silakan set di Master Harga terlebih dahulu."
+                )
 
     so_balance = {}
     physical_balance = {}

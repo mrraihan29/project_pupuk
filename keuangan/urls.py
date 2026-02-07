@@ -6,6 +6,7 @@ urlpatterns = [
     path('invoice/', views.invoice_list, name='invoice_list'),
     path('invoice/<int:pk>/pay/', views.payment_create, name='payment_create'),
     path('invoice/<int:pk>/print/', views.print_invoice, name='print_invoice'),
+    path('payment/<int:pk>/void/', views.payment_void, name='payment_void'),
 
     # BIAYA OPERASIONAL (LIST, CREATE & EDIT)
     path('biaya/', views.ops_list, name='ops_list'),

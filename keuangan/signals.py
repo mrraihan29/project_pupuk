@@ -128,15 +128,8 @@ def rollback_invoice_status(sender, instance, **kwargs):
 
     invoice = instance.invoice
     invoice.total_paid = max(Decimal('0'), invoice.total_paid - instance.amount)
-    
-    # Cek status lagi setelah dikurangi
-    if invoice.total_paid <= 0:
-        invoice.total_paid = 0
-        invoice.status = 'UNPAID'
-    elif invoice.total_paid < invoice.total_amount:
-        invoice.status = 'PARTIAL'
-        
-    invoice.save()
+    # update_status() handles all cases: UNPAID, PARTIAL, PAID
+    invoice.update_status()
 
 
 @receiver(post_save, sender=DistributionItem)

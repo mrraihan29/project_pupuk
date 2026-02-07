@@ -71,8 +71,61 @@
                         {% else %}
                         <button class="btn btn-sm btn-secondary" disabled><i class="bi bi-check-circle"></i> Selesai</button>
                         {% endif %}
+                        {% if inv.payments.all %}
+                        <button class="btn btn-sm btn-outline-info mt-1" type="button" data-bs-toggle="collapse" data-bs-target="#pay-{{ inv.id }}">
+                            <i class="bi bi-clock-history me-1"></i>Riwayat
+                        </button>
+                        {% endif %}
                     </td>
                 </tr>
+                {% if inv.payments.all %}
+                <tr class="collapse" id="pay-{{ inv.id }}">
+                    <td colspan="7" class="bg-light p-2">
+                        <small class="fw-bold text-muted d-block mb-1">Riwayat Pembayaran</small>
+                        <table class="table table-sm table-bordered mb-0 bg-white">
+                            <thead class="table-light">
+                                <tr>
+                                    <th>Tanggal</th>
+                                    <th>Metode</th>
+                                    <th class="text-end">Jumlah</th>
+                                    <th class="text-center">Status</th>
+                                    <th class="text-center">Aksi</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for pay in inv.payments.all %}
+                                <tr{% if pay.status == 'VOID' %} class="text-decoration-line-through text-muted"{% endif %}>
+                                    <td>{{ pay.date|date:"d M Y" }}</td>
+                                    <td>{{ pay.method }}</td>
+                                    <td class="text-end">Rp {{ pay.amount|intcomma }}</td>
+                                    <td class="text-center">
+                                        {% if pay.status == 'APPROVED' %}
+                                            <span class="badge bg-success">Disetujui</span>
+                                        {% elif pay.status == 'VOID' %}
+                                            <span class="badge bg-secondary">Dibatalkan</span>
+                                        {% else %}
+                                            <span class="badge bg-warning text-dark">Pending</span>
+                                        {% endif %}
+                                    </td>
+                                    <td class="text-center">
+                                        {% if pay.status == 'APPROVED' %}
+                                        <form method="post" action="{% url 'payment_void' pay.id %}" class="d-inline" onsubmit="return confirm('Batalkan pembayaran Rp {{ pay.amount|intcomma }}?')">
+                                            {% csrf_token %}
+                                            <button type="submit" class="btn btn-sm btn-outline-danger" title="Batalkan">
+                                                <i class="bi bi-x-circle"></i>
+                                            </button>
+                                        </form>
+                                        {% else %}
+                                        <span class="text-muted">-</span>
+                                        {% endif %}
+                                    </td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </td>
+                </tr>
+                {% endif %}
                 {% empty %}
                 <tr><td colspan="7" class="text-center py-4">Belum ada data tagihan.</td></tr>
                 {% endfor %}

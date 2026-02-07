@@ -25,7 +25,7 @@ from core.decorators import owner_required
 def invoice_list(request):
     kab = get_scope_kabupaten(request)
     kab_options = Kabupaten.objects.all().order_by('name') if request.user.is_superuser else Kabupaten.objects.none()
-    invoices = Invoice.objects.select_related('distribution__kios__kecamatan__kabupaten').order_by('status', 'due_date')
+    invoices = Invoice.objects.select_related('distribution__kios__kecamatan__kabupaten').prefetch_related('payments').order_by('status', 'due_date')
     if kab:
         invoices = invoices.filter(distribution__kios__kecamatan__kabupaten=kab)
 
@@ -59,14 +59,50 @@ def payment_create(request, pk):
         form = PaymentForm(request.POST, request.FILES, invoice=invoice)
         if form.is_valid():
             with transaction.atomic():
+                # Lock invoice untuk mencegah race condition (2 pembayaran simultan)
+                locked_invoice = Invoice.objects.select_for_update().get(pk=invoice.pk)
+                # Re-validate remaining balance setelah lock
+                remaining = locked_invoice.remaining_balance or Decimal('0')
+                amount = form.cleaned_data['amount']
+                if amount > remaining:
+                    messages.error(request, f"Sisa tagihan hanya Rp {remaining:,.0f}. Mungkin ada pembayaran lain yang baru masuk.")
+                    return render(request, 'keuangan/payment_form.html', {'form': form, 'invoice': invoice})
                 pay = form.save(commit=False)
-                pay.invoice = invoice
+                pay.invoice = locked_invoice
                 pay.save()
             messages.success(request, "Pembayaran berhasil dicatat.")
             return redirect('invoice_list')
     else:
         form = PaymentForm(invoice=invoice)
     return render(request, 'keuangan/payment_form.html', {'form': form, 'invoice': invoice})
+
+
+@login_required
+@require_http_methods(["POST"])
+def payment_void(request, pk):
+    """Batalkan (void) pembayaran. Signal otomatis mengurangi total_paid invoice."""
+    payment = get_object_or_404(Payment, pk=pk)
+    invoice = payment.invoice
+
+    # Scope check
+    if not request.user.is_superuser:
+        kab = get_scope_kabupaten(request)
+        inv_kab = getattr(getattr(getattr(invoice.distribution.kios, 'kecamatan', None), 'kabupaten', None), 'pk', None)
+        if kab and inv_kab and kab.pk != inv_kab:
+            messages.error(request, "Anda tidak memiliki akses ke pembayaran ini.")
+            return redirect('invoice_list')
+
+    if payment.status == 'VOID':
+        messages.warning(request, "Pembayaran ini sudah dibatalkan sebelumnya.")
+        return redirect('invoice_list')
+
+    with transaction.atomic():
+        payment.status = 'VOID'
+        payment.save()  # Signal update_invoice_status akan handle delta otomatis
+
+    messages.warning(request, f"Pembayaran Rp {payment.amount:,.0f} pada {payment.date} berhasil dibatalkan.")
+    return redirect('invoice_list')
+
 
 # ==========================================
 # 2. BIAYA OPERASIONAL (PENGELUARAN)
