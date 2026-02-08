@@ -24,13 +24,13 @@ def _compute_invoice_total(dist):
     kab = getattr(getattr(dist.kios, 'kecamatan', None), 'kabupaten', None)
     total = Decimal('0')
     for item in dist.items.select_related('jenis_pupuk'):
-        if item.price_sell_snapshot:
+        if item.price_sell_snapshot is not None:
             harga_per_ton = item.price_sell_snapshot
         else:
             price_obj = get_price_for(item.jenis_pupuk, kab)
             harga_per_ton = price_obj.price_sell if price_obj else Decimal('0')
         total += (item.tonnage or Decimal('0')) * harga_per_ton
-    return total
+    return total.quantize(Decimal('1'))
 
 
 def _upsert_invoice(dist):
@@ -40,7 +40,7 @@ def _upsert_invoice(dist):
     # Robust INV number: extract numeric suffix or generate from SJ number
     sj_num = dist.no_surat_jalan
     no_inv = sj_num.replace("SJ/", "INV/").replace("SJ-", "INV-") if "SJ" in sj_num else f"INV-{dist.id}"
-    tgl_jatuh_tempo = dist.date + timedelta(days=7)
+    tgl_jatuh_tempo = dist.date + timedelta(days=3)
 
     invoice, created = Invoice.objects.get_or_create(
         distribution=dist,

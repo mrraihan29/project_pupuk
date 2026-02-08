@@ -82,7 +82,7 @@ class DistributionItemForm(forms.ModelForm):
     def __init__(self, *args, **kwargs):
         self.kios_value = kwargs.pop('kios', None)
         super().__init__(*args, **kwargs)
-        self.fields['jenis_pupuk'].queryset = JenisPupuk.objects.filter(is_active=True)
+        self.fields['jenis_pupuk'].queryset = JenisPupuk.objects.filter(is_active=True).order_by('name')
         self.fields['source_so'].queryset = SalesOrder.objects.filter(is_closed=False)
         self.fields['order_item'].queryset = OrderNoteItem.objects.filter(order__is_deleted=False, order__status=OrderNote.STATUS_OPEN)
         # Filter order_item by kios jika tersedia
@@ -98,6 +98,8 @@ class DistributionItemForm(forms.ModelForm):
         jenis = data.get('jenis_pupuk')
         if stype == 'VIRTUAL' and not so:
             self.add_error('source_so', 'Pilih SO jika sumber stok Pabrik.')
+        if stype == 'VIRTUAL' and so and jenis and so.jenis_pupuk_id != jenis.id:
+            self.add_error('jenis_pupuk', f'Jenis pupuk harus {so.jenis_pupuk.name} (sesuai SO {so.so_number}).')
         if stype == 'PHYSICAL':
             data['source_so'] = None
         if ton is not None and ton <= 0:

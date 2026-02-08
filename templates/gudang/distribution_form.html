@@ -747,6 +747,22 @@
             // Terapkan filter awal (untuk prefill / POST kembali)
             applySOFilter();
 
+            // REVERSE SYNC: Ketika user memilih SO, otomatis set jenis_pupuk
+            // sesuai SO agar tidak bisa terjadi mismatch jenis ↔ SO.
+            if (soSelect && jenisSel) {
+                soSelect.addEventListener('change', () => {
+                    if (!soSelect.value) return;
+                    const soInfo = SO_DATA[soSelect.value];
+                    if (soInfo && soInfo.jenis_id) {
+                        // Hanya update jika berbeda, untuk menghindari infinite loop event
+                        if (jenisSel.value !== soInfo.jenis_id) {
+                            jenisSel.value = soInfo.jenis_id;
+                            jenisSel.dispatchEvent(new Event('change'));
+                        }
+                    }
+                });
+            }
+
             btnRemove.addEventListener('click', () => {
                 if (delInput) {
                     delInput.checked = true;

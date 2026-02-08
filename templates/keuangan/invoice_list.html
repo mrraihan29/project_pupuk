@@ -1,5 +1,6 @@
 {% extends 'base.html' %}
 {% load humanize %}
+{% load keuangan_filters %}
 
 {% block content %}
 {% if user.is_superuser %}
@@ -19,7 +20,7 @@
         <h5 class="mb-0 fw-bold text-primary"><i class="bi bi-receipt me-2"></i>Daftar Tagihan (Piutang)</h5>
         <div class="text-end">
             <small class="text-muted d-block">Sisa Piutang (Belum Lunas)</small>
-            <h4 class="fw-bold text-danger mb-0">Rp {{ total_piutang|intcomma }}</h4>
+            <h4 class="fw-bold text-danger mb-0">Rp {{ total_piutang|rupiah }}</h4>
         </div>
     </div>
     <div class="table-responsive table-sim-wrapper">
@@ -49,8 +50,8 @@
                             <span class="badge bg-danger ms-1">Overdue</span>
                         {% endif %}
                     </td>
-                    <td class="text-end fw-bold">Rp {{ inv.total_amount|intcomma }}</td>
-                    <td class="text-end text-success">Rp {{ inv.total_paid|intcomma }}</td>
+                    <td class="text-end fw-bold">Rp {{ inv.total_amount|rupiah }}</td>
+                    <td class="text-end text-success">Rp {{ inv.total_paid|rupiah }}</td>
                     <td class="text-center">
                         {% if inv.status == 'PAID' %}
                             <span class="badge bg-success">LUNAS</span>
@@ -97,7 +98,7 @@
                                 <tr{% if pay.status == 'VOID' %} class="text-decoration-line-through text-muted"{% endif %}>
                                     <td>{{ pay.date|date:"d M Y" }}</td>
                                     <td>{{ pay.method }}</td>
-                                    <td class="text-end">Rp {{ pay.amount|intcomma }}</td>
+                                    <td class="text-end">Rp {{ pay.amount|rupiah }}</td>
                                     <td class="text-center">
                                         {% if pay.status == 'APPROVED' %}
                                             <span class="badge bg-success">Disetujui</span>
@@ -109,7 +110,7 @@
                                     </td>
                                     <td class="text-center">
                                         {% if pay.status == 'APPROVED' %}
-                                        <form method="post" action="{% url 'payment_void' pay.id %}" class="d-inline" onsubmit="return confirm('Batalkan pembayaran Rp {{ pay.amount|intcomma }}?')">
+                                        <form method="post" action="{% url 'payment_void' pay.id %}" class="d-inline" onsubmit="return confirm('Batalkan pembayaran Rp {{ pay.amount|rupiah }}?')">
                                             {% csrf_token %}
                                             <button type="submit" class="btn btn-sm btn-outline-danger" title="Batalkan">
                                                 <i class="bi bi-x-circle"></i>

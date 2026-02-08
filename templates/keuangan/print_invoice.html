@@ -4,6 +4,7 @@
     <meta charset="UTF-8">
     <title>{{ title }}</title>
     {% load humanize %}
+    {% load keuangan_filters %}
     <style>
         body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; font-size: 14px; color: #333; }
         .container { width: 100%; max-width: 210mm; margin: 0 auto; padding: 20px; background: white; }
@@ -116,8 +117,8 @@
                         <br><small style="color: #666;">Ref Surat Jalan: {{ inv.distribution.no_surat_jalan }}</small>
                     </td>
                     <td class="text-center">{{ it.tonnage }} TON</td>
-                    <td class="text-right">Rp {{ it.price|intcomma }}</td>
-                    <td class="text-right fw-bold">Rp {{ it.total|intcomma }}</td>
+                    <td class="text-right">Rp {{ it.price|rupiah }}</td>
+                    <td class="text-right fw-bold">Rp {{ it.total|rupiah }}</td>
                 </tr>
                 {% empty %}
                 <tr>
@@ -128,15 +129,15 @@
             <tfoot>
                 <tr class="total-row">
                     <td colspan="3" class="text-right">Subtotal</td>
-                    <td class="text-right">Rp {{ subtotal|intcomma }}</td>
+                    <td class="text-right">Rp {{ subtotal|rupiah }}</td>
                 </tr>
                 <tr class="total-row">
                     <td colspan="3" class="text-right">Sudah Dibayar (-)</td>
-                    <td class="text-right text-success">Rp {{ inv.total_paid|intcomma }}</td>
+                    <td class="text-right text-success">Rp {{ inv.total_paid|rupiah }}</td>
                 </tr>
                 <tr class="total-row grand-total">
                     <td colspan="3" class="text-right">SISA TAGIHAN</td>
-                    <td class="text-right text-danger">Rp {{ inv.remaining_balance|intcomma }}</td>
+                    <td class="text-right text-danger">Rp {{ inv.remaining_balance|rupiah }}</td>
                 </tr>
             </tfoot>
         </table>

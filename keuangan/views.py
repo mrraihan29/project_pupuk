@@ -286,17 +286,17 @@ def print_invoice(request, pk):
     subtotal = Decimal('0')
     for item in inv.distribution.items.select_related('jenis_pupuk'):
         # Prioritas: snapshot price (terkunci saat transaksi), fallback master price
-        if item.price_sell_snapshot:
+        if item.price_sell_snapshot is not None:
             harga_per_ton = item.price_sell_snapshot
         else:
             price_obj = get_price_for(item.jenis_pupuk, kab)
             harga_per_ton = price_obj.price_sell if price_obj else Decimal('0')
-        line_total = (item.tonnage or Decimal('0')) * harga_per_ton
+        line_total = ((item.tonnage or Decimal('0')) * harga_per_ton).quantize(Decimal('1'))
         subtotal += line_total
         items.append({
             'name': item.jenis_pupuk.name,
             'tonnage': item.tonnage,
-            'price': harga_per_ton,
+            'price': harga_per_ton.quantize(Decimal('1')),
             'total': line_total,
         })
     

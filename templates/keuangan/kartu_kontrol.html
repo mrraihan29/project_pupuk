@@ -1,5 +1,6 @@
 {% extends 'base.html' %}
 {% load humanize %}
+{% load keuangan_filters %}
 
 {% block page_title %}Kartu Kontrol Armada{% endblock %}
 
@@ -45,7 +46,7 @@
                     <td>{{ log.tanggal|date:"d M Y" }}</td>
                     <td>{{ log.kabupaten|default:"-" }}</td>
                     <td class="fw-bold text-dark">{{ log.deskripsi }}</td>
-                    <td class="text-end">Rp {{ log.nominal|intcomma }}</td>
+                    <td class="text-end">Rp {{ log.nominal|rupiah }}</td>
                     <td class="text-center">
                         {% if log.bukti_foto %}
                             <a href="{{ log.bukti_foto.url }}" target="_blank" class="btn btn-sm btn-outline-primary">

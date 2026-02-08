@@ -677,8 +677,8 @@ def laporan_keuangan(request):
         for item in items:
             ton = item.tonnage or Decimal('0')
             # Gunakan harga terkunci; fallback ke master price
-            sell_price = item.price_sell_snapshot if item.price_sell_snapshot else price.price_sell
-            buy_price = item.price_buy_snapshot if item.price_buy_snapshot else price.price_buy
+            sell_price = item.price_sell_snapshot if item.price_sell_snapshot is not None else price.price_sell
+            buy_price = item.price_buy_snapshot if item.price_buy_snapshot is not None else price.price_buy
             qty_jual += ton
             omzet += ton * sell_price
             modal += ton * buy_price

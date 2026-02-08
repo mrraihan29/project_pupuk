@@ -1,5 +1,6 @@
 {% extends 'base.html' %}
 {% load humanize %}
+{% load keuangan_filters %}
 
 {% block content %}
 {% if user.is_superuser %}
@@ -44,7 +45,7 @@
                         {% endif %}
                     </td>
                     <td>{{ item.deskripsi }}</td>
-                    <td class="text-end fw-bold text-danger">Rp {{ item.nominal|intcomma }}</td>
+                    <td class="text-end fw-bold text-danger">Rp {{ item.nominal|rupiah }}</td>
                     <td class="text-center">
                         {% if item.status == 'SELESAI' %}
                             <span class="badge bg-success"><i class="bi bi-check-lg"></i> Disetujui</span>
@@ -72,6 +73,13 @@
                         {% else %}
                             <button class="btn btn-sm btn-light text-muted" disabled><i class="bi bi-lock"></i></button>
                         {% endif %}
+                        {% if item.bukti_foto %}
+                            <button type="button" class="btn btn-sm btn-outline-info ms-1" title="Lihat Bukti"
+                                    data-bs-toggle="modal" data-bs-target="#buktiModal"
+                                    onclick="document.getElementById('buktiImg').src='{{ item.bukti_foto.url }}'; document.getElementById('buktiCaption').textContent='{{ item.deskripsi }} — {{ item.tanggal|date:"d M Y" }}';">
+                                <i class="bi bi-image"></i>
+                            </button>
+                        {% endif %}
                     </td>
                 </tr>
                 {% empty %}
@@ -79,6 +87,22 @@
                 {% endfor %}
             </tbody>
         </table>
+    </div>
+</div>
+
+<!-- Modal Bukti Foto -->
+<div class="modal fade" id="buktiModal" tabindex="-1" aria-labelledby="buktiModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="buktiModalLabel"><i class="bi bi-image me-2"></i>Bukti Pengeluaran</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body text-center">
+                <p class="text-muted mb-2" id="buktiCaption"></p>
+                <img id="buktiImg" src="" alt="Bukti Foto" class="img-fluid rounded shadow" style="max-height:70vh;">
+            </div>
+        </div>
     </div>
 </div>
 {% endblock %}

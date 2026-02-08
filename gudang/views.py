@@ -182,6 +182,12 @@ def validate_distribution_items(kios, dist_date, items_clean):
         if source_type == 'VIRTUAL':
             if not so:
                 raise ValidationError("Pilih SO untuk sumber stok Pabrik.")
+            # Validasi kritis: jenis pupuk item HARUS sama dengan jenis pupuk SO
+            if so.jenis_pupuk_id != jenis.id:
+                raise ValidationError(
+                    f"Jenis pupuk {jenis.name} tidak cocok dengan SO {so.so_number} "
+                    f"(jenis: {so.jenis_pupuk.name}). Pastikan jenis pupuk sesuai."
+                )
             if so.id not in so_balance:
                 so_balance[so.id] = so.get_virtual_balance()
             so_balance[so.id] -= ton

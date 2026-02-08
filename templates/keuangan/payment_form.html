@@ -1,5 +1,6 @@
 {% extends 'base.html' %}
 {% load humanize %}
+{% load keuangan_filters %}
 
 {% block page_title %}Input Pembayaran{% endblock %}
 
@@ -29,10 +30,10 @@
 
                 <div class="alert alert-info">
                     <strong>Invoice: {{ invoice.inv_number }}</strong><br>
-                    Total Tagihan: Rp {{ invoice.total_amount|intcomma }}<br>
-                    Sudah Bayar: Rp {{ invoice.total_paid|intcomma }}<br>
+                    Total Tagihan: Rp {{ invoice.total_amount|rupiah }}<br>
+                    Sudah Bayar: Rp {{ invoice.total_paid|rupiah }}<br>
                     <hr class="my-1">
-                    <strong class="text-danger">Sisa Hutang: Rp {{ invoice.remaining_balance|intcomma }}</strong>
+                    <strong class="text-danger">Sisa Hutang: Rp {{ invoice.remaining_balance|rupiah }}</strong>
                 </div>
 
                 <form method="post" enctype="multipart/form-data">

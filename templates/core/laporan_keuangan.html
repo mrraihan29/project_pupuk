@@ -1,5 +1,6 @@
 {% extends 'base.html' %}
 {% load humanize %}
+{% load keuangan_filters %}
 
 {% block page_title %}Laporan Keuangan & Laba Rugi{% endblock %}
 
@@ -49,7 +50,7 @@
                     <div class="d-flex justify-content-between align-items-start mb-2">
                         <div>
                             <div class="text-uppercase small opacity-75">Laba Bersih</div>
-                            <div class="display-6 fw-bold">Rp {{ net_profit|floatformat:0|intcomma }}</div>
+                            <div class="display-6 fw-bold">Rp {{ net_profit|rupiah }}</div>
                         </div>
                         <i class="bi bi-graph-up-arrow fs-2 opacity-75"></i>
                     </div>
@@ -62,7 +63,7 @@
                 <div class="card-body">
                     <div class="text-muted small">Gross Margin</div>
                     <div class="h4 fw-bold mb-0">{{ gross_margin_pct|floatformat:1 }}%</div>
-                    <div class="small text-success">Rp {{ gross_profit|floatformat:0|intcomma }}</div>
+                    <div class="small text-success">Rp {{ gross_profit|rupiah }}</div>
                 </div>
             </div>
         </div>
@@ -71,7 +72,7 @@
                 <div class="card-body">
                     <div class="text-muted small">Opex Ratio</div>
                     <div class="h4 fw-bold mb-0">{{ opex_ratio_pct|floatformat:1 }}%</div>
-                    <div class="small text-secondary">Rp {{ total_ops|floatformat:0|intcomma }}</div>
+                    <div class="small text-secondary">Rp {{ total_ops|rupiah }}</div>
                 </div>
             </div>
         </div>
@@ -80,7 +81,7 @@
                 <div class="card-body">
                     <div class="text-muted small">Net Margin</div>
                     <div class="h4 fw-bold mb-0">{{ net_margin_pct|floatformat:1 }}%</div>
-                    <div class="small text-primary">Omzet Rp {{ total_omzet|floatformat:0|intcomma }}</div>
+                    <div class="small text-primary">Omzet Rp {{ total_omzet|rupiah }}</div>
                 </div>
             </div>
         </div>
@@ -88,7 +89,7 @@
             <div class="card h-100 border-0 bg-light">
                 <div class="card-body">
                     <div class="text-muted small">Arus Kas Bersih</div>
-                    <div class="h5 fw-bold mb-0 {% if cash_estimate < 0 %}text-danger{% else %}text-success{% endif %}">Rp {{ cash_estimate|floatformat:0|intcomma }}</div>
+                    <div class="h5 fw-bold mb-0 {% if cash_estimate < 0 %}text-danger{% else %}text-success{% endif %}">Rp {{ cash_estimate|rupiah }}</div>
                     <div class="small text-muted">Kas masuk - Opex periode</div>
                 </div>
             </div>
@@ -108,12 +109,12 @@
                         {% for p in produk_data %}
                         <tr>
                             <td>Penjualan {{ p.name }}</td>
-                            <td class="text-end fw-bold">Rp {{ p.omzet|floatformat:0|intcomma }}</td>
+                            <td class="text-end fw-bold">Rp {{ p.omzet|rupiah }}</td>
                         </tr>
                         {% endfor %}
                         <tr class="table-separator-top">
                             <td class="fw-bold">TOTAL OMZET</td>
-                            <td class="text-end fw-bold text-success">Rp {{ total_omzet|floatformat:0|intcomma }}</td>
+                            <td class="text-end fw-bold text-success">Rp {{ total_omzet|rupiah }}</td>
                         </tr>
                     </table>
 
@@ -122,18 +123,18 @@
                         {% for p in produk_data %}
                         <tr>
                             <td>Penebusan {{ p.name }}</td>
-                            <td class="text-end fw-bold">Rp {{ p.modal|floatformat:0|intcomma }}</td>
+                            <td class="text-end fw-bold">Rp {{ p.modal|rupiah }}</td>
                         </tr>
                         {% endfor %}
                         <tr class="table-separator-top">
                             <td class="fw-bold">TOTAL HPP</td>
-                            <td class="text-end fw-bold text-danger">Rp {{ total_modal|floatformat:0|intcomma }}</td>
+                            <td class="text-end fw-bold text-danger">Rp {{ total_modal|rupiah }}</td>
                         </tr>
                     </table>
 
                     <div class="mt-3 box-gross-profit text-center">
                         <small class="text-muted text-uppercase fw-bold">Laba Kotor</small>
-                        <h4 class="fw-bold text-warning mb-0">Rp {{ gross_profit|floatformat:0|intcomma }} ({{ gross_margin_pct|floatformat:1 }}%)</h4>
+                        <h4 class="fw-bold text-warning mb-0">Rp {{ gross_profit|rupiah }} ({{ gross_margin_pct|floatformat:1 }}%)</h4>
                     </div>
                 </div>
             </div>
@@ -149,26 +150,26 @@
                     <table class="table table-sm table-borderless mb-3 table-kpi">
                         <tr>
                             <td>Biaya Armada</td>
-                            <td class="text-end fw-bold">Rp {{ ops_armada|floatformat:0|intcomma }}</td>
+                            <td class="text-end fw-bold">Rp {{ ops_armada|rupiah }}</td>
                         </tr>
                         <tr>
                             <td>Biaya Kantor</td>
-                            <td class="text-end fw-bold">Rp {{ ops_kantor|floatformat:0|intcomma }}</td>
+                            <td class="text-end fw-bold">Rp {{ ops_kantor|rupiah }}</td>
                         </tr>
                         <tr>
                             <td>Biaya Lainnya</td>
-                            <td class="text-end fw-bold">Rp {{ ops_lain|floatformat:0|intcomma }}</td>
+                            <td class="text-end fw-bold">Rp {{ ops_lain|rupiah }}</td>
                         </tr>
                         <tr class="table-separator-top">
                             <td class="fw-bold">TOTAL OPEX</td>
-                            <td class="text-end fw-bold text-secondary">Rp {{ total_ops|floatformat:0|intcomma }}</td>
+                            <td class="text-end fw-bold text-secondary">Rp {{ total_ops|rupiah }}</td>
                         </tr>
                     </table>
 
                     <div class="border-top pt-3">
                         <div class="d-flex justify-content-between mb-2">
                             <span class="fw-bold">Laba Bersih</span>
-                            <span class="fw-bold {% if net_profit < 0 %}text-danger{% else %}text-primary{% endif %}">Rp {{ net_profit|floatformat:0|intcomma }}</span>
+                            <span class="fw-bold {% if net_profit < 0 %}text-danger{% else %}text-primary{% endif %}">Rp {{ net_profit|rupiah }}</span>
                         </div>
                         <small class="text-muted">Net Margin {{ net_margin_pct|floatformat:1 }}%</small>
                     </div>
@@ -195,13 +196,13 @@
                                     <span class="badge bg-success-subtle text-success">{{ p.qty_jual|floatformat:2 }} Ton</span>
                                 </div>
                                 <div class="small text-muted">Omzet</div>
-                                <div class="fw-bold">Rp {{ p.omzet|floatformat:0|intcomma }}</div>
+                                <div class="fw-bold">Rp {{ p.omzet|rupiah }}</div>
                                 <div class="small text-muted mt-2">HPP</div>
-                                <div class="fw-bold">Rp {{ p.modal|floatformat:0|intcomma }}</div>
+                                <div class="fw-bold">Rp {{ p.modal|rupiah }}</div>
                                 <div class="small text-muted mt-2">Gross Profit</div>
-                                <div class="fw-bold text-success">Rp {{ p.gp|floatformat:0|intcomma }}</div>
+                                <div class="fw-bold text-success">Rp {{ p.gp|rupiah }}</div>
                                 <div class="small text-muted mt-2">Avg Sell / Avg Cost</div>
-                                <div class="fw-bold">Rp {{ p.avg_sell|floatformat:0|intcomma }} / Rp {{ p.avg_cost|floatformat:0|intcomma }}</div>
+                                <div class="fw-bold">Rp {{ p.avg_sell|rupiah }} / Rp {{ p.avg_cost|rupiah }}</div>
                             </div>
                         </div>
                         {% empty %}
@@ -226,15 +227,15 @@
                             <div class="p-3 rounded border bg-light h-100">
                                 <div class="d-flex justify-content-between mb-2">
                                     <strong>Aset Terukur</strong>
-                                    <span class="text-primary fw-bold">Rp {{ assets_total|floatformat:0|intcomma }}</span>
+                                    <span class="text-primary fw-bold">Rp {{ assets_total|rupiah }}</span>
                                 </div>
                                 <div class="d-flex justify-content-between small mb-1">
                                     <span>Piutang Usaha</span>
-                                    <span>Rp {{ total_piutang|floatformat:0|intcomma }}</span>
+                                    <span>Rp {{ total_piutang|rupiah }}</span>
                                 </div>
                                 <div class="d-flex justify-content-between small">
                                     <span>Persediaan {% if stok_is_global %}<i class="bi bi-globe2 text-warning" title="Data stok gudang bersifat global (semua kabupaten)"></i>{% endif %}</span>
-                                    <span>Rp {{ total_aset|floatformat:0|intcomma }}</span>
+                                    <span>Rp {{ total_aset|rupiah }}</span>
                                 </div>
                             </div>
                         </div>
@@ -246,15 +247,15 @@
                                 </div>
                                 <div class="d-flex justify-content-between small mb-1">
                                     <span>Kewajiban (Ops Pending)</span>
-                                    <span class="{% if liabilities_total > 0 %}text-danger{% endif %}">Rp {{ liabilities_total|floatformat:0|intcomma }}</span>
+                                    <span class="{% if liabilities_total > 0 %}text-danger{% endif %}">Rp {{ liabilities_total|rupiah }}</span>
                                 </div>
                                 <div class="d-flex justify-content-between small mb-1">
                                     <span>Kas Masuk Periode</span>
-                                    <span>Rp {{ payment_total|floatformat:0|intcomma }}</span>
+                                    <span>Rp {{ payment_total|rupiah }}</span>
                                 </div>
                                 <div class="d-flex justify-content-between small">
                                     <span>Arus Kas Bersih</span>
-                                    <span class="fw-bold {% if cash_estimate < 0 %}text-danger{% else %}text-success{% endif %}">Rp {{ cash_estimate|floatformat:0|intcomma }}</span>
+                                    <span class="fw-bold {% if cash_estimate < 0 %}text-danger{% else %}text-success{% endif %}">Rp {{ cash_estimate|rupiah }}</span>
                                 </div>
                             </div>
                         </div>
@@ -283,12 +284,12 @@
                     {% for p in produk_data %}
                     <div class="d-flex justify-content-between mb-2">
                         <span>Sisa Stok {{ p.name }}</span>
-                        <span class="fw-bold">{{ p.stok_sisa|floatformat:2 }} Ton &bull; Rp {{ p.aset|floatformat:0|intcomma }}</span>
+                        <span class="fw-bold">{{ p.stok_sisa|floatformat:2 }} Ton &bull; Rp {{ p.aset|rupiah }}</span>
                     </div>
                     {% endfor %}
                     <div class="d-flex justify-content-between border-top pt-2">
                         <strong>Total Aset Persediaan</strong>
-                        <strong>Rp {{ total_aset|floatformat:0|intcomma }}</strong>
+                        <strong>Rp {{ total_aset|rupiah }}</strong>
                     </div>
                 </div>
             </div>
