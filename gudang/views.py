@@ -1,4 +1,5 @@
 import json
+import re
 from decimal import Decimal
 from django.shortcuts import render, redirect, get_object_or_404
 from django.contrib import messages
@@ -8,6 +9,7 @@ from django.db.models import Sum, Prefetch
 from django.utils import timezone
 from django.http import HttpResponse
 from django.template.loader import render_to_string
+from django.core.paginator import Paginator, EmptyPage, PageNotAnInteger
 from xhtml2pdf import pisa
 
 # Import Models & Forms Baru
@@ -379,51 +381,187 @@ def distribution_create(request):
 @login_required
 def stock_card_list(request):
     """
-    Kartu Stok (Ledger) dengan Running Balance.
-    Versi Anti-Error UnboundLocal.
+    Kartu Stok (Ledger) dengan Running Balance, enriched data, dan
+    server-side pagination enterprise-grade.
     """
-    # 1. SETUP DEFAULT VARIABLE (Wajib di paling atas)
+    # 1. SETUP & PARAMETER
     cards = []
-    saldo_akhir = 0
-    jenis_pupuk = None # Inisialisasi awal supaya tidak UnboundLocalError
-    
-    # 2. Ambil Parameter URL
-    jenis_code = request.GET.get('jenis', 'NPK') 
+    saldo_akhir = Decimal('0')
+
+    jenis_code = request.GET.get('jenis', 'NPK')
     stock_filter = request.GET.get('stock', 'PHYSICAL')
-    
-    # 3. Cari Object Jenis Pupuk (Safe Query)
-    # Filter by CODE (bukan name), karena dropdown mengirim kode seperti 'NPK', 'UREA'
+    per_page = request.GET.get('per_page', '25')
+    page_number = request.GET.get('page', '1')
+    search_q = request.GET.get('q', '').strip()
+
+    try:
+        per_page = int(per_page)
+        if per_page not in (10, 25, 50, 100):
+            per_page = 25
+    except (ValueError, TypeError):
+        per_page = 25
+
+    # 2. JENIS PUPUK
     jenis_pupuk = JenisPupuk.objects.filter(code__iexact=jenis_code).first()
-    
-    # 4. Logic Data (Hanya jalan jika jenis_pupuk DITEMUKAN)
+
+    total_count = 0
+    page_obj = None
+
     if jenis_pupuk:
-        # Ambil Transaksi (Urut dari lama ke baru untuk hitung saldo)
+        # 3. QUERY & RUNNING BALANCE (harus hitung seluruh dataset dulu)
         raw_cards = StockCard.objects.filter(
             jenis_pupuk=jenis_pupuk,
             stock_type=stock_filter
         ).order_by('date', 'created_at')
-        
-        # Hitung Running Balance
+
+        # Hitung running balance untuk semua data
         for card in raw_cards:
-            saldo_akhir += card.qty_in   # Masuk menambah
-            saldo_akhir -= card.qty_out  # Keluar mengurangi
-            
-            # Tempelkan hasil ke object sementara
+            saldo_akhir += card.qty_in - card.qty_out
             card.current_balance = saldo_akhir
             cards.append(card)
-            
-        # Balik urutan agar yang terbaru muncul di atas (DESC)
-        cards.reverse()
-    
-    # 5. Render Template
+
+        cards.reverse()  # terbaru di atas
+
+        # 4. ENRICH: parse ref → lookup SO, Kios, Kecamatan
+        _enrich_stock_cards(cards)
+
+        # 5. SEARCH FILTER (client-side text match on enriched data)
+        if search_q:
+            q_lower = search_q.lower()
+            cards = [c for c in cards if (
+                q_lower in (c.extra_so_number or '').lower()
+                or q_lower in (c.extra_kios or '').lower()
+                or q_lower in (c.extra_kecamatan or '').lower()
+                or q_lower in (c.description or '').lower()
+                or q_lower in (c.reference_number or '').lower()
+            )]
+
+        total_count = len(cards)
+
+        # 6. PAGINATION
+        paginator = Paginator(cards, per_page)
+        try:
+            page_obj = paginator.page(page_number)
+        except PageNotAnInteger:
+            page_obj = paginator.page(1)
+        except EmptyPage:
+            page_obj = paginator.page(paginator.num_pages)
+
+        cards = list(page_obj)
+
     return render(request, 'gudang/stock_card_list.html', {
         'cards': cards,
-        'jenis_selected': jenis_code, # Kirim string kode (NPK/UREA) ke template
+        'page_obj': page_obj,
+        'total_count': total_count,
+        'per_page': per_page,
+        'jenis_selected': jenis_code,
         'saldo_akhir': saldo_akhir,
         'stock_selected': stock_filter,
+        'search_q': search_q,
         'now': timezone.now(),
         'jenis_list': JenisPupuk.objects.filter(is_active=True).order_by('name'),
     })
+
+
+def _enrich_stock_cards(cards):
+    """
+    Batch-enrich StockCard list with SO number, Kios name & Kecamatan name.
+    Parses reference_number to resolve related objects in minimal queries.
+    """
+    # Collect IDs by type
+    so_ids = set()
+    trf_ids = set()
+    dist_item_ids = set()
+    dist_ids_legacy = set()
+
+    ref_pattern_sj_item = re.compile(r'^SJ-(\d+)-(\d+)-')
+    ref_pattern_sj_legacy = re.compile(r'^SJ-(\d+)$')
+    ref_pattern_trf = re.compile(r'^TRF-(\d+)-')
+    ref_pattern_so = re.compile(r'^SO-(\d+)$')
+
+    for card in cards:
+        ref = card.reference_number
+        m = ref_pattern_sj_item.match(ref)
+        if m:
+            dist_item_ids.add(int(m.group(2)))
+            continue
+        m = ref_pattern_sj_legacy.match(ref)
+        if m:
+            dist_ids_legacy.add(int(m.group(1)))
+            continue
+        m = ref_pattern_trf.match(ref)
+        if m:
+            trf_ids.add(int(m.group(1)))
+            continue
+        m = ref_pattern_so.match(ref)
+        if m:
+            so_ids.add(int(m.group(1)))
+
+    # Batch queries
+    so_map = {}
+    if so_ids:
+        for so in SalesOrder.objects.filter(id__in=so_ids):
+            so_map[so.id] = so
+
+    trf_map = {}
+    if trf_ids:
+        for trf in WarehouseTransfer.objects.filter(id__in=trf_ids).select_related('source_so'):
+            trf_map[trf.id] = trf
+
+    item_map = {}
+    if dist_item_ids:
+        for item in DistributionItem.objects.filter(id__in=dist_item_ids).select_related(
+            'distribution__kios__kecamatan', 'source_so'
+        ):
+            item_map[item.id] = item
+
+    dist_map = {}
+    if dist_ids_legacy:
+        for dist in Distribution.objects.filter(id__in=dist_ids_legacy).select_related(
+            'kios__kecamatan', 'source_so'
+        ):
+            dist_map[dist.id] = dist
+
+    # Annotate each card
+    for card in cards:
+        card.extra_so_number = ''
+        card.extra_kios = ''
+        card.extra_kecamatan = ''
+
+        ref = card.reference_number
+
+        m = ref_pattern_sj_item.match(ref)
+        if m:
+            item = item_map.get(int(m.group(2)))
+            if item:
+                if item.source_so:
+                    card.extra_so_number = item.source_so.so_number
+                card.extra_kios = item.distribution.kios.name
+                card.extra_kecamatan = item.distribution.kios.kecamatan.name
+            continue
+
+        m = ref_pattern_sj_legacy.match(ref)
+        if m:
+            dist = dist_map.get(int(m.group(1)))
+            if dist:
+                if dist.source_so:
+                    card.extra_so_number = dist.source_so.so_number
+                card.extra_kios = dist.kios.name
+                card.extra_kecamatan = dist.kios.kecamatan.name
+            continue
+
+        m = ref_pattern_trf.match(ref)
+        if m:
+            trf = trf_map.get(int(m.group(1)))
+            if trf and trf.source_so:
+                card.extra_so_number = trf.source_so.so_number
+            continue
+
+        m = ref_pattern_so.match(ref)
+        if m:
+            so = so_map.get(int(m.group(1)))
+            if so:
+                card.extra_so_number = so.so_number
 
 
 @login_required
@@ -452,7 +590,6 @@ def stock_card_export_physical(request):
         date__lt=end_date
     ).select_related('jenis_pupuk').order_by('date', 'created_at')
 
-    type_label = dict(StockCard.TRANSACTION_TYPES)
     running = {}
     rows = []
     total_in = Decimal('0')
@@ -468,7 +605,7 @@ def stock_card_export_physical(request):
         rows.append({
             'date': card.date,
             'jenis': card.jenis_pupuk.name,
-            'trx': type_label.get(card.transaction_type, card.transaction_type),
+            'desc': card.description,
             'ref': card.reference_number,
             'in': card.qty_in,
             'out': card.qty_out,

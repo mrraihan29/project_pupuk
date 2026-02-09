@@ -127,7 +127,7 @@ def update_stock_from_transfer(sender, instance, created, **kwargs):
                 'jenis_pupuk': instance.source_so.jenis_pupuk,
                 'stock_type': 'VIRTUAL',
                 'transaction_type': 'OUT_TRF',
-                'description': f"Ditarik ke Gudang (Ref: {instance.reference_code})",
+                'description': f"Ditarik ke Gudang (SO: {instance.source_so.so_number})",
                 'qty_in': 0,
                 'qty_out': instance.tonnage,
             }
@@ -142,7 +142,7 @@ def update_stock_from_transfer(sender, instance, created, **kwargs):
                 'jenis_pupuk': instance.source_so.jenis_pupuk,
                 'stock_type': 'PHYSICAL',
                 'transaction_type': 'IN_TRF',
-                'description': f"Masuk dari SO {instance.source_so.so_number}",
+                'description': f"Terima dari Pabrik (SO: {instance.source_so.so_number})",
                 'qty_in': instance.tonnage,
                 'qty_out': 0,
             }
@@ -355,25 +355,23 @@ def _apply_quota(distribution, jenis_id, ton_delta):
 @receiver(post_save, sender=DistributionItem)
 def update_stock_from_distribution_item(sender, instance, created, **kwargs):
     dist = instance.distribution
+
+    # ── 1. DEFINISI KEY (Konsisten) ──
     ref_virtual = f"SJ-{instance.distribution_id}-{instance.id}-V"
-    ref_pin = f"SJ-{instance.distribution_id}-{instance.id}-P-IN"
-    ref_pout = f"SJ-{instance.distribution_id}-{instance.id}-P-OUT"
-    desc_v = f"Kirim ke {dist.kios.name} (Virtual)"
-    desc_p_in = f"Masuk Gudang (Transit) untuk {dist.kios.name}"
-    desc_p_out = f"Kirim ke {dist.kios.name} (Gudang)"
+    ref_pin     = f"SJ-{instance.distribution_id}-{instance.id}-P-IN"
+    ref_pout    = f"SJ-{instance.distribution_id}-{instance.id}-P-OUT"
+
     pkp_date = dist.pkp_date or dist.date
 
     with transaction.atomic():
-        # Safety net: cek stok cukup sebelum membuat kartu stok keluar
+        # ── VALIDASI STOK (Safety net) ──
         prev = getattr(instance, '_old_state', None)
         old_tonnage = prev['tonnage'] if prev else Decimal('0')
-        delta = instance.tonnage - old_tonnage  # tambahan tonase baru
+        delta = instance.tonnage - old_tonnage
 
-        if delta > 0:  # hanya cek saat tonase bertambah
+        if delta > 0:
             if instance.source_type == 'VIRTUAL' and instance.source_so:
                 vbal = instance.source_so.get_virtual_balance()
-                # Pada create, signal dipanggil setelah save, jadi balance belum terpotong oleh record ini
-                # Pada edit, balance sudah reflect old state
                 if created:
                     pass  # get_virtual_balance sudah memperhitungkan item ini via query
                 if vbal < 0:
@@ -387,8 +385,12 @@ def update_stock_from_distribution_item(sender, instance, created, **kwargs):
                         f"Stok fisik {instance.jenis_pupuk.code} tidak cukup! "
                         f"Sisa: {phys_bal:,.2f} Ton, diminta tambahan {delta:,.2f} Ton."
                     )
+
+        # ── 2. JIKA SOURCE == 'VIRTUAL' ──
         if instance.source_type == 'VIRTUAL':
-            # 1) Virtual OUT
+            so_number = instance.source_so.so_number if instance.source_so else '-'
+
+            # 2a. Virtual OUT — kurangi stok pabrik
             StockCard.objects.update_or_create(
                 reference_number=ref_virtual,
                 defaults={
@@ -396,13 +398,13 @@ def update_stock_from_distribution_item(sender, instance, created, **kwargs):
                     'jenis_pupuk': instance.jenis_pupuk,
                     'stock_type': 'VIRTUAL',
                     'transaction_type': 'OUT_DIST_V',
-                    'description': desc_v,
+                    'description': f"Distribusi ke {dist.kios.name} (SO: {so_number})",
                     'qty_in': 0,
                     'qty_out': instance.tonnage,
                 }
             )
 
-            # 2) Fisik IN pada tanggal kirim (dianggap masuk gudang dulu)
+            # 2b. Physical IN (Manipulasi) — barang "mampir" masuk gudang administrasi
             StockCard.objects.update_or_create(
                 reference_number=ref_pin,
                 defaults={
@@ -410,32 +412,51 @@ def update_stock_from_distribution_item(sender, instance, created, **kwargs):
                     'jenis_pupuk': instance.jenis_pupuk,
                     'stock_type': 'PHYSICAL',
                     'transaction_type': 'IN_DIST_P',
-                    'description': desc_p_in,
+                    'description': f"Terima dari Pabrik (SO: {so_number})",
                     'qty_in': instance.tonnage,
                     'qty_out': 0,
                 }
             )
+
+            # 2c. Physical OUT (Manipulasi) — keluar ke kios
+            StockCard.objects.update_or_create(
+                reference_number=ref_pout,
+                defaults={
+                    'date': pkp_date,
+                    'jenis_pupuk': instance.jenis_pupuk,
+                    'stock_type': 'PHYSICAL',
+                    'transaction_type': 'OUT_DIST_P',
+                    'description': f"Distribusi ke {dist.kios.name}",
+                    'qty_in': 0,
+                    'qty_out': instance.tonnage,
+                }
+            )
+
+        # ── 3. JIKA SOURCE == 'PHYSICAL' ──
         else:
-            # Sumber fisik: tidak ada virtual out dan tidak ada fisik IN
-            StockCard.objects.filter(reference_number__in=[ref_virtual, ref_pin]).delete()
+            # 3a. Cleanup — hapus Virtual & Physical IN jika ada
+            #     (aman jika user mengubah tipe dari Virtual ke Fisik)
+            StockCard.objects.filter(
+                reference_number__in=[ref_virtual, ref_pin]
+            ).delete()
 
-        # 3) Fisik OUT pada tanggal PKP (selalu untuk distribusi ke kios)
-        StockCard.objects.update_or_create(
-            reference_number=ref_pout,
-            defaults={
-                'date': pkp_date,
-                'jenis_pupuk': instance.jenis_pupuk,
-                'stock_type': 'PHYSICAL',
-                'transaction_type': 'OUT_DIST_P',
-                'description': desc_p_out,
-                'qty_in': 0,
-                'qty_out': instance.tonnage,
-            }
-        )
+            # 3b. Physical OUT — stok gudang keluar ke kios
+            StockCard.objects.update_or_create(
+                reference_number=ref_pout,
+                defaults={
+                    'date': pkp_date,
+                    'jenis_pupuk': instance.jenis_pupuk,
+                    'stock_type': 'PHYSICAL',
+                    'transaction_type': 'OUT_DIST_P',
+                    'description': f"Distribusi ke {dist.kios.name}",
+                    'qty_in': 0,
+                    'qty_out': instance.tonnage,
+                }
+            )
 
+        # ── RECOMPUTE BALANCE & KUOTA ──
         prev = getattr(instance, '_old_state', None)
         if prev:
-            # Kembalikan stok/quota lama
             prev_virtual = prev['source_type'] == 'VIRTUAL'
             if prev_virtual:
                 recompute_stock_balance(prev['jenis_id'], 'VIRTUAL')
@@ -444,7 +465,6 @@ def update_stock_from_distribution_item(sender, instance, created, **kwargs):
             if prev['source_type'] == 'VIRTUAL' and prev['source_so_id']:
                 update_so_closure(SalesOrder.objects.filter(pk=prev['source_so_id']).first())
 
-        # Kurangi stok/quota baru
         if instance.source_type == 'VIRTUAL':
             recompute_stock_balance(instance.jenis_pupuk_id, 'VIRTUAL')
         recompute_stock_balance(instance.jenis_pupuk_id, 'PHYSICAL')

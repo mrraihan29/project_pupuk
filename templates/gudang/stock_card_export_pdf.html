@@ -42,7 +42,7 @@
                 <tr>
                     <th>Tanggal</th>
                     <th>Jenis Pupuk</th>
-                    <th>Transaksi</th>
+                    <th>Keterangan</th>
                     <th>Ref</th>
                     <th>Masuk</th>
                     <th>Keluar</th>
@@ -54,7 +54,7 @@
                 <tr>
                     <td class="text-center">{{ row.date|date:"d M Y" }}</td>
                     <td>{{ row.jenis }}</td>
-                    <td>{{ row.trx }}</td>
+                    <td>{{ row.desc }}</td>
                     <td class="text-center">{{ row.ref }}</td>
                     <td class="text-right">{{ row.in|floatformat:2 }}</td>
                     <td class="text-right">{{ row.out|floatformat:2 }}</td>

@@ -1,60 +1,73 @@
 {% extends 'base.html' %}
+{% load humanize %}
 
 {% block page_title %}Kartu Stok{% endblock %}
 
 {% block content %}
 <div class="card shadow-sm border-0">
-    <div class="card-header bg-white py-3 stock-header">
+    {# ═══ HEADER ═══ #}
+    <div class="card-header bg-white py-3" style="border-bottom:1px solid #edf1f4">
         <div class="d-flex justify-content-between align-items-start flex-wrap gap-3">
             <div>
                 <h5 class="mb-0 fw-bold">Kartu Stok (Ledger)</h5>
-                <div class="text-muted small">Pilih tipe stok dan jenis pupuk</div>
+                <div class="text-muted small">Catatan pergerakan stok barang</div>
             </div>
             <div class="text-end">
-                <span class="badge bg-light text-dark border fs-6 d-inline-block stock-balance">Sisa Saldo: {{ saldo_akhir|floatformat:2 }} Ton</span>
-                <form method="get" action="{% url 'stock_card_export_physical' %}" class="mt-2 d-flex align-items-end justify-content-end gap-2 stock-export">
+                <span class="badge bg-light text-dark border fs-6 d-inline-block" style="padding:6px 14px;font-weight:600;border-radius:10px">
+                    Sisa Saldo: {{ saldo_akhir|floatformat:2 }} Ton
+                </span>
+                <form method="get" action="{% url 'stock_card_export_physical' %}" class="mt-2 d-flex align-items-end justify-content-end gap-2">
+                    <input type="hidden" name="stock" value="{{ stock_selected }}">
                     <div>
                         <label class="form-label mb-1 small text-muted">Bulan</label>
-                        <select name="month" class="form-select form-select-sm">
-                            <option value="1">Jan</option>
-                            <option value="2">Feb</option>
-                            <option value="3">Mar</option>
-                            <option value="4">Apr</option>
-                            <option value="5">Mei</option>
-                            <option value="6">Jun</option>
-                            <option value="7">Jul</option>
-                            <option value="8">Agu</option>
-                            <option value="9">Sep</option>
-                            <option value="10">Okt</option>
-                            <option value="11">Nov</option>
-                            <option value="12">Des</option>
+                        <select name="month" class="form-select form-select-sm" style="min-width:84px">
+                            <option value="1" {% if now|date:"n" == "1" %}selected{% endif %}>Jan</option>
+                            <option value="2" {% if now|date:"n" == "2" %}selected{% endif %}>Feb</option>
+                            <option value="3" {% if now|date:"n" == "3" %}selected{% endif %}>Mar</option>
+                            <option value="4" {% if now|date:"n" == "4" %}selected{% endif %}>Apr</option>
+                            <option value="5" {% if now|date:"n" == "5" %}selected{% endif %}>Mei</option>
+                            <option value="6" {% if now|date:"n" == "6" %}selected{% endif %}>Jun</option>
+                            <option value="7" {% if now|date:"n" == "7" %}selected{% endif %}>Jul</option>
+                            <option value="8" {% if now|date:"n" == "8" %}selected{% endif %}>Agu</option>
+                            <option value="9" {% if now|date:"n" == "9" %}selected{% endif %}>Sep</option>
+                            <option value="10" {% if now|date:"n" == "10" %}selected{% endif %}>Okt</option>
+                            <option value="11" {% if now|date:"n" == "11" %}selected{% endif %}>Nov</option>
+                            <option value="12" {% if now|date:"n" == "12" %}selected{% endif %}>Des</option>
                         </select>
                     </div>
                     <div>
                         <label class="form-label mb-1 small text-muted">Tahun</label>
-                        <input type="number" name="year" class="form-control form-control-sm" value="{{ now|date:'Y' }}" min="2000" max="2100">
+                        <input type="number" name="year" class="form-control form-control-sm" value="{{ now|date:'Y' }}" min="2000" max="2100" style="min-width:84px">
                     </div>
-                    <button type="submit" class="btn btn-outline-success btn-sm">Export PDF</button>
+                    <button type="submit" class="btn btn-outline-success btn-sm"><i class="bi bi-file-earmark-pdf me-1"></i>Export PDF</button>
                 </form>
             </div>
         </div>
     </div>
-    
+
     <div class="card-body">
-        <div class="d-flex align-items-end justify-content-between flex-wrap gap-3 mb-3 stock-filter-row">
-            <div class="stock-tabs-wrapper">
-                <ul class="nav stock-tabs-professional" role="tablist">
-                    <li class="nav-item" role="presentation">
-                        <a class="nav-link {% if stock_selected == 'PHYSICAL' %}active{% endif %}" href="?stock=PHYSICAL&jenis={{ jenis_selected }}">Stok Fisik</a>
+        {# ═══ TABS: Fisik / Virtual ═══ #}
+        <div class="d-flex align-items-end justify-content-between flex-wrap gap-3 mb-3">
+            <div style="border-bottom:1px solid #e6eaee">
+                <ul class="nav sk-tabs" role="tablist">
+                    <li class="nav-item">
+                        <a class="nav-link {% if stock_selected == 'PHYSICAL' %}active{% endif %}"
+                           href="?stock=PHYSICAL&jenis={{ jenis_selected }}&per_page={{ per_page }}">
+                            <i class="bi bi-box-seam me-1"></i>Stok Fisik
+                        </a>
                     </li>
-                    <li class="nav-item" role="presentation">
-                        <a class="nav-link {% if stock_selected == 'VIRTUAL' %}active{% endif %}" href="?stock=VIRTUAL&jenis={{ jenis_selected }}">Stok Virtual</a>
+                    <li class="nav-item">
+                        <a class="nav-link {% if stock_selected == 'VIRTUAL' %}active{% endif %}"
+                           href="?stock=VIRTUAL&jenis={{ jenis_selected }}&per_page={{ per_page }}">
+                            <i class="bi bi-cloud me-1"></i>Stok Virtual
+                        </a>
                     </li>
                 </ul>
             </div>
-            <div class="d-flex align-items-end gap-2 stock-jenis">
+            <div class="d-flex align-items-end gap-2">
                 <label class="small text-muted mb-1">Jenis Pupuk</label>
-                <select class="form-select form-select-sm stock-jenis-select" onchange="window.location='?stock={{ stock_selected }}&jenis='+this.value">
+                <select class="form-select form-select-sm" style="max-width:180px"
+                        onchange="window.location='?stock={{ stock_selected }}&jenis='+this.value+'&per_page={{ per_page }}'">
                     {% for jp in jenis_list %}
                     <option value="{{ jp.code }}" {% if jenis_selected == jp.code %}selected{% endif %}>{{ jp.name }}</option>
                     {% endfor %}
@@ -62,144 +75,221 @@
             </div>
         </div>
 
+        {# ═══ TABLE CONTROLS: Search + Per Page ═══ #}
+        <div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-3">
+            <div class="d-flex align-items-center gap-2">
+                <label class="text-muted small text-nowrap mb-0">Tampilkan</label>
+                <select class="form-select form-select-sm" style="width:auto" id="perPageSelect"
+                        onchange="updatePerPage(this.value)">
+                    <option value="10" {% if per_page == 10 %}selected{% endif %}>10</option>
+                    <option value="25" {% if per_page == 25 %}selected{% endif %}>25</option>
+                    <option value="50" {% if per_page == 50 %}selected{% endif %}>50</option>
+                    <option value="100" {% if per_page == 100 %}selected{% endif %}>100</option>
+                </select>
+                <label class="text-muted small text-nowrap mb-0">data</label>
+            </div>
+            <div>
+                <form method="get" class="d-flex gap-2" id="searchForm">
+                    <input type="hidden" name="stock" value="{{ stock_selected }}">
+                    <input type="hidden" name="jenis" value="{{ jenis_selected }}">
+                    <input type="hidden" name="per_page" value="{{ per_page }}">
+                    <div class="input-group input-group-sm" style="width:280px">
+                        <span class="input-group-text bg-white"><i class="bi bi-search"></i></span>
+                        <input type="text" name="q" class="form-control" placeholder="Cari SO, kios, kecamatan..."
+                               value="{{ search_q }}" autocomplete="off">
+                        {% if search_q %}
+                        <a href="?stock={{ stock_selected }}&jenis={{ jenis_selected }}&per_page={{ per_page }}"
+                           class="btn btn-outline-secondary btn-sm" title="Reset"><i class="bi bi-x-lg"></i></a>
+                        {% endif %}
+                    </div>
+                </form>
+            </div>
+        </div>
+
+        {# ═══ TABLE ═══ #}
         <div class="table-responsive table-sim-wrapper">
-            <table class="table table-hover align-middle table-sim">
+            <table class="table table-hover align-middle table-sim mb-0" id="stockTable">
                 <thead>
                     <tr>
-                        <th>TANGGAL</th>
-                        <th>TIPE STOK</th>
-                        <th>TRANSAKSI</th>
-                        <th>REF (SO/SJ)</th>
-                        <th class="text-end text-success">MASUK</th>
-                        <th class="text-end text-danger">KELUAR</th>
-                        <th class="text-end fw-bold">SALDO</th>
+                        <th class="text-center" style="width:36px">#</th>
+                        <th style="min-width:100px">TANGGAL</th>
+                        <th style="min-width:140px">NO. SO</th>
+                        <th style="min-width:200px">TRANSAKSI</th>
+                        <th style="min-width:120px">KECAMATAN</th>
+                        <th style="min-width:140px">KIOS</th>
+                        <th class="text-end text-success" style="min-width:90px">MASUK</th>
+                        <th class="text-end text-danger" style="min-width:90px">KELUAR</th>
+                        <th class="text-end" style="min-width:90px">SALDO</th>
                     </tr>
                 </thead>
                 <tbody>
                     {% for card in cards %}
                     <tr>
-                        <td>{{ card.date|date:"d M Y" }}</td>
+                        <td class="text-center text-muted small">
+                            {% if page_obj %}{{ page_obj.start_index|add:forloop.counter0 }}{% else %}{{ forloop.counter }}{% endif %}
+                        </td>
+                        <td class="text-nowrap">{{ card.date|date:"d M Y" }}</td>
                         <td>
-                            {% if card.stock_type == 'VIRTUAL' %}
-                                <span class="badge bg-info text-dark">VIRTUAL (Pabrik)</span>
+                            {% if card.extra_so_number %}
+                            <span class="badge bg-primary bg-opacity-10 text-primary fw-semibold" style="font-size:.82em">{{ card.extra_so_number }}</span>
                             {% else %}
-                                <span class="badge bg-warning text-dark">FISIK (Gudang)</span>
+                            <small class="text-muted">—</small>
                             {% endif %}
                         </td>
                         <td>
-                            {{ card.get_transaction_type_display }}
+                            <div class="fw-semibold" style="line-height:1.3">{{ card.description }}</div>
+                            <small class="text-muted">{{ card.get_transaction_type_display }}</small>
                         </td>
-                        <td class="fw-bold">{{ card.reference_number }}</td>
-                        
+                        <td>
+                            {% if card.extra_kecamatan %}
+                            <small>{{ card.extra_kecamatan }}</small>
+                            {% else %}
+                            <small class="text-muted">—</small>
+                            {% endif %}
+                        </td>
+                        <td>
+                            {% if card.extra_kios %}
+                            <span class="fw-medium">{{ card.extra_kios }}</span>
+                            {% else %}
+                            <small class="text-muted">—</small>
+                            {% endif %}
+                        </td>
                         <td class="text-end">
                             {% if card.qty_in > 0 %}
-                                <span class="text-success fw-bold">+{{ card.qty_in|floatformat:2 }}</span>
-                            {% else %}
-                                -
-                            {% endif %}
+                            <span class="text-success fw-bold">+{{ card.qty_in|floatformat:2 }}</span>
+                            {% else %}—{% endif %}
                         </td>
-                        
                         <td class="text-end">
                             {% if card.qty_out > 0 %}
-                                <span class="text-danger fw-bold">-{{ card.qty_out|floatformat:2 }}</span>
-                            {% else %}
-                                -
-                            {% endif %}
+                            <span class="text-danger fw-bold">−{{ card.qty_out|floatformat:2 }}</span>
+                            {% else %}—{% endif %}
                         </td>
-
-                        <td class="text-end fw-bold bg-light">
-                            {{ card.current_balance|floatformat:2 }}
-                        </td>
+                        <td class="text-end fw-bold bg-light">{{ card.current_balance|floatformat:2 }}</td>
                     </tr>
                     {% empty %}
                     <tr>
-                        <td colspan="7" class="text-center py-5 text-muted">
+                        <td colspan="9" class="text-center py-5 text-muted">
                             <i class="bi bi-journal-x display-4 d-block mb-3"></i>
-                            Belum ada transaksi untuk pupuk {{ jenis_selected }}.
+                            {% if search_q %}
+                                Tidak ada hasil untuk "<strong>{{ search_q }}</strong>".
+                            {% else %}
+                                Belum ada transaksi untuk pupuk {{ jenis_selected }}.
+                            {% endif %}
                         </td>
                     </tr>
                     {% endfor %}
                 </tbody>
             </table>
         </div>
+
+        {# ═══ PAGINATION BAR ═══ #}
+        {% if page_obj and page_obj.paginator.num_pages > 0 %}
+        <div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mt-3 pt-3" style="border-top:1px solid #eee">
+            <div class="text-muted small">
+                {% if total_count > 0 %}
+                    Menampilkan <strong>{{ page_obj.start_index }}</strong> – <strong>{{ page_obj.end_index }}</strong> dari <strong>{{ total_count }}</strong> data
+                {% else %}
+                    Tidak ada data
+                {% endif %}
+            </div>
+
+            {% if page_obj.paginator.num_pages > 1 %}
+            <nav aria-label="Pagination">
+                <ul class="pagination pagination-sm mb-0">
+                    <li class="page-item {% if not page_obj.has_previous %}disabled{% endif %}">
+                        <a class="page-link" href="?stock={{ stock_selected }}&jenis={{ jenis_selected }}&per_page={{ per_page }}&q={{ search_q }}&page=1" title="Pertama">
+                            <i class="bi bi-chevron-double-left"></i>
+                        </a>
+                    </li>
+                    <li class="page-item {% if not page_obj.has_previous %}disabled{% endif %}">
+                        <a class="page-link" href="?stock={{ stock_selected }}&jenis={{ jenis_selected }}&per_page={{ per_page }}&q={{ search_q }}&page={{ page_obj.previous_page_number|default:1 }}" title="Sebelumnya">
+                            <i class="bi bi-chevron-left"></i>
+                        </a>
+                    </li>
+
+                    {% for pg in page_obj.paginator.page_range %}
+                        {% if pg == page_obj.number %}
+                        <li class="page-item active"><span class="page-link">{{ pg }}</span></li>
+                        {% elif pg >= page_obj.number|add:"-3" and pg <= page_obj.number|add:"3" %}
+                        <li class="page-item">
+                            <a class="page-link" href="?stock={{ stock_selected }}&jenis={{ jenis_selected }}&per_page={{ per_page }}&q={{ search_q }}&page={{ pg }}">{{ pg }}</a>
+                        </li>
+                        {% elif pg == 1 or pg == page_obj.paginator.num_pages %}
+                        <li class="page-item">
+                            <a class="page-link" href="?stock={{ stock_selected }}&jenis={{ jenis_selected }}&per_page={{ per_page }}&q={{ search_q }}&page={{ pg }}">{{ pg }}</a>
+                        </li>
+                        {% elif pg == page_obj.number|add:"-4" or pg == page_obj.number|add:"4" %}
+                        <li class="page-item disabled"><span class="page-link">…</span></li>
+                        {% endif %}
+                    {% endfor %}
+
+                    <li class="page-item {% if not page_obj.has_next %}disabled{% endif %}">
+                        <a class="page-link" href="?stock={{ stock_selected }}&jenis={{ jenis_selected }}&per_page={{ per_page }}&q={{ search_q }}&page={{ page_obj.next_page_number|default:page_obj.paginator.num_pages }}" title="Berikutnya">
+                            <i class="bi bi-chevron-right"></i>
+                        </a>
+                    </li>
+                    <li class="page-item {% if not page_obj.has_next %}disabled{% endif %}">
+                        <a class="page-link" href="?stock={{ stock_selected }}&jenis={{ jenis_selected }}&per_page={{ per_page }}&q={{ search_q }}&page={{ page_obj.paginator.num_pages }}" title="Terakhir">
+                            <i class="bi bi-chevron-double-right"></i>
+                        </a>
+                    </li>
+                </ul>
+            </nav>
+            {% endif %}
+        </div>
+        {% endif %}
     </div>
 </div>
 
 <style>
-    .stock-header {
-        border-bottom: 1px solid #edf1f4;
+    .sk-tabs {
+        gap: 6px; padding: 0 4px; margin: 0; list-style: none;
+    }
+    .sk-tabs .nav-link {
+        border: 1px solid #dfe5ea; border-bottom: none;
+        border-radius: 10px 10px 0 0; padding: 10px 18px;
+        font-weight: 600; color: #2d3436; background: #f6f8fa;
+        transition: all .2s ease; min-width: 140px; text-align: center;
+    }
+    .sk-tabs .nav-link:hover { background: #eef2f5; }
+    .sk-tabs .nav-link.active {
+        background: #fff; color: #1f2a2e;
+        border-color: #cfd6dd; box-shadow: 0 -2px 6px rgba(0,0,0,.04);
     }
 
-    .stock-balance {
-        padding: 6px 12px;
-        font-weight: 600;
-        border-radius: 10px;
+    #stockTable thead th {
+        background: #1a2332; color: #fff;
+        font-size: .78em; letter-spacing: .03em;
+        padding: 10px 12px; white-space: nowrap;
+        border: none; position: sticky; top: 0; z-index: 2;
     }
-
-    .stock-export .form-select,
-    .stock-export .form-control {
-        min-width: 84px;
+    #stockTable tbody td {
+        padding: 8px 12px; font-size: .88em;
+        vertical-align: middle; border-bottom: 1px solid #f0f2f5;
     }
+    #stockTable tbody tr:hover { background: #f8fafb; }
 
-    .stock-filter-row {
-        padding-top: 6px;
+    .pagination .page-link {
+        border-radius: 6px; margin: 0 2px; min-width: 32px;
+        text-align: center; font-weight: 500; border: 1px solid #dee2e6;
     }
-
-    .stock-tabs-wrapper {
-        border-bottom: 1px solid #e6eaee;
-    }
-
-    .stock-tabs-professional {
-        gap: 6px;
-        padding: 0 4px;
-        margin: 0;
-        list-style: none;
-    }
-
-    .stock-tabs-professional .nav-link {
-        border: 1px solid #dfe5ea;
-        border-bottom: none;
-        border-radius: 10px 10px 0 0;
-        padding: 10px 18px;
-        font-weight: 600;
-        color: #2d3436;
-        background: #f6f8fa;
-        transition: all 0.2s ease;
-        min-width: 140px;
-        text-align: center;
-    }
-
-    .stock-tabs-professional .nav-link:hover {
-        background: #eef2f5;
-    }
-
-    .stock-tabs-professional .nav-link.active {
-        background: #ffffff;
-        color: #1f2a2e;
-        border-color: #cfd6dd;
-        box-shadow: 0 -2px 6px rgba(0, 0, 0, 0.04);
-    }
-
-    .stock-jenis-select {
-        max-width: 180px;
-    }
-
-    .stock-jenis label {
-        line-height: 1;
+    .pagination .page-item.active .page-link {
+        background-color: #1a2332; border-color: #1a2332;
     }
 
     @media (max-width: 576px) {
-        .stock-tabs-professional .nav-link {
-            min-width: auto;
-            width: 100%;
-        }
-        .stock-jenis-select {
-            max-width: 100%;
-        }
-        .stock-export {
-            flex-wrap: wrap;
-            justify-content: flex-start;
-        }
+        .sk-tabs .nav-link { min-width: auto; width: 100%; font-size: .85em; padding: 8px 12px; }
+        #stockTable thead th { font-size: .7em; padding: 8px 6px; }
+        #stockTable tbody td { padding: 6px; font-size: .82em; }
     }
 </style>
+
+<script>
+function updatePerPage(val) {
+    const params = new URLSearchParams(window.location.search);
+    params.set('per_page', val);
+    params.set('page', '1');
+    window.location.search = params.toString();
+}
+</script>
 {% endblock %}
