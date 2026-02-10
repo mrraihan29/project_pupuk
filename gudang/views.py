@@ -57,9 +57,14 @@ def so_create(request):
     Input SO Baru dengan Multi-Kecamatan (Dynamic Formset).
     Menggunakan Atomic Transaction untuk keamanan data.
     """
+    kab = get_scope_kabupaten(request)
     if request.method == 'POST':
         form = SalesOrderForm(request.POST, request.FILES)
         formset = AllocationFormSet(request.POST)
+        # Batasi kecamatan di formset SEBELUM validasi agar tidak bisa submit kecamatan lain
+        if kab:
+            for form_alloc in formset.forms:
+                form_alloc.fields['kecamatan'].queryset = form_alloc.fields['kecamatan'].queryset.filter(kabupaten=kab)
         
         if form.is_valid() and formset.is_valid():
             try:
@@ -86,11 +91,9 @@ def so_create(request):
     else:
         form = SalesOrderForm()
         formset = AllocationFormSet()
-    kab = get_scope_kabupaten(request)
-    if kab:
-        # Batasi pilihan kecamatan di formset sesuai kabupaten user
-        for form_alloc in formset.forms:
-            form_alloc.fields['kecamatan'].queryset = form_alloc.fields['kecamatan'].queryset.filter(kabupaten=kab)
+        if kab:
+            for form_alloc in formset.forms:
+                form_alloc.fields['kecamatan'].queryset = form_alloc.fields['kecamatan'].queryset.filter(kabupaten=kab)
     
     return render(request, 'gudang/so_form.html', {
         'form': form,
@@ -707,6 +710,11 @@ def print_surat_jalan(request, pk):
     Mengambil data perusahaan dinamis untuk Kop Surat.
     """
     dist = get_object_or_404(Distribution, pk=pk)
+    # Scope check: pastikan user hanya bisa cetak surat jalan kabupaten sendiri
+    kab = get_scope_kabupaten(request)
+    if kab and dist.kios.kecamatan.kabupaten != kab:
+        messages.error(request, "Akses ditolak: surat jalan bukan milik kabupaten Anda.")
+        return redirect('distribution_list')
     company = CompanyProfile.objects.first() # Ambil profil perusahaan
     if not company:
         messages.warning(request, "Profil perusahaan belum diatur. Silakan isi di menu Pengaturan.")
@@ -809,6 +817,11 @@ def order_note_create(request):
 @login_required
 def order_note_complete(request, pk):
     order = get_object_or_404(OrderNote, pk=pk, is_deleted=False)
+    # Scope check: pastikan user hanya bisa menutup order kabupaten sendiri
+    kab = get_scope_kabupaten(request)
+    if kab and order.kecamatan and order.kecamatan.kabupaten != kab:
+        messages.error(request, "Akses ditolak: order bukan milik kabupaten Anda.")
+        return redirect('order_note_list')
     if request.method != 'POST':
         messages.error(request, "Gunakan tombol selesai untuk menutup order.")
         return redirect('order_note_list')

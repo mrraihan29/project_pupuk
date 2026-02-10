@@ -159,6 +159,10 @@ def ops_edit(request, pk):
         return redirect('ops_list')
 
     kab = get_scope_kabupaten(request)
+    # Scope check: pastikan user hanya bisa edit ops kabupaten sendiri
+    if kab and ops.kabupaten and ops.kabupaten != kab:
+        messages.error(request, "Akses ditolak: biaya bukan milik kabupaten Anda.")
+        return redirect('ops_list')
     if request.method == 'POST':
         form = BiayaOperasionalForm(request.POST, request.FILES, instance=ops)
         if kab and not request.user.is_superuser:
@@ -277,6 +281,12 @@ def print_invoice(request, pk):
     View khusus cetak Invoice.
     """
     inv = get_object_or_404(Invoice, pk=pk)
+    # Scope check: pastikan user hanya bisa cetak invoice kabupaten sendiri
+    kab = get_scope_kabupaten(request)
+    inv_kab = getattr(getattr(getattr(inv.distribution.kios, 'kecamatan', None), 'kabupaten', None), 'pk', None)
+    if kab and inv_kab and kab.pk != inv_kab:
+        messages.error(request, "Akses ditolak: invoice bukan milik kabupaten Anda.")
+        return redirect('invoice_list')
     company = CompanyProfile.objects.first()
     if not company:
         messages.warning(request, "Profil perusahaan belum diatur. Silakan isi di menu Pengaturan.")

@@ -161,6 +161,10 @@ def kios_update(request, pk):
 @login_required
 def kios_delete(request, pk):
     kios = get_object_or_404(Kios, pk=pk)
+    kab = get_scope_kabupaten(request)
+    if kab and kios.kecamatan.kabupaten != kab:
+        messages.error(request, "Akses ditolak untuk kabupaten lain.")
+        return redirect('kios_list')
     if request.method == 'POST':
         try:
             kios.delete()
@@ -868,11 +872,12 @@ def laporan_keuangan(request):
 # =========================================================
 
 def _staff_required(request):
-    return request.user.is_authenticated and request.user.is_staff
+    """Setup pages restricted to superuser only — admin kabupaten must NOT access."""
+    return request.user.is_authenticated and request.user.is_superuser
 
 
 def setup_forbidden(request):
-    messages.error(request, "Anda tidak memiliki akses ke menu Setup.")
+    messages.error(request, "Anda tidak memiliki akses ke menu Setup. Hanya Superadmin.")
     return redirect('dashboard')
 
 
