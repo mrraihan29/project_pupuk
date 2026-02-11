@@ -40,13 +40,15 @@ def _upsert_invoice(dist):
     # Robust INV number: extract numeric suffix or generate from SJ number
     sj_num = dist.no_surat_jalan
     no_inv = sj_num.replace("SJ/", "INV/").replace("SJ-", "INV-") if "SJ" in sj_num else f"INV-{dist.id}"
-    tgl_jatuh_tempo = dist.date + timedelta(days=3)
+    # Tanggal terbit invoice = tanggal PKP (administrasi perpajakan)
+    tgl_terbit = dist.pkp_date or dist.date
+    tgl_jatuh_tempo = tgl_terbit + timedelta(days=3)
 
     invoice, created = Invoice.objects.get_or_create(
         distribution=dist,
         defaults={
             'inv_number': no_inv,
-            'issue_date': dist.date,
+            'issue_date': tgl_terbit,
             'due_date': tgl_jatuh_tempo,
             'total_amount': total_tagihan,
             'total_paid': Decimal('0'),
@@ -55,8 +57,8 @@ def _upsert_invoice(dist):
     )
     if not created:
         invoice.total_amount = total_tagihan
-        invoice.issue_date = dist.date
-        invoice.due_date = tgl_jatuh_tempo
+        # Tanggal TIDAK di-overwrite agar edit manual superadmin tetap berlaku.
+        # Tanggal hanya di-set saat invoice pertama kali dibuat (lihat defaults di atas).
         # update_status() sudah memanggil self.save() secara internal,
         # sehingga tidak perlu invoice.save() tambahan.
         invoice.update_status()

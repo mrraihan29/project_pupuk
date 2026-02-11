@@ -1,7 +1,7 @@
 from typing import Optional
 from django.db.models import QuerySet
 from django.contrib.auth import get_user_model
-from .models import Kabupaten, JenisPupuk, FertilizerPrice
+from .models import Kabupaten, JenisPupuk, FertilizerPrice, CompanyProfile
 
 User = get_user_model()
 
@@ -68,3 +68,16 @@ def get_price_by_code(jenis_code: str, kabupaten: Optional[Kabupaten]):
     except JenisPupuk.DoesNotExist:
         return None
     return get_price_for(jenis, kabupaten)
+
+
+def get_company_profile(kabupaten: Optional[Kabupaten] = None) -> Optional[CompanyProfile]:
+    """
+    Resolve CompanyProfile for a given kabupaten with fallback to default.
+    Priority: kabupaten-specific profile → default profile (kabupaten=None) → None.
+    """
+    if kabupaten:
+        profile = CompanyProfile.objects.filter(kabupaten=kabupaten).first()
+        if profile:
+            return profile
+    # Fallback: profil default (kabupaten=NULL) atau profil pertama yang ada
+    return CompanyProfile.objects.filter(kabupaten__isnull=True).first() or CompanyProfile.objects.first()

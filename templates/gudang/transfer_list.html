@@ -32,6 +32,7 @@
                     <th>REF. PABRIK</th>
                     <th>TONASE</th>
                     <th>CATATAN</th>
+                    {% if user.is_superuser %}<th class="text-center">AKSI</th>{% endif %}
                 </tr>
             </thead>
             <tbody>
@@ -49,10 +50,17 @@
                     <td>{{ item.reference_code|default:"-" }}</td>
                     <td class="fw-bold text-success">+{{ item.tonnage }} Ton</td>
                     <td class="text-muted small">{{ item.notes|default:"-" }}</td>
+                    {% if user.is_superuser %}
+                    <td class="text-center">
+                        <a href="{% url 'transfer_edit' item.id %}" class="btn btn-sm btn-outline-primary" title="Edit">
+                            <i class="bi bi-pencil"></i>
+                        </a>
+                    </td>
+                    {% endif %}
                 </tr>
                 {% empty %}
                 <tr>
-                    <td colspan="6" class="text-center py-5 text-muted">
+                    <td colspan="{% if user.is_superuser %}7{% else %}6{% endif %}" class="text-center py-5 text-muted">
                         Belum ada stok yang ditarik ke gudang fisik.
                     </td>
                 </tr>

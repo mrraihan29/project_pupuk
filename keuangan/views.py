@@ -1,6 +1,6 @@
 from django.shortcuts import render, redirect, get_object_or_404
 from django.contrib import messages
-from django.contrib.auth.decorators import login_required
+from django.contrib.auth.decorators import login_required, user_passes_test
 from django.views.decorators.http import require_http_methods
 from django.db import transaction
 from django.db.models import Sum
@@ -10,9 +10,9 @@ from django.utils import timezone
 from decimal import Decimal
 # Import Models & Forms
 from .models import Invoice, Payment, BiayaOperasional
-from .forms import PaymentForm, BiayaOperasionalForm
+from .forms import PaymentForm, BiayaOperasionalForm, InvoiceEditForm
 from core.models import Armada, CompanyProfile, Kabupaten
-from core.utils import get_scope_kabupaten, scope_by_kabupaten
+from core.utils import get_scope_kabupaten, scope_by_kabupaten, get_company_profile
 from core.utils import get_price_for
 
 # Decorator Custom (Pastikan Anda punya file ini, jika tidak, hapus baris ini)
@@ -104,6 +104,55 @@ def payment_void(request, pk):
     return redirect('invoice_list')
 
 
+@login_required
+@user_passes_test(lambda u: u.is_superuser)
+def invoice_edit(request, pk):
+    """Edit Invoice (superadmin only) — hanya issue_date & due_date."""
+    invoice = get_object_or_404(Invoice, pk=pk)
+    if request.method == 'POST':
+        form = InvoiceEditForm(request.POST, instance=invoice)
+        if form.is_valid():
+            form.save()
+            messages.success(request, f"Invoice {invoice.inv_number} berhasil diperbarui.")
+            return redirect('invoice_list')
+        else:
+            messages.error(request, "Gagal menyimpan. Periksa input.")
+    else:
+        form = InvoiceEditForm(instance=invoice)
+    return render(request, 'keuangan/invoice_edit_form.html', {
+        'form': form,
+        'invoice': invoice,
+    })
+
+
+@login_required
+@user_passes_test(lambda u: u.is_superuser)
+def payment_edit(request, pk):
+    """Edit Pembayaran (superadmin only)."""
+    payment = get_object_or_404(Payment, pk=pk)
+    # Guard: tidak bisa edit pembayaran yang sudah VOID
+    if payment.status == 'VOID':
+        messages.error(request, "Tidak bisa mengedit pembayaran yang sudah dibatalkan (VOID).")
+        return redirect('invoice_list')
+    invoice = payment.invoice
+    if request.method == 'POST':
+        form = PaymentForm(request.POST, request.FILES, instance=payment, invoice=invoice)
+        if form.is_valid():
+            with transaction.atomic():
+                form.save()
+            messages.success(request, "Pembayaran berhasil diperbarui.")
+            return redirect('invoice_list')
+        else:
+            messages.error(request, "Gagal menyimpan. Periksa input.")
+    else:
+        form = PaymentForm(instance=payment, invoice=invoice)
+    return render(request, 'keuangan/payment_form.html', {
+        'form': form,
+        'invoice': invoice,
+        'edit_mode': True,
+    })
+
+
 # ==========================================
 # 2. BIAYA OPERASIONAL (PENGELUARAN)
 # ==========================================
@@ -151,6 +200,7 @@ def ops_create(request):
 
 
 @login_required
+@user_passes_test(lambda u: u.is_superuser)
 def ops_edit(request, pk):
     ops = get_object_or_404(BiayaOperasional, pk=pk)
     # Hanya bisa edit jika masih berstatus PROSES
@@ -287,7 +337,8 @@ def print_invoice(request, pk):
     if kab and inv_kab and kab.pk != inv_kab:
         messages.error(request, "Akses ditolak: invoice bukan milik kabupaten Anda.")
         return redirect('invoice_list')
-    company = CompanyProfile.objects.first()
+    kab_obj = getattr(getattr(inv.distribution.kios, 'kecamatan', None), 'kabupaten', None)
+    company = get_company_profile(kab_obj)
     if not company:
         messages.warning(request, "Profil perusahaan belum diatur. Silakan isi di menu Pengaturan.")
     kab = getattr(getattr(inv.distribution.kios, 'kecamatan', None), 'kabupaten', None)

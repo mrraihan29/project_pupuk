@@ -17,9 +17,18 @@ class CompanyProfile(models.Model):
     bank_name = models.CharField("Nama Bank", max_length=50, blank=True)
     bank_account = models.CharField("No. Rekening", max_length=50, blank=True)
     bank_account_name = models.CharField("Atas Nama Rekening", max_length=100, blank=True)
+
+    # Per-Kabupaten support: null = profil default/global (fallback)
+    kabupaten = models.OneToOneField(
+        'Kabupaten', on_delete=models.CASCADE, null=True, blank=True,
+        related_name='company_profile',
+        help_text="Kosongkan untuk profil default. Isi untuk profil spesifik kabupaten."
+    )
     
     def __str__(self):
-        return self.name
+        if self.kabupaten:
+            return f"{self.name} ({self.kabupaten.name})"
+        return f"{self.name} (Default)"
 
     class Meta:
         verbose_name = "Profil Perusahaan"

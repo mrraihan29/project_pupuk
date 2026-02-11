@@ -7,18 +7,21 @@ urlpatterns = [
     # ==========================
     path('so/', views.so_list, name='so_list'),
     path('so/create/', views.so_create, name='so_create'),
+    path('so/<int:pk>/edit/', views.so_edit, name='so_edit'),
 
     # ==========================
     # 2. TRANSFER (TARIK STOK KE GUDANG)
     # ==========================
     path('transfer/', views.transfer_list, name='transfer_list'),
     path('transfer/create/', views.transfer_create, name='transfer_create'),
+    path('transfer/<int:pk>/edit/', views.transfer_edit, name='transfer_edit'),
 
     # ==========================
     # 3. DISTRIBUSI (SURAT JALAN)
     # ==========================
     path('distribution/', views.distribution_list, name='distribution_list'),
     path('distribution/create/', views.distribution_create, name='distribution_create'),
+    path('distribution/<int:pk>/edit/', views.distribution_edit, name='distribution_edit'),
     path('distribution/<int:pk>/print/', views.print_surat_jalan, name='print_surat_jalan'),
     
     # ==========================
@@ -33,5 +36,6 @@ urlpatterns = [
     # ==========================
     path('order-notes/', views.order_note_list, name='order_note_list'),
     path('order-notes/create/', views.order_note_create, name='order_note_create'),
+    path('order-notes/<int:pk>/edit/', views.order_note_edit, name='order_note_edit'),
     path('order-notes/<int:pk>/complete/', views.order_note_complete, name='order_note_complete'),
 ]

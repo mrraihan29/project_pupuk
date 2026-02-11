@@ -64,6 +64,11 @@
                         </td>
                         <td class="text-muted small">{{ order.notes|default:"-" }}</td>
                         <td class="text-center">
+                            {% if user.is_superuser %}
+                            <a href="{% url 'order_note_edit' order.id %}" class="btn btn-sm btn-outline-primary me-1" title="Edit">
+                                <i class="bi bi-pencil"></i>
+                            </a>
+                            {% endif %}
                             <form action="{% url 'order_note_complete' order.id %}" method="post" onsubmit="return confirm('Tandai selesai dan sembunyikan order ini?');" class="d-inline-block">
                                 {% csrf_token %}
                                 <button type="submit" class="btn btn-sm btn-outline-success" title="Selesaikan">

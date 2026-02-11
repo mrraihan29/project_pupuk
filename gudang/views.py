@@ -23,7 +23,7 @@ from .forms import (
 )
 from django.core.exceptions import ValidationError
 from core.models import CompanyProfile, JenisPupuk, Kios, Kabupaten, KiosAllocation
-from core.utils import scope_by_kabupaten, get_scope_kabupaten, get_price_for
+from core.utils import scope_by_kabupaten, get_scope_kabupaten, get_price_for, get_company_profile
 
 # ==========================================
 # 1. MODUL PENEBUSAN (SO)
@@ -101,6 +101,60 @@ def so_create(request):
         'title': 'Input Penebusan (SO)'
     })
 
+
+@login_required
+@user_passes_test(lambda u: u.is_superuser)
+def so_edit(request, pk):
+    """Edit SO (superadmin only)."""
+    so = get_object_or_404(SalesOrder, pk=pk)
+    kab = get_scope_kabupaten(request)
+
+    if request.method == 'POST':
+        form = SalesOrderForm(request.POST, request.FILES, instance=so)
+        formset = AllocationFormSet(request.POST, instance=so)
+        if kab:
+            for f in formset.forms:
+                f.fields['kecamatan'].queryset = f.fields['kecamatan'].queryset.filter(kabupaten=kab)
+
+        if form.is_valid() and formset.is_valid():
+            # Guard: Cegah ganti jenis_pupuk jika SO sudah punya transfer/distribusi
+            if form.cleaned_data['jenis_pupuk'] != so.jenis_pupuk:
+                has_transfers = so.transfers.exists()
+                has_distributions = DistributionItem.objects.filter(source_so=so).exists()
+                if has_transfers or has_distributions:
+                    messages.error(
+                        request,
+                        "Tidak bisa mengubah jenis pupuk karena SO ini sudah memiliki "
+                        "transfer gudang atau distribusi. Hapus transaksi terkait terlebih dahulu."
+                    )
+                    return render(request, 'gudang/so_form.html', {
+                        'form': form, 'formset': formset,
+                        'title': 'Edit Penebusan (SO)', 'edit_mode': True,
+                    })
+            try:
+                with transaction.atomic():
+                    form.save()
+                    formset.save()
+                messages.success(request, f"Penebusan SO {so.so_number} berhasil diperbarui!")
+                return redirect('so_list')
+            except Exception as e:
+                messages.error(request, f"Terjadi kesalahan: {e}")
+        else:
+            messages.error(request, "Gagal menyimpan. Periksa inputan bertanda merah.")
+    else:
+        form = SalesOrderForm(instance=so)
+        formset = AllocationFormSet(instance=so)
+        if kab:
+            for f in formset.forms:
+                f.fields['kecamatan'].queryset = f.fields['kecamatan'].queryset.filter(kabupaten=kab)
+
+    return render(request, 'gudang/so_form.html', {
+        'form': form,
+        'formset': formset,
+        'title': 'Edit Penebusan (SO)',
+        'edit_mode': True,
+    })
+
 # ==========================================
 # 2. MODUL TRANSFER (TARIK KE GUDANG)
 # ==========================================
@@ -150,13 +204,46 @@ def transfer_create(request):
     
     return render(request, 'gudang/transfer_form.html', {'form': form, 'title': 'Tarik Stok ke Gudang'})
 
+
+@login_required
+@user_passes_test(lambda u: u.is_superuser)
+def transfer_edit(request, pk):
+    """Edit Transfer Gudang (superadmin only)."""
+    transfer = get_object_or_404(WarehouseTransfer, pk=pk)
+
+    if request.method == 'POST':
+        form = WarehouseTransferForm(request.POST, instance=transfer)
+        if form.is_valid():
+            try:
+                with transaction.atomic():
+                    form.save()
+                messages.success(request, "Data transfer berhasil diperbarui!")
+                return redirect('transfer_list')
+            except Exception as e:
+                messages.error(request, f"Error: {e}")
+        else:
+            messages.error(request, "Gagal menyimpan. Periksa pesan error di bawah.")
+    else:
+        form = WarehouseTransferForm(instance=transfer)
+
+    return render(request, 'gudang/transfer_form.html', {
+        'form': form,
+        'title': 'Edit Transfer Gudang',
+        'edit_mode': True,
+    })
+
 # ==========================================
 # 3. MODUL DISTRIBUSI (SURAT JALAN)
 # ==========================================
 
 
-def validate_distribution_items(kios, dist_date, items_clean):
-    """Validasi stok virtual/fisik, kuota kios, dan harga master untuk kumpulan item."""
+def validate_distribution_items(kios, dist_date, items_clean, existing_items=None):
+    """Validasi stok virtual/fisik, kuota kios, dan harga master untuk kumpulan item.
+    
+    Args:
+        existing_items: List of existing DistributionItem objects (for edit mode).
+                        Their tonnage will be added back to balances before checking.
+    """
     if not items_clean:
         raise ValidationError("Minimal 1 item pupuk diperlukan.")
 
@@ -177,6 +264,39 @@ def validate_distribution_items(kios, dist_date, items_clean):
     so_balance = {}
     physical_balance = {}
     quota_balance = {}
+
+    # EDIT MODE: Add back old items' values to balances
+    if existing_items:
+        old_dist = existing_items[0].distribution
+        old_kios = old_dist.kios
+        old_year = old_dist.date.year
+
+        for old_item in existing_items:
+            # Stock balances (global) — always add back
+            if old_item.source_type == 'VIRTUAL' and old_item.source_so:
+                so_id = old_item.source_so_id
+                if so_id not in so_balance:
+                    so_balance[so_id] = old_item.source_so.get_virtual_balance()
+                so_balance[so_id] += old_item.tonnage
+            elif old_item.source_type == 'PHYSICAL':
+                key = old_item.jenis_pupuk_id
+                if key not in physical_balance:
+                    agg = StockCard.objects.filter(jenis_pupuk_id=key, stock_type='PHYSICAL').aggregate(
+                        total_in=Sum('qty_in'), total_out=Sum('qty_out'))
+                    physical_balance[key] = (agg['total_in'] or Decimal('0')) - (agg['total_out'] or Decimal('0'))
+                physical_balance[key] += old_item.tonnage
+
+            # Quota: only add back if same kios and year
+            if old_kios == kios and old_year == dist_date.year:
+                qkey = (old_item.jenis_pupuk_id, dist_date.year)
+                if qkey not in quota_balance:
+                    alloc = KiosAllocation.objects.filter(
+                        kios=kios, jenis_pupuk_id=old_item.jenis_pupuk_id, year=dist_date.year
+                    ).first()
+                    if alloc:
+                        quota_balance[qkey] = alloc.quota_remaining
+                if qkey in quota_balance:
+                    quota_balance[qkey] += old_item.tonnage
 
     for item in items_clean:
         jenis = item['jenis_pupuk']
@@ -376,6 +496,126 @@ def distribution_create(request):
         'formset': formset,
         'open_order_items': open_order_items,
         'so_data_json': json.dumps(so_data_map),
+    })
+
+
+@login_required
+@user_passes_test(lambda u: u.is_superuser)
+def distribution_edit(request, pk):
+    """Edit Distribusi / Surat Jalan (superadmin only)."""
+    dist = get_object_or_404(Distribution, pk=pk)
+    kab = get_scope_kabupaten(request)
+
+    # SO queryset: open SOs + SOs already referenced by this distribution's items
+    used_so_ids = list(dist.items.filter(source_so__isnull=False).values_list('source_so_id', flat=True))
+    so_qs = SalesOrder.objects.filter(is_closed=False)
+    if used_so_ids:
+        so_qs = so_qs | SalesOrder.objects.filter(pk__in=used_so_ids)
+    so_qs = so_qs.distinct()
+    if kab:
+        so_qs = so_qs.filter(allocations__kecamatan__kabupaten=kab).distinct()
+
+    # Snapshot existing items for edit-mode validation offset
+    existing_items = list(dist.items.select_related('jenis_pupuk', 'source_so').all())
+
+    if request.method == 'POST':
+        form = DistributionForm(request.POST, instance=dist)
+        kios_selected = form.data.get('kios') or None
+        formset = DistributionItemFormSet(request.POST, prefix='items', instance=dist, kios=kios_selected)
+        if kab:
+            form.fields['kios'].queryset = Kios.objects.filter(is_active=True, kecamatan__kabupaten=kab)
+        for f in formset.forms:
+            f.fields['source_so'].queryset = so_qs
+
+        if form.is_valid() and formset.is_valid():
+            items_clean = []
+            for f in formset.cleaned_data:
+                if not f or f.get('DELETE'):
+                    continue
+                if not any([f.get('jenis_pupuk'), f.get('source_type'), f.get('source_so'), f.get('order_item'), f.get('tonnage')]):
+                    continue
+                items_clean.append(f)
+            if not items_clean:
+                messages.error(request, "Minimal satu item pupuk diperlukan.")
+            else:
+                try:
+                    validate_distribution_items(
+                        form.cleaned_data['kios'],
+                        form.cleaned_data['date'],
+                        items_clean,
+                        existing_items=existing_items,
+                    )
+                except ValidationError as exc:
+                    messages.error(request, exc.message)
+                else:
+                    try:
+                        # Snapshot kios/year SEBELUM form.save() mengubah instance
+                        old_kios_id = dist.kios_id
+                        old_year = dist.date.year
+
+                        with transaction.atomic():
+                            dist_obj = form.save(commit=False)
+                            first = items_clean[0]
+                            dist_obj.source_type = first['source_type']
+                            dist_obj.jenis_pupuk = first['jenis_pupuk']
+                            dist_obj.tonnage = sum(i['tonnage'] for i in items_clean)
+                            dist_obj.source_so = first.get('source_so')
+                            dist_obj.save()
+                            formset.save()
+
+                            # ── KOREKSI KUOTA: Jika kios atau tahun berubah ──
+                            # Signal per-item menggunakan distribution.kios (baru)
+                            # untuk restore kuota lama — ini salah jika kios berubah.
+                            # Koreksi: transfer kuota dari kios/tahun baru ke lama.
+                            new_kios_id = dist_obj.kios_id
+                            new_year = dist_obj.date.year
+                            if old_kios_id != new_kios_id or old_year != new_year:
+                                for old_item in existing_items:
+                                    jid = old_item.jenis_pupuk_id
+                                    # Kembalikan ke alokasi kios/tahun LAMA
+                                    alloc_old = KiosAllocation.objects.select_for_update().filter(
+                                        kios_id=old_kios_id, jenis_pupuk_id=jid, year=old_year
+                                    ).first()
+                                    if alloc_old:
+                                        alloc_old.quota_remaining += old_item.tonnage
+                                        alloc_old.save(update_fields=['quota_remaining'])
+                                    # Balik koreksi salah di alokasi kios/tahun BARU
+                                    alloc_new = KiosAllocation.objects.select_for_update().filter(
+                                        kios_id=new_kios_id, jenis_pupuk_id=jid, year=new_year
+                                    ).first()
+                                    if alloc_new:
+                                        alloc_new.quota_remaining -= old_item.tonnage
+                                        alloc_new.save(update_fields=['quota_remaining'])
+                        messages.success(request, f"Surat Jalan {dist.no_surat_jalan} berhasil diperbarui.")
+                        return redirect('distribution_list')
+                    except IntegrityError:
+                        messages.error(request, "Kuota atau stok tidak mencukupi. Silakan coba lagi.")
+                    except Exception as e:
+                        messages.error(request, f"Gagal Simpan: {e}")
+        else:
+            messages.error(request, "Form tidak valid. Periksa kolom yang bertanda merah.")
+    else:
+        form = DistributionForm(instance=dist)
+        formset = DistributionItemFormSet(prefix='items', instance=dist, kios=dist.kios_id)
+        if kab:
+            form.fields['kios'].queryset = Kios.objects.filter(is_active=True, kecamatan__kabupaten=kab)
+        for f in formset.forms:
+            f.fields['source_so'].queryset = so_qs
+
+    # SO data map for JS
+    so_data_map = {}
+    for so in so_qs.select_related('jenis_pupuk'):
+        so_data_map[str(so.id)] = {
+            'jenis_id': str(so.jenis_pupuk_id),
+            'balance': str(so.get_virtual_balance()),
+        }
+
+    return render(request, 'gudang/distribution_form.html', {
+        'form': form,
+        'formset': formset,
+        'open_order_items': [],
+        'so_data_json': json.dumps(so_data_map),
+        'edit_mode': True,
     })
 
 # ==========================================
@@ -615,7 +855,7 @@ def stock_card_export_physical(request):
             'balance': running[key],
         })
 
-    company = CompanyProfile.objects.first()
+    company = get_company_profile()  # Stock card export uses default profile
     if not company:
         messages.warning(request, "Profil perusahaan belum diatur. Silakan isi di menu Pengaturan.")
     export_date = timezone.now().date()
@@ -715,7 +955,8 @@ def print_surat_jalan(request, pk):
     if kab and dist.kios.kecamatan.kabupaten != kab:
         messages.error(request, "Akses ditolak: surat jalan bukan milik kabupaten Anda.")
         return redirect('distribution_list')
-    company = CompanyProfile.objects.first() # Ambil profil perusahaan
+    dist_kab = dist.kios.kecamatan.kabupaten if dist.kios and dist.kios.kecamatan else None
+    company = get_company_profile(dist_kab)
     if not company:
         messages.warning(request, "Profil perusahaan belum diatur. Silakan isi di menu Pengaturan.")
     
@@ -811,6 +1052,56 @@ def order_note_create(request):
         'form': form,
         'formset': formset,
         'kios_data': kios_data,
+    })
+
+
+@login_required
+@user_passes_test(lambda u: u.is_superuser)
+def order_note_edit(request, pk):
+    """Edit Catatan Order (superadmin only)."""
+    order = get_object_or_404(OrderNote, pk=pk, is_deleted=False)
+    kab = get_scope_kabupaten(request)
+
+    if request.method == 'POST':
+        form = OrderNoteForm(request.POST, instance=order)
+        formset = OrderNoteItemFormSet(request.POST, prefix='items', instance=order)
+        kios_qs = Kios.objects.filter(is_active=True)
+        if kab:
+            kios_qs = kios_qs.filter(kecamatan__kabupaten=kab)
+        kios_data = list(kios_qs.values('id', 'name', 'kecamatan_id'))
+
+        if form.is_valid() and formset.is_valid():
+            items_clean = [f for f in formset.cleaned_data if f and not f.get('DELETE')]
+            if not items_clean:
+                messages.error(request, "Minimal 1 item pupuk diperlukan.")
+            else:
+                try:
+                    with transaction.atomic():
+                        form.save()
+                        formset.save()
+                    messages.success(request, "Catatan order berhasil diperbarui.")
+                    return redirect('order_note_list')
+                except Exception as exc:
+                    messages.error(request, f"Gagal simpan: {exc}")
+        else:
+            messages.error(request, "Periksa input yang bertanda merah.")
+    else:
+        form = OrderNoteForm(instance=order)
+        formset = OrderNoteItemFormSet(prefix='items', instance=order)
+        kios_qs = Kios.objects.filter(is_active=True)
+        if kab:
+            kios_qs = kios_qs.filter(kecamatan__kabupaten=kab)
+        kios_data = list(kios_qs.values('id', 'name', 'kecamatan_id'))
+
+    if kab:
+        form.fields['kecamatan'].queryset = form.fields['kecamatan'].queryset.filter(kabupaten=kab)
+        form.fields['kios'].queryset = form.fields['kios'].queryset.filter(kecamatan__kabupaten=kab)
+
+    return render(request, 'gudang/order_note_form.html', {
+        'form': form,
+        'formset': formset,
+        'kios_data': kios_data,
+        'edit_mode': True,
     })
 
 

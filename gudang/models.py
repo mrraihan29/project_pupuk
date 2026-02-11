@@ -120,11 +120,12 @@ class WarehouseTransfer(models.Model):
         # Ambil sisa saldo virtual SAAT INI
         remaining = self.source_so.get_virtual_balance()
         
-        # Jika sedang edit data lama, kita harus kembalikan nilai tonnage lama dulu ke saldo
+        # Jika sedang edit data lama, kembalikan tonnage lama HANYA jika SO sama
         if self.pk:
             try:
                 old_record = WarehouseTransfer.objects.get(pk=self.pk)
-                remaining += old_record.tonnage
+                if old_record.source_so_id == self.source_so_id:
+                    remaining += old_record.tonnage
             except WarehouseTransfer.DoesNotExist:
                 pass
             

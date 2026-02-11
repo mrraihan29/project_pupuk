@@ -63,8 +63,16 @@ class DistributionForm(forms.ModelForm):
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        self.fields['armada'].queryset = Armada.objects.filter(is_active=True)
-        self.fields['kios'].queryset = Kios.objects.filter(is_active=True)
+        armada_qs = Armada.objects.filter(is_active=True)
+        kios_qs = Kios.objects.filter(is_active=True)
+        # Edit mode: include current armada/kios even if inactive
+        if self.instance and self.instance.pk:
+            if self.instance.armada_id:
+                armada_qs = armada_qs | Armada.objects.filter(pk=self.instance.armada_id)
+            if self.instance.kios_id:
+                kios_qs = kios_qs | Kios.objects.filter(pk=self.instance.kios_id)
+        self.fields['armada'].queryset = armada_qs.distinct()
+        self.fields['kios'].queryset = kios_qs.distinct()
 
 
 class DistributionItemForm(forms.ModelForm):
@@ -158,8 +166,11 @@ class WarehouseTransferForm(forms.ModelForm):
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        # Hanya tampilkan SO yang belum ditutup (masih ada sisa)
-        self.fields['source_so'].queryset = SalesOrder.objects.filter(is_closed=False)
+        so_qs = SalesOrder.objects.filter(is_closed=False)
+        # Edit mode: include current SO even if closed
+        if self.instance and self.instance.pk and self.instance.source_so_id:
+            so_qs = so_qs | SalesOrder.objects.filter(pk=self.instance.source_so_id)
+        self.fields['source_so'].queryset = so_qs.distinct()
 
 # ==========================================
 # 4. FORM STOCK OPNAME (MANUAL)
@@ -234,7 +245,27 @@ class OrderNoteItemForm(forms.ModelForm):
         ton = self.cleaned_data.get('tonnage')
         if ton is not None and ton <= 0:
             raise ValidationError('Tonase harus lebih dari 0')
+        # Guard: tidak boleh kurangi tonase di bawah jumlah yang sudah dikirim
+        if self.instance and self.instance.pk and ton is not None:
+            delivered = self.instance.delivered_tonnage
+            if ton < delivered:
+                raise ValidationError(
+                    f'Tonase tidak boleh kurang dari {delivered:,.2f} Ton '
+                    f'(sudah terkirim via distribusi).'
+                )
         return ton
+
+    def clean(self):
+        cleaned = super().clean()
+        # Guard: peringatan jika menghapus item yang sudah punya pengiriman
+        if cleaned.get('DELETE') and self.instance and self.instance.pk:
+            delivered = self.instance.delivered_tonnage
+            if delivered > 0:
+                raise ValidationError(
+                    f'Tidak bisa menghapus item yang sudah memiliki pengiriman '
+                    f'({delivered:,.2f} Ton terkirim). Ubah tonase saja.'
+                )
+        return cleaned
 
 
 OrderNoteItemFormSet = inlineformset_factory(

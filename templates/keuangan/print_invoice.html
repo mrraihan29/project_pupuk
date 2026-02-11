@@ -65,7 +65,10 @@
 
     <div class="container">
         <header>
-            <div>
+            <div style="display:flex;align-items:center;gap:15px">
+                {% if company.logo %}
+                <img src="{{ company.logo.url }}" alt="Logo" style="max-height:60px;max-width:120px;object-fit:contain">
+                {% endif %}
                 <h1 class="company-name">{{ company.name|default:"NAMA PERUSAHAAN" }}</h1>
             </div>
             <div class="company-info">

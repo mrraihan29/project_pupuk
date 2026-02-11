@@ -102,6 +102,22 @@ def update_stock_from_allocation(sender, instance, **kwargs):
 # ==========================================
 # B. OTOMATISASI TRANSFER -> VIRTUAL OUT & FISIK IN
 # ==========================================
+@receiver(pre_save, sender=WarehouseTransfer)
+def cache_old_transfer(sender, instance, **kwargs):
+    """Cache state lama Transfer agar post_save bisa recompute SO/jenis lama."""
+    if not instance.pk:
+        instance._old_trf_state = None
+    else:
+        try:
+            old = WarehouseTransfer.objects.get(pk=instance.pk)
+            instance._old_trf_state = {
+                'source_so_id': old.source_so_id,
+                'jenis_id': old.source_so.jenis_pupuk_id if old.source_so else None,
+            }
+        except WarehouseTransfer.DoesNotExist:
+            instance._old_trf_state = None
+
+
 @receiver(post_save, sender=WarehouseTransfer)
 def update_stock_from_transfer(sender, instance, created, **kwargs):
     """
@@ -147,6 +163,16 @@ def update_stock_from_transfer(sender, instance, created, **kwargs):
                 'qty_out': 0,
             }
         )
+
+    # Recompute OLD SO/jenis jika source_so berubah
+    prev_trf = getattr(instance, '_old_trf_state', None)
+    if prev_trf and prev_trf['source_so_id'] != instance.source_so_id:
+        if prev_trf['jenis_id']:
+            recompute_stock_balance(prev_trf['jenis_id'], 'VIRTUAL')
+            recompute_stock_balance(prev_trf['jenis_id'], 'PHYSICAL')
+        old_so = SalesOrder.objects.filter(pk=prev_trf['source_so_id']).first()
+        if old_so:
+            update_so_closure(old_so)
 
     recompute_stock_balance(instance.source_so.jenis_pupuk_id, 'VIRTUAL')
     recompute_stock_balance(instance.source_so.jenis_pupuk_id, 'PHYSICAL')
@@ -325,6 +351,10 @@ def cache_old_distribution_item(sender, instance, **kwargs):
     # === PRICE LOCKING: Isi harga snapshot saat pertama kali disimpan ===
     # Harga di-lock saat transaksi dibuat agar laporan historis tidak berubah
     # ketika master price diupdate di kemudian hari.
+    # EDIT FIX: Jika jenis_pupuk berubah, reset snapshot agar harga baru terisi.
+    if instance._old_state and instance.jenis_pupuk_id != instance._old_state['jenis_id']:
+        instance.price_sell_snapshot = None
+        instance.price_buy_snapshot = None
     if instance.price_sell_snapshot is None or instance.price_buy_snapshot is None:
         kab = getattr(
             getattr(instance.distribution.kios, 'kecamatan', None),

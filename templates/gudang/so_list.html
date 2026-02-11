@@ -33,6 +33,7 @@
                         <th>Awal (Ton)</th>
                         <th>Sisa Stok (Ton)</th>
                         <th>Status</th>
+                        {% if user.is_superuser %}<th class="text-center">Aksi</th>{% endif %}
                     </tr>
                 </thead>
                 <tbody>
@@ -63,10 +64,17 @@
                                 <span class="badge bg-success">Aktif</span>
                             {% endif %}
                         </td>
+                        {% if user.is_superuser %}
+                        <td class="text-center">
+                            <a href="{% url 'so_edit' item.id %}" class="btn btn-sm btn-outline-primary" title="Edit">
+                                <i class="bi bi-pencil"></i>
+                            </a>
+                        </td>
+                        {% endif %}
                     </tr>
                     {% empty %}
                     <tr>
-                        <td colspan="6" class="text-center py-5 text-muted">
+                        <td colspan="{% if user.is_superuser %}7{% else %}6{% endif %}" class="text-center py-5 text-muted">
                             <i class="bi bi-inbox display-4 d-block mb-3"></i>
                             Belum ada data penebusan SO.
                         </td>

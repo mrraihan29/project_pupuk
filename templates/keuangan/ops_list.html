@@ -57,7 +57,9 @@
                     </td>
                     <td class="text-center">
                         {% if item.status == 'PROSES' %}
+                            {% if user.is_superuser %}
                             <a href="{% url 'ops_edit' item.id %}" class="btn btn-sm btn-outline-primary" title="Edit"><i class="bi bi-pencil"></i></a>
+                            {% endif %}
                             <form action="{% url 'ops_approve' item.id %}" method="post" class="d-inline">
                                 {% csrf_token %}
                                 <button type="submit" class="btn btn-sm btn-success" title="Setujui" onclick="return confirm('Setujui pengeluaran ini?')"><i class="bi bi-check"></i></button>

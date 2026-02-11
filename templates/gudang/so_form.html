@@ -7,7 +7,7 @@
     <div class="col-md-10">
         <div class="card shadow-sm border-0">
             <div class="card-header bg-primary text-white d-flex justify-content-between align-items-center">
-                <h5 class="mb-0"><i class="bi bi-cart-plus me-2"></i>Input Penebusan Baru (SO)</h5>
+                <h5 class="mb-0"><i class="bi bi-{% if edit_mode %}pencil{% else %}cart-plus{% endif %} me-2"></i>{% if edit_mode %}Edit Penebusan (SO){% else %}Input Penebusan Baru (SO){% endif %}</h5>
                 <span class="badge bg-white text-primary fs-6">Total: <span id="total_display">0</span> Ton</span>
             </div>
             
@@ -91,7 +91,7 @@
 
                     <div class="d-grid gap-2 mt-4">
                         <button type="submit" class="btn btn-primary btn-lg">
-                            <i class="bi bi-save me-2"></i>SIMPAN DATA PENEBUSAN
+                            <i class="bi bi-save me-2"></i>{% if edit_mode %}PERBARUI DATA PENEBUSAN{% else %}SIMPAN DATA PENEBUSAN{% endif %}
                         </button>
                         <a href="{% url 'so_list' %}" class="btn btn-light text-muted">Batal</a>
                     </div>

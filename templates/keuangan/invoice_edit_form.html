@@ -1,0 +1,57 @@
+{% extends 'base.html' %}
+{% load humanize %}
+{% load keuangan_filters %}
+
+{% block page_title %}Edit Invoice{% endblock %}
+
+{% block content %}
+<div class="row justify-content-center">
+    <div class="col-md-6">
+        <div class="card shadow border-0">
+            <div class="card-header bg-primary text-white">
+                <h5 class="mb-0"><i class="bi bi-pencil me-2"></i>Edit Invoice</h5>
+            </div>
+            <div class="card-body p-4">
+                {% if form.errors %}
+                    <div class="alert alert-danger">
+                        <div class="fw-bold mb-1">Periksa input:</div>
+                        <ul class="mb-0 small">
+                            {% for field in form %}
+                                {% for err in field.errors %}
+                                    <li>{{ field.label }}: {{ err }}</li>
+                                {% endfor %}
+                            {% endfor %}
+                        </ul>
+                    </div>
+                {% endif %}
+
+                <div class="alert alert-info">
+                    <strong>{{ invoice.inv_number }}</strong><br>
+                    Kios: {{ invoice.distribution.kios.name }}<br>
+                    Total Tagihan: Rp {{ invoice.total_amount|rupiah }}<br>
+                    Status: {{ invoice.get_status_display }}
+                </div>
+
+                <form method="post">
+                    {% csrf_token %}
+                    <div class="mb-3">
+                        <label class="form-label fw-bold">Tanggal Terbit</label>
+                        {{ form.issue_date }}
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label fw-bold">Tanggal Jatuh Tempo</label>
+                        {{ form.due_date }}
+                    </div>
+
+                    <div class="d-grid gap-2">
+                        <button type="submit" class="btn btn-primary btn-lg">
+                            <i class="bi bi-save me-2"></i>Perbarui Invoice
+                        </button>
+                        <a href="{% url 'invoice_list' %}" class="btn btn-light">Batal</a>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

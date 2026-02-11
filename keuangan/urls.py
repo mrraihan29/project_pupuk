@@ -4,8 +4,10 @@ from . import views
 urlpatterns = [
     # INVOICE & PAYMENT
     path('invoice/', views.invoice_list, name='invoice_list'),
+    path('invoice/<int:pk>/edit/', views.invoice_edit, name='invoice_edit'),
     path('invoice/<int:pk>/pay/', views.payment_create, name='payment_create'),
     path('invoice/<int:pk>/print/', views.print_invoice, name='print_invoice'),
+    path('payment/<int:pk>/edit/', views.payment_edit, name='payment_edit'),
     path('payment/<int:pk>/void/', views.payment_void, name='payment_void'),
 
     # BIAYA OPERASIONAL (LIST, CREATE & EDIT)

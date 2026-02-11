@@ -7,9 +7,10 @@
     <div class="col-md-8">
         <div class="card shadow border-0">
             <div class="card-header bg-warning text-dark">
-                <h5 class="mb-0"><i class="bi bi-box-seam me-2"></i>Tarik Stok (Virtual ke Fisik)</h5>
+                <h5 class="mb-0"><i class="bi bi-{% if edit_mode %}pencil{% else %}box-seam{% endif %} me-2"></i>{% if edit_mode %}Edit Transfer Gudang{% else %}Tarik Stok (Virtual ke Fisik){% endif %}</h5>
             </div>
             <div class="card-body p-4">
+                {% if not edit_mode %}
                 <div class="alert alert-info d-flex align-items-center" role="alert">
                     <i class="bi bi-info-circle-fill me-2 fs-4"></i>
                     <div>
@@ -17,6 +18,7 @@
                         Pastikan truk pembawa pupuk sudah tiba di gudang.
                     </div>
                 </div>
+                {% endif %}
 
                 <form method="post">
                     {% csrf_token %}
@@ -71,7 +73,7 @@
 
                     <div class="d-grid gap-2 mt-4">
                         <button type="submit" class="btn btn-warning btn-lg text-dark fw-bold">
-                            <i class="bi bi-download me-2"></i>PROSES MASUK GUDANG
+                            <i class="bi bi-{% if edit_mode %}save{% else %}download{% endif %} me-2"></i>{% if edit_mode %}PERBARUI DATA TRANSFER{% else %}PROSES MASUK GUDANG{% endif %}
                         </button>
                         <a href="{% url 'transfer_list' %}" class="btn btn-light">Batal</a>
                     </div>

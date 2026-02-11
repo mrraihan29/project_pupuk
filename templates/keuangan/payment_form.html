@@ -2,14 +2,14 @@
 {% load humanize %}
 {% load keuangan_filters %}
 
-{% block page_title %}Input Pembayaran{% endblock %}
+{% block page_title %}{% if edit_mode %}Edit{% else %}Input{% endif %} Pembayaran{% endblock %}
 
 {% block content %}
 <div class="row justify-content-center">
     <div class="col-md-6">
         <div class="card shadow border-0">
             <div class="card-header bg-primary text-white">
-                <h5 class="mb-0">Input Pembayaran</h5>
+                <h5 class="mb-0">{% if edit_mode %}Edit{% else %}Input{% endif %} Pembayaran</h5>
             </div>
             <div class="card-body p-4">
                 {% if form.errors %}
@@ -60,7 +60,7 @@
                     </div>
                     
                     <div class="d-grid gap-2">
-                        <button type="submit" class="btn btn-primary btn-lg">Simpan Pembayaran</button>
+                        <button type="submit" class="btn btn-primary btn-lg">{% if edit_mode %}Perbarui{% else %}Simpan{% endif %} Pembayaran</button>
                         <a href="{% url 'invoice_list' %}" class="btn btn-light">Batal</a>
                     </div>
                 </form>

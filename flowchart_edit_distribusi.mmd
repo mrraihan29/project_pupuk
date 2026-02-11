@@ -1,0 +1,207 @@
+%% ============================================================
+%% FLOWCHART EDIT DISTRIBUSI (SURAT JALAN)
+%% Dokumen analisis integritas data saat edit distribusi
+%% ============================================================
+%% File ini berisi 3 diagram:
+%% 1. MAIN FLOW — Alur lengkap proses edit
+%% 2. CONTOH KONKRET — Skenario edit 10 → 8 Ton
+%% 3. DAMPAK PER ENTITAS — Apa yang berubah di setiap tabel
+%% ============================================================
+
+%% ============================================================
+%% DIAGRAM 1: MAIN FLOW — Alur Lengkap Edit Distribusi
+%% ============================================================
+
+flowchart TD
+    START(["👤 Superadmin klik tombol Edit<br/>di halaman Distribusi"])
+    START --> LOAD["📥 <b>Load Data</b><br/>Distribution + existing items<br/>Snapshot: old_kios_id, old_year"]
+
+    LOAD --> FORM["📝 User mengubah data<br/>(kios, tanggal, armada, item pupuk)"]
+    FORM --> SUBMIT{{"Submit Form"}}
+
+    SUBMIT --> VALID_FORM{"Form & Formset<br/>valid?"}
+    VALID_FORM -- "❌ Tidak" --> ERR_FORM["Tampilkan error validasi<br/>Kembali ke form"]
+
+    VALID_FORM -- "✅ Ya" --> VALID_STOCK["<b>validate_distribution_items</b><br/>Cek stok virtual, fisik, kuota<br/>dengan offset existing_items"]
+    VALID_STOCK -- "❌ Gagal" --> ERR_STOCK["Tampilkan pesan error<br/>(stok/kuota tidak cukup)"]
+
+    VALID_STOCK -- "✅ Lulus" --> SNAPSHOT["📸 Snapshot Sebelum Save:<br/>old_kios_id = dist.kios_id<br/>old_year = dist.date.year"]
+
+    SNAPSHOT --> ATOMIC["🔒 <b>BEGIN transaction.atomic()</b>"]
+
+    subgraph TX ["🔒 TRANSAKSI ATOMIC — Semua atau Tidak Sama Sekali"]
+        direction TB
+
+        ATOMIC --> SAVE_HDR["<b>1. SAVE HEADER</b><br/>Distribution.save()"]
+
+        SAVE_HDR --> SIG_PRE_DIST["⚡ Signal: <b>pre_save Distribution</b><br/>Cache _old_dist_state<br/>(old kios, jenis, tonnage, SO)"]
+        SIG_PRE_DIST --> SIG_POST_DIST["⚡ Signal: <b>post_save Distribution</b><br/>✓ update_stock_from_distribution → <b>SKIP</b><br/>(items.exists = True, per-item aktif)<br/>✓ create_invoice_automatis → <b>QUEUE on_commit</b>"]
+
+        SIG_POST_DIST --> SAVE_ITEMS["<b>2. SAVE ITEMS</b><br/>formset.save()"]
+
+        SAVE_ITEMS --> BRANCH{"Jenis Perubahan<br/>per Item"}
+
+        %% ── MODIFIED ITEM ──
+        BRANCH --> MOD["✏️ <b>Item DIUBAH</b><br/>(tonase/jenis/SO berubah)"]
+        MOD --> MOD_PRE["⚡ pre_save DistributionItem:<br/>1. Cache old_state (jenis, ton, source)<br/>2. Jika jenis berubah → reset price snapshot<br/>3. Isi price snapshot dari master harga"]
+        MOD_PRE --> MOD_POST["⚡ post_save DistributionItem:<br/>1. Update StockCard (update_or_create)<br/>2. Restore old kuota: +old_ton<br/>3. Apply new kuota: -new_ton<br/>4. recompute_stock_balance<br/>5. update_so_closure (jika Virtual)"]
+
+        %% ── DELETED ITEM ──
+        BRANCH --> DEL["🗑️ <b>Item DIHAPUS</b>"]
+        DEL --> DEL_POST["⚡ post_delete DistributionItem:<br/>1. Hapus StockCard (3 kartu per item)<br/>2. Restore kuota: +tonnage<br/>3. recompute_stock_balance<br/>4. update_so_closure (jika Virtual)"]
+
+        %% ── NEW ITEM ──
+        BRANCH --> NEW["➕ <b>Item BARU</b>"]
+        NEW --> NEW_PRE["⚡ pre_save DistributionItem:<br/>1. old_state = None (baru)<br/>2. Isi price snapshot dari master harga"]
+        NEW_PRE --> NEW_POST["⚡ post_save DistributionItem:<br/>1. Create StockCard baru<br/>2. Validasi stok cukup (safety net)<br/>3. Apply kuota: -tonnage<br/>4. recompute_stock_balance<br/>5. update_so_closure (jika Virtual)"]
+
+        %% ── UNCHANGED ITEM ──
+        BRANCH --> UNCH["⏸️ <b>Item TIDAK BERUBAH</b><br/>(tidak ada signal yang terpicu)"]
+
+        %% ── QUOTA CORRECTION ──
+        MOD_POST --> CORRECT
+        DEL_POST --> CORRECT
+        NEW_POST --> CORRECT
+        UNCH --> CORRECT
+
+        CORRECT{"Kios atau Tahun<br/>berubah?"}
+        CORRECT -- "Tidak berubah" --> COMMIT["✅ <b>COMMIT</b>"]
+        CORRECT -- "⚠️ Ya, berubah!" --> FIX["🔧 <b>KOREKSI KUOTA</b><br/>Untuk setiap old_item:<br/>• old_kios.quota += tonnage<br/>• new_kios.quota −= tonnage<br/><br/><i>Memperbaiki signal yang salah</i><br/><i>me-restore ke kios/tahun baru</i>"]
+        FIX --> COMMIT
+    end
+
+    COMMIT --> ONCOMMIT["🔄 <b>After COMMIT (on_commit)</b><br/>_upsert_invoice():<br/>• Hitung ulang total dari semua items<br/>• Update issue_date = pkp_date<br/>• Update due_date = pkp_date + 3 hari"]
+
+    ONCOMMIT --> SUCCESS(["✅ Redirect ke list<br/>Pesan: Surat Jalan berhasil diperbarui"])
+%% ============================================================
+%% DIAGRAM 2: CONTOH KONKRET — Edit 10 Ton → 8 Ton (Sumber Fisik)
+%% ============================================================
+%% Untuk render diagram ini, salin ke editor Mermaid terpisah
+
+%% ```mermaid
+%% sequenceDiagram
+%%     autonumber
+%%     participant U as 👤 Superadmin
+%%     participant V as 🖥️ View
+%%     participant PS as ⚡ pre_save Signal
+%%     participant S as ⚡ post_save Signal
+%%     participant SC as 📊 StockCard
+%%     participant Q as 📋 Kuota Kios
+%%     participant I as 💰 Invoice
+%%
+%%     Note over SC,Q: ═══ SEBELUM EDIT ═══
+%%     Note over SC: Physical OUT = 10 Ton
+%%     Note over Q: quota_remaining = 20<br/>(awalnya 30, sudah terpotong 10)
+%%     Note over I: total_amount = 10 × Rp50.000 = Rp500.000
+%%
+%%     U->>V: Edit: tonnage 10 → 8 Ton
+%%     V->>V: validate_distribution_items<br/>(stok fisik + offset +10 = cukup ✓)
+%%
+%%     rect rgb(240, 248, 255)
+%%         Note over V,I: 🔒 transaction.atomic()
+%%         V->>V: Snapshot old_kios_id
+%%         V->>V: Distribution.save() (header)
+%%
+%%         V->>PS: DistributionItem.save()
+%%         PS->>PS: Cache old_state<br/>{tonnage: 10, jenis: NPK}
+%%         PS->>PS: Price snapshot tetap<br/>(jenis tidak berubah)
+%%
+%%         PS->>S: post_save fired
+%%         S->>SC: update_or_create StockCard<br/>qty_out: 10 → 8
+%%         S->>SC: recompute_stock_balance<br/>Balance: −10 → −8
+%%         S->>Q: Restore old: quota += 10<br/>(20 + 10 = 30)
+%%         S->>Q: Apply new: quota −= 8<br/>(30 − 8 = 22)
+%%
+%%         V->>V: Kios berubah? Tidak → skip koreksi
+%%     end
+%%
+%%     V->>I: on_commit: _upsert_invoice
+%%     I->>I: Hitung ulang total<br/>= 8 × Rp50.000 = Rp400.000
+%%
+%%     Note over SC,Q: ═══ SETELAH EDIT ═══
+%%     Note over SC: Physical OUT = 8 Ton ✅<br/>Balance = −8 ✅
+%%     Note over Q: quota_remaining = 22 ✅<br/>(+2 kembali ke kuota)
+%%     Note over I: total_amount = Rp400.000 ✅<br/>(turun Rp100.000)
+%% ```
+
+%% ============================================================
+%% DIAGRAM 3: DAMPAK PER ENTITAS — Tabel Referensi
+%% ============================================================
+%% Untuk render diagram ini, salin ke editor Mermaid terpisah
+
+%% ```mermaid
+%% flowchart LR
+%%     subgraph ENTITIES ["DAMPAK EDIT DISTRIBUSI KE SETIAP ENTITAS"]
+%%         direction TB
+%%
+%%         SC["📊 <b>StockCard (Kartu Stok)</b><br/>─────────────────────<br/>✅ AMAN via update_or_create<br/>per reference_number unik<br/>─────────────────────<br/>• Item diubah → StockCard di-update<br/>• Item dihapus → StockCard dihapus<br/>• Item baru → StockCard dibuat<br/>• recompute_stock_balance dipanggil"]
+%%
+%%         QK["📋 <b>Kuota Kios (KiosAllocation)</b><br/>─────────────────────<br/>✅ AMAN + Koreksi View-level<br/>─────────────────────<br/>• Item diubah → +old −new (net delta)<br/>• Item dihapus → +tonnage (restore)<br/>• Item baru → −tonnage (potong)<br/>• Kios berubah → koreksi transfer<br/>  kuota dari kios lama ke baru"]
+%%
+%%         IV["💰 <b>Invoice</b><br/>─────────────────────<br/>✅ AMAN via on_commit<br/>─────────────────────<br/>• Total dihitung ulang dari SEMUA items<br/>• issue_date = pkp_date<br/>• due_date = pkp_date + 3 hari<br/>• total_paid TIDAK berubah<br/>• status auto-update"]
+%%
+%%         SO["🏭 <b>SO Balance (Virtual)</b><br/>─────────────────────<br/>✅ AMAN via recompute + closure<br/>─────────────────────<br/>• StockCard Virtual OUT di-update<br/>• recompute_stock_balance<br/>• update_so_closure: auto open/close"]
+%%
+%%         PS["💲 <b>Price Snapshot</b><br/>─────────────────────<br/>✅ AMAN + Fix jenis berubah<br/>─────────────────────<br/>• Jenis tetap → snapshot terjaga<br/>• Jenis berubah → snapshot di-reset<br/>  dan diisi ulang dari master harga"]
+%%
+%%         AR["🚛 <b>Armada Snapshot</b><br/>─────────────────────<br/>✅ AMAN via Distribution.save()<br/>─────────────────────<br/>• driver_name_snapshot di-refresh<br/>• nopol_snapshot di-refresh"]
+%%
+%%         SJ["📄 <b>No. Surat Jalan</b><br/>─────────────────────<br/>✅ AMAN — tidak berubah<br/>─────────────────────<br/>• Hanya dibuat saat pertama kali<br/>• Edit tidak mengubah nomor SJ"]
+%%     end
+%% ```
+
+%% ============================================================
+%% DIAGRAM 4: EDGE CASE — Edit dengan Perubahan Kios
+%% ============================================================
+%% Skenario: Distribusi dari Kios A diubah ke Kios B
+%% Items: NPK 10 Ton (modified → 8), SP36 5 Ton (deleted), ZA 3 Ton (new)
+%%
+%% Tanpa koreksi (BUG):
+%%   Signal restore +10 NPK ke Kios B (salah!)
+%%   Signal restore +5 SP36 ke Kios B (salah!)
+%%   Signal deduct −8 NPK dari Kios B ✓
+%%   Signal deduct −3 ZA dari Kios B ✓
+%%   Kios A: kuota TIDAK dikembalikan (BUG!)
+%%
+%% Dengan koreksi view-level:
+%%   Setelah signal, untuk tiap old_item:
+%%   Kios A NPK: +10 (restore benar)
+%%   Kios A SP36: +5 (restore benar)
+%%   Kios B NPK: −10 (balik restore salah)
+%%   Kios B SP36: −5 (balik restore salah)
+%%
+%%   Hasil akhir Kios B:
+%%     NPK: +10(signal) −8(signal) −10(koreksi) = −8 ✅
+%%     SP36: +5(signal) −5(koreksi) = 0 ✅
+%%     ZA: −3(signal) = −3 ✅
+%%   Hasil akhir Kios A:
+%%     NPK: +10(koreksi) → restored ✅
+%%     SP36: +5(koreksi) → restored ✅
+
+%% ============================================================
+%% CATATAN TEKNIS
+%% ============================================================
+%%
+%% 1. VALIDATE_DISTRIBUTION_ITEMS (Edit Mode)
+%%    - Menerima parameter existing_items (data item sebelum edit)
+%%    - Stok virtual/fisik: selalu di-offset (+old tonnage) karena stok bersifat global
+%%    - Kuota kios: hanya di-offset jika kios DAN tahun sama
+%%      (jika kios beda, kuota kios baru dicek fresh — belum terpotong)
+%%
+%% 2. SIGNAL ARCHITECTURE
+%%    - pre_save DistributionItem: cache old_state + price locking
+%%    - post_save DistributionItem: StockCard + kuota + balance + SO closure
+%%    - post_delete DistributionItem: cleanup StockCard + restore kuota + balance
+%%    - post_save Distribution: SKIP jika items.exists() + queue invoice on_commit
+%%    - Semua operasi dalam transaction.atomic() di view
+%%
+%% 3. PRICE LOCKING
+%%    - Harga di-snapshot saat item pertama kali disimpan
+%%    - Perubahan master harga di kemudian hari TIDAK mengubah laporan historis
+%%    - EXCEPTION: jika superadmin mengubah jenis_pupuk saat edit,
+%%      snapshot di-reset dan diisi ulang dari master harga yang berlaku
+%%
+%% 4. PROTEKSI AKSES
+%%    - Semua view edit dilindungi @user_passes_test(lambda u: u.is_superuser)
+%%    - Tombol edit hanya muncul untuk superadmin di template
+%%    - Admin kabupaten TIDAK bisa mengedit transaksi

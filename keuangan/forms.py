@@ -1,5 +1,5 @@
 from django import forms
-from .models import Payment, BiayaOperasional
+from .models import Payment, Invoice, BiayaOperasional
 from decimal import Decimal
 # ==========================================
 # 1. FORM PEMBAYARAN (INVOICE)
@@ -44,6 +44,25 @@ class PaymentForm(forms.ModelForm):
 # ==========================================
 # 2. FORM BIAYA OPERASIONAL
 # ==========================================
+class InvoiceEditForm(forms.ModelForm):
+    """Form untuk superadmin mengedit tanggal invoice."""
+    class Meta:
+        model = Invoice
+        fields = ['issue_date', 'due_date']
+        widgets = {
+            'issue_date': forms.DateInput(attrs={'class': 'form-control', 'type': 'date'}),
+            'due_date': forms.DateInput(attrs={'class': 'form-control', 'type': 'date'}),
+        }
+
+    def clean(self):
+        cleaned = super().clean()
+        issue = cleaned.get('issue_date')
+        due = cleaned.get('due_date')
+        if issue and due and due < issue:
+            raise forms.ValidationError("Tanggal jatuh tempo tidak boleh sebelum tanggal terbit.")
+        return cleaned
+
+
 class BiayaOperasionalForm(forms.ModelForm):
     class Meta:
         model = BiayaOperasional

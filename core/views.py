@@ -887,18 +887,44 @@ def setup_company_profile(request):
     if not _staff_required(request):
         return setup_forbidden(request)
 
-    profile, _ = CompanyProfile.objects.get_or_create(pk=1)
+    kab_list = Kabupaten.objects.filter(is_active=True).order_by('name')
+    selected_kab_id = request.GET.get('kabupaten') or request.POST.get('kabupaten_id')
+    selected_kab = None
+
+    if selected_kab_id:
+        selected_kab = Kabupaten.objects.filter(pk=selected_kab_id, is_active=True).first()
+
+    if selected_kab:
+        # Profil per-kabupaten
+        profile, _ = CompanyProfile.objects.get_or_create(kabupaten=selected_kab)
+    else:
+        # Profil default (fallback)
+        profile, _ = CompanyProfile.objects.get_or_create(kabupaten__isnull=True, defaults={})
+
     if request.method == 'POST':
         form = CompanyProfileForm(request.POST, request.FILES, instance=profile)
         if form.is_valid():
-            form.save()
-            messages.success(request, "Profil perusahaan diperbarui.")
-            return redirect('setup_company_profile')
+            obj = form.save(commit=False)
+            if selected_kab:
+                obj.kabupaten = selected_kab
+            else:
+                obj.kabupaten = None
+            obj.save()
+            suffix = f" ({selected_kab.name})" if selected_kab else " (Default)"
+            messages.success(request, f"Profil perusahaan{suffix} diperbarui.")
+            url = 'setup_company_profile'
+            if selected_kab:
+                return redirect(f"{reverse(url)}?kabupaten={selected_kab.pk}")
+            return redirect(url)
         messages.error(request, "Periksa kembali input Anda.")
     else:
         form = CompanyProfileForm(instance=profile)
 
-    return render(request, 'setup/company_profile.html', {'form': form})
+    return render(request, 'setup/company_profile.html', {
+        'form': form,
+        'kab_list': kab_list,
+        'selected_kabupaten': selected_kab,
+    })
 
 
 @login_required

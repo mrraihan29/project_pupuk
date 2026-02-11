@@ -2,15 +2,37 @@
 {% block page_title %}Profil Perusahaan{% endblock %}
 {% block content %}
 <div class="card shadow-sm border-0">
-  <div class="card-header bg-white d-flex justify-content-between align-items-center">
+  <div class="card-header bg-white d-flex justify-content-between align-items-center flex-wrap gap-2">
     <div>
       <h5 class="mb-0 fw-bold">Profil Perusahaan</h5>
       <small class="text-muted">Isi identitas perusahaan untuk kop surat, invoice, dan dokumen.</small>
     </div>
+    {% if kab_list %}
+    <div class="d-flex align-items-center gap-2">
+      <label class="form-label mb-0 text-muted small">Kabupaten:</label>
+      <select class="form-select form-select-sm" style="min-width:180px"
+              onchange="window.location='?kabupaten='+this.value">
+        <option value="" {% if not selected_kabupaten %}selected{% endif %}>Default (Global)</option>
+        {% for kab in kab_list %}
+        <option value="{{ kab.pk }}" {% if selected_kabupaten and selected_kabupaten.pk == kab.pk %}selected{% endif %}>{{ kab.name }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    {% endif %}
   </div>
   <div class="card-body">
+    {% if selected_kabupaten %}
+    <div class="alert alert-info py-2 mb-3">
+      <i class="bi bi-info-circle me-1"></i>
+      Mengedit profil perusahaan untuk kabupaten <strong>{{ selected_kabupaten.name }}</strong>.
+      Profil ini akan muncul di semua dokumen (invoice, surat jalan) untuk kabupaten ini.
+    </div>
+    {% endif %}
     <form method="post" enctype="multipart/form-data" class="row g-3">
       {% csrf_token %}
+      {% if selected_kabupaten %}
+      <input type="hidden" name="kabupaten_id" value="{{ selected_kabupaten.pk }}">
+      {% endif %}
       <div class="col-md-6">
         <label class="form-label">Nama Perusahaan</label>
         {{ form.name }}
