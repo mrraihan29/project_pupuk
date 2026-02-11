@@ -144,8 +144,8 @@ class Distribution(models.Model):
     2. PHYSICAL: Barang dari Gudang Penyangga dikirim ke Kios.
     """
     SOURCE_CHOICES = [
-        ('VIRTUAL', 'Langsung dari Pabrik (Potong SO)'),
-        ('PHYSICAL', 'Dari Gudang Penyangga (Potong Stok Fisik)'),
+        ('VIRTUAL', 'Langsung dari GPP (Potong SO)'),
+        ('PHYSICAL', 'Gudang PUD (Potong Stok Fisik)'),
     ]
 
     # Identitas Surat Jalan
@@ -333,9 +333,9 @@ class StockCard(models.Model):
     
     TRANSACTION_TYPES = [
         ('IN_SO', 'Penebusan Baru (Virtual In)'),
-        ('OUT_TRF', 'Ditarik ke Gudang (Virtual Out)'),
-        ('IN_TRF', 'Masuk Gudang (Physical In)'),
-        ('IN_DIST_P', 'Distribusi Masuk Gudang (Physical In)'),
+        ('OUT_TRF', 'Pengisian Stok Fisik (Virtual Out)'),
+        ('IN_TRF', 'Pengisian Stok Fisik (Physical In)'),
+        ('IN_DIST_P', 'Pengisian Stok Fisik via Distribusi (Physical In)'),
         ('OUT_DIST_V', 'Distribusi Langsung (Virtual Out)'),
         ('OUT_DIST_P', 'Distribusi Gudang (Physical Out)'),
         ('ADJUST', 'Penyesuaian / Opname'),

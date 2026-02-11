@@ -123,6 +123,11 @@ class DistributionItemForm(forms.ModelForm):
             if jenis and order_item.jenis_pupuk_id != jenis.id:
                 self.add_error('order_item', 'Pesanan berbeda jenis pupuk.')
             remaining = order_item.remaining_tonnage
+            # EDIT FIX: saat edit item yang sudah ada, tonase lama item ini
+            # terhitung dalam "delivered" (remaining=0). Kembalikan agar
+            # validasi memperhitungkan bahwa item ini sendiri akan di-update.
+            if self.instance.pk and self.instance.order_item_id == order_item.id:
+                remaining += (self.instance.tonnage or 0)
             if ton and ton > remaining:
                 self.add_error('tonnage', f'Tonase melebihi sisa pesanan ({remaining} Ton).')
         return data

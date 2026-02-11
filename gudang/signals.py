@@ -143,9 +143,9 @@ def update_stock_from_transfer(sender, instance, created, **kwargs):
                 'jenis_pupuk': instance.source_so.jenis_pupuk,
                 'stock_type': 'VIRTUAL',
                 'transaction_type': 'OUT_TRF',
-                'description': f"Ditarik ke Gudang (SO: {instance.source_so.so_number})",
-                'qty_in': 0,
-                'qty_out': instance.tonnage,
+                'description': f"Pengisian Stok Fisik (SO: {instance.source_so.so_number})",
+                'qty_in': instance.tonnage,
+                'qty_out': 0,
             }
         )
 
@@ -158,7 +158,7 @@ def update_stock_from_transfer(sender, instance, created, **kwargs):
                 'jenis_pupuk': instance.source_so.jenis_pupuk,
                 'stock_type': 'PHYSICAL',
                 'transaction_type': 'IN_TRF',
-                'description': f"Terima dari Pabrik (SO: {instance.source_so.so_number})",
+                'description': f"Pengisian Stok Fisik (SO: {instance.source_so.so_number})",
                 'qty_in': instance.tonnage,
                 'qty_out': 0,
             }
@@ -212,11 +212,11 @@ def update_stock_from_distribution(sender, instance, created, **kwargs):
     if instance.source_type == 'VIRTUAL':
         trans_type = 'OUT_DIST_V'
         stk_type = 'VIRTUAL'
-        desc = f"Kirim Langsung ke {instance.kios.name} (Dari Pabrik)"
+        desc = f"Kirim Langsung ke {instance.kios.name} (Dari GPP)"
     else:
         trans_type = 'OUT_DIST_P'
         stk_type = 'PHYSICAL'
-        desc = f"Kirim ke {instance.kios.name} (Dari Gudang)"
+        desc = f"Kirim ke {instance.kios.name} (Gudang PUD)"
 
     # Gabungkan semua operasi (StockCard + recompute + quota) dalam satu atomic block
     # agar tidak ada inkonsistensi jika salah satu gagal.
@@ -442,7 +442,7 @@ def update_stock_from_distribution_item(sender, instance, created, **kwargs):
                     'jenis_pupuk': instance.jenis_pupuk,
                     'stock_type': 'PHYSICAL',
                     'transaction_type': 'IN_DIST_P',
-                    'description': f"Terima dari Pabrik (SO: {so_number})",
+                    'description': f"Pengisian Stok Fisik (SO: {so_number})",
                     'qty_in': instance.tonnage,
                     'qty_out': 0,
                 }
@@ -456,7 +456,7 @@ def update_stock_from_distribution_item(sender, instance, created, **kwargs):
                     'jenis_pupuk': instance.jenis_pupuk,
                     'stock_type': 'PHYSICAL',
                     'transaction_type': 'OUT_DIST_P',
-                    'description': f"Distribusi ke {dist.kios.name}",
+                    'description': f"Distribusi ke {dist.kios.name} (SO: {so_number})",
                     'qty_in': 0,
                     'qty_out': instance.tonnage,
                 }
@@ -478,7 +478,7 @@ def update_stock_from_distribution_item(sender, instance, created, **kwargs):
                     'jenis_pupuk': instance.jenis_pupuk,
                     'stock_type': 'PHYSICAL',
                     'transaction_type': 'OUT_DIST_P',
-                    'description': f"Distribusi ke {dist.kios.name}",
+                    'description': f"Distribusi ke {dist.kios.name} (Gudang PUD)",
                     'qty_in': 0,
                     'qty_out': instance.tonnage,
                 }
