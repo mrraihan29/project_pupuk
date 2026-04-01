@@ -782,6 +782,9 @@ def _enrich_stock_cards(cards):
         ):
             dist_map[dist.id] = dist
 
+    def _safe_name(obj):
+        return getattr(obj, 'name', '') if obj else ''
+
     # Annotate each card
     for card in cards:
         card.extra_so_number = ''
@@ -797,8 +800,11 @@ def _enrich_stock_cards(cards):
             if item:
                 if item.source_so:
                     card.extra_so_number = item.source_so.so_number
-                card.extra_kios = item.distribution.kios.name
-                card.extra_kecamatan = item.distribution.kios.kecamatan.name
+                dist = getattr(item, 'distribution', None)
+                kios = getattr(dist, 'kios', None)
+                kec = getattr(kios, 'kecamatan', None)
+                card.extra_kios = _safe_name(kios)
+                card.extra_kecamatan = _safe_name(kec)
             continue
 
         m = ref_pattern_sj_legacy.match(ref)
@@ -807,8 +813,10 @@ def _enrich_stock_cards(cards):
             if dist:
                 if dist.source_so:
                     card.extra_so_number = dist.source_so.so_number
-                card.extra_kios = dist.kios.name
-                card.extra_kecamatan = dist.kios.kecamatan.name
+                kios = getattr(dist, 'kios', None)
+                kec = getattr(kios, 'kecamatan', None)
+                card.extra_kios = _safe_name(kios)
+                card.extra_kecamatan = _safe_name(kec)
             continue
 
         m = ref_pattern_trf.match(ref)
