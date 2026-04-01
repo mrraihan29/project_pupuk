@@ -738,7 +738,9 @@ def _enrich_stock_cards(cards):
     ref_pattern_so = re.compile(r'^SO-(\d+)$')
 
     for card in cards:
-        ref = card.reference_number
+        # Data legacy produksi bisa berisi nilai ref kosong/None.
+        # Normalisasi ke string agar regex parser tidak melempar TypeError.
+        ref = str(card.reference_number or '').strip()
         m = ref_pattern_sj_item.match(ref)
         if m:
             dist_item_ids.add(int(m.group(2)))
@@ -786,7 +788,8 @@ def _enrich_stock_cards(cards):
         card.extra_kios = ''
         card.extra_kecamatan = ''
 
-        ref = card.reference_number
+        # Guard untuk data referensi legacy yang kosong/None.
+        ref = str(card.reference_number or '').strip()
 
         m = ref_pattern_sj_item.match(ref)
         if m:
