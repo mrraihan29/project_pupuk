@@ -1,4 +1,6 @@
 {% extends 'base.html' %}
+{% block title %}{% if edit_mode %}Edit{% else %}Input{% endif %} Biaya Operasional{% endblock %}
+
 {% block page_title %}{% if edit_mode %}Edit{% else %}Input{% endif %} Biaya Operasional{% endblock %}
 
 {% block content %}

@@ -1,33 +1,15 @@
 {% extends 'base.html' %}
+
+{% block title %}Master Harga Pupuk{% endblock %}
+
 {% block page_title %}Master Harga Pupuk{% endblock %}
 
 {% block content %}
-<form method="post">
-    {% csrf_token %}
-    {{ formset.management_form }}
-    <div class="row g-3">
-        {% for item in form_items %}
-        <div class="col-md-6">
-            <div class="card shadow-sm border-0 h-100">
-                <div class="card-header text-white fw-bold" style="background: #0d6efd;">
-                    {{ item.jenis.name }} ({{ item.jenis.code }})
-                </div>
-                <div class="card-body">
-                    <div class="mb-3">
-                        <label class="fw-bold">Harga Tebus (Beli) per KG</label>
-                        <div class="input-group">
-                            <span class="input-group-text">Rp</span>
-                            {% extends 'base.html' %}
-                            {% block content %}
-                            <div class="container-fluid py-4">
-                                <div class="d-flex justify-content-between align-items-center mb-3">
-                                    <div>
-                                        <h1 class="h3 mb-1">Master Harga Pupuk</h1>
-                                        <p class="text-muted mb-0">Halaman ini telah digabung ke Master Data Pupuk.</p>
-                                    </div>
-                                    <div>
-                                        <a href="{% url 'master_data_pupuk' %}" class="btn btn-primary">Buka Master Data Pupuk</a>
-                                    </div>
-                                </div>
-                            </div>
-                            {% endblock %}
+<div class="card shadow-sm border-0">
+    <div class="card-body p-4">
+        <h5 class="fw-bold mb-2">Master Harga Pupuk</h5>
+        <p class="text-muted mb-3">Halaman ini telah digabung ke Master Data Pupuk.</p>
+        <a href="{% url 'master_data_pupuk' %}" class="btn btn-primary">Buka Master Data Pupuk</a>
+    </div>
+</div>
+{% endblock %}

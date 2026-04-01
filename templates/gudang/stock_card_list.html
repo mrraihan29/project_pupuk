@@ -1,6 +1,8 @@
 {% extends 'base.html' %}
 {% load humanize %}
 
+{% block title %}Kartu Stok{% endblock %}
+
 {% block page_title %}Kartu Stok{% endblock %}
 
 {% block content %}
@@ -16,31 +18,12 @@
                 <span class="badge bg-light text-dark border fs-6 d-inline-block" style="padding:6px 14px;font-weight:600;border-radius:10px">
                     Sisa Saldo: {{ saldo_akhir|floatformat:2 }} Ton
                 </span>
-                <form method="get" action="{% url 'stock_card_export_physical' %}" class="mt-2 d-flex align-items-end justify-content-end gap-2">
-                    <input type="hidden" name="stock" value="{{ stock_selected }}">
-                    <div>
-                        <label class="form-label mb-1 small text-muted">Bulan</label>
-                        <select name="month" class="form-select form-select-sm" style="min-width:84px">
-                            <option value="1" {% if now|date:"n" == "1" %}selected{% endif %}>Jan</option>
-                            <option value="2" {% if now|date:"n" == "2" %}selected{% endif %}>Feb</option>
-                            <option value="3" {% if now|date:"n" == "3" %}selected{% endif %}>Mar</option>
-                            <option value="4" {% if now|date:"n" == "4" %}selected{% endif %}>Apr</option>
-                            <option value="5" {% if now|date:"n" == "5" %}selected{% endif %}>Mei</option>
-                            <option value="6" {% if now|date:"n" == "6" %}selected{% endif %}>Jun</option>
-                            <option value="7" {% if now|date:"n" == "7" %}selected{% endif %}>Jul</option>
-                            <option value="8" {% if now|date:"n" == "8" %}selected{% endif %}>Agu</option>
-                            <option value="9" {% if now|date:"n" == "9" %}selected{% endif %}>Sep</option>
-                            <option value="10" {% if now|date:"n" == "10" %}selected{% endif %}>Okt</option>
-                            <option value="11" {% if now|date:"n" == "11" %}selected{% endif %}>Nov</option>
-                            <option value="12" {% if now|date:"n" == "12" %}selected{% endif %}>Des</option>
-                        </select>
-                    </div>
-                    <div>
-                        <label class="form-label mb-1 small text-muted">Tahun</label>
-                        <input type="number" name="year" class="form-control form-control-sm" value="{{ now|date:'Y' }}" min="2000" max="2100" style="min-width:84px">
-                    </div>
-                    <button type="submit" class="btn btn-outline-success btn-sm"><i class="bi bi-file-earmark-pdf me-1"></i>Export PDF</button>
-                </form>
+                <div class="mt-2 d-flex align-items-center justify-content-end gap-2">
+                    <button type="button" class="btn btn-outline-success btn-sm" data-bs-toggle="modal" data-bs-target="#stockExportWizardModal">
+                        <i class="bi bi-file-earmark-pdf me-1"></i>Export Wizard
+                    </button>
+                    <span class="small text-muted">Mode aman dengan ringkasan sebelum dokumen final</span>
+                </div>
             </div>
         </div>
     </div>
@@ -241,6 +224,162 @@
     </div>
 </div>
 
+<div class="modal fade" id="stockExportWizardModal" tabindex="-1" aria-labelledby="stockExportWizardModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-xl modal-dialog-scrollable">
+        <div class="modal-content wizard-modal">
+            <div class="modal-header border-0 pb-1">
+                <div>
+                    <h5 class="modal-title" id="stockExportWizardModalLabel">Export Wizard Kartu Stok</h5>
+                    <div class="small text-muted mt-1">Alur aman 3 langkah: filter, preview, lalu finalisasi dokumen resmi.</div>
+                </div>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+
+            <div class="px-4 pt-2 pb-3 wizard-steps" id="wizardSteps">
+                <div class="wizard-step is-active" data-step="1">
+                    <span class="wizard-step-num">1</span>
+                    <div>
+                        <div class="wizard-step-title">Pilih Filter</div>
+                        <div class="wizard-step-desc">Mode, stok, periode, wilayah</div>
+                    </div>
+                </div>
+                <div class="wizard-step" data-step="2">
+                    <span class="wizard-step-num">2</span>
+                    <div>
+                        <div class="wizard-step-title">Review & Preview</div>
+                        <div class="wizard-step-desc">Verifikasi data sebelum final</div>
+                    </div>
+                </div>
+                <div class="wizard-step" data-step="3">
+                    <span class="wizard-step-num">3</span>
+                    <div>
+                        <div class="wizard-step-title">Generate Final</div>
+                        <div class="wizard-step-desc">Unduh PDF resmi</div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="modal-body pt-0">
+                <form id="stockExportWizardForm" data-prepare-url="{% url 'stock_card_export_prepare' %}">
+                    {% csrf_token %}
+
+                    <div class="wizard-panel">
+                        <div class="row g-3">
+                            <div class="col-12">
+                                <label class="form-label mb-2">Mode Export</label>
+                                <div class="d-flex flex-wrap gap-2">
+                                    <div class="form-check wizard-mode-card">
+                                        <input class="form-check-input" type="radio" name="mode" id="wizardModeAll" value="ALL" checked>
+                                        <label class="form-check-label" for="wizardModeAll">Semua Jenis</label>
+                                    </div>
+                                    <div class="form-check wizard-mode-card">
+                                        <input class="form-check-input" type="radio" name="mode" id="wizardModeSingle" value="SINGLE">
+                                        <label class="form-check-label" for="wizardModeSingle">Satu Jenis</label>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div class="col-md-6" id="wizardJenisWrap">
+                                <label class="form-label">Jenis Pupuk</label>
+                                <select name="jenis" id="wizardJenisSelect" class="form-select">
+                                    <option value="">Pilih Jenis Pupuk</option>
+                                    {% for jp in jenis_list %}
+                                    <option value="{{ jp.code }}" {% if jenis_selected == jp.code %}selected{% endif %}>{{ jp.name }} ({{ jp.code }})</option>
+                                    {% endfor %}
+                                </select>
+                            </div>
+
+                            <div class="col-md-6">
+                                <label class="form-label">Jenis Stok</label>
+                                <select name="stock" class="form-select" id="wizardStockSelect">
+                                    <option value="PHYSICAL" {% if stock_selected == 'PHYSICAL' %}selected{% endif %}>Stok Fisik</option>
+                                    <option value="VIRTUAL" {% if stock_selected == 'VIRTUAL' %}selected{% endif %}>Stok Virtual</option>
+                                </select>
+                            </div>
+
+                            <div class="col-md-4">
+                                <label class="form-label">Bulan</label>
+                                <select name="month" class="form-select">
+                                    <option value="1" {% if now|date:"n" == "1" %}selected{% endif %}>Jan</option>
+                                    <option value="2" {% if now|date:"n" == "2" %}selected{% endif %}>Feb</option>
+                                    <option value="3" {% if now|date:"n" == "3" %}selected{% endif %}>Mar</option>
+                                    <option value="4" {% if now|date:"n" == "4" %}selected{% endif %}>Apr</option>
+                                    <option value="5" {% if now|date:"n" == "5" %}selected{% endif %}>Mei</option>
+                                    <option value="6" {% if now|date:"n" == "6" %}selected{% endif %}>Jun</option>
+                                    <option value="7" {% if now|date:"n" == "7" %}selected{% endif %}>Jul</option>
+                                    <option value="8" {% if now|date:"n" == "8" %}selected{% endif %}>Agu</option>
+                                    <option value="9" {% if now|date:"n" == "9" %}selected{% endif %}>Sep</option>
+                                    <option value="10" {% if now|date:"n" == "10" %}selected{% endif %}>Okt</option>
+                                    <option value="11" {% if now|date:"n" == "11" %}selected{% endif %}>Nov</option>
+                                    <option value="12" {% if now|date:"n" == "12" %}selected{% endif %}>Des</option>
+                                </select>
+                            </div>
+
+                            <div class="col-md-4">
+                                <label class="form-label">Tahun</label>
+                                <input type="number" name="year" class="form-control" value="{{ now|date:'Y' }}" min="2000" max="2100">
+                            </div>
+
+                            <div class="col-md-4">
+                                {% if user.is_superuser %}
+                                <label class="form-label">Kabupaten</label>
+                                <select name="kabupaten" class="form-select" required>
+                                    <option value="">Pilih Kabupaten</option>
+                                    {% for kab in kab_options %}
+                                    <option value="{{ kab.id }}" {% if selected_kabupaten == kab.id %}selected{% endif %}>{{ kab.name }}</option>
+                                    {% endfor %}
+                                </select>
+                                {% elif selected_kabupaten %}
+                                <input type="hidden" name="kabupaten" value="{{ selected_kabupaten }}">
+                                <label class="form-label">Kabupaten</label>
+                                <input type="text" class="form-control" value="Scope pengguna aktif" readonly>
+                                {% else %}
+                                <label class="form-label">Kabupaten</label>
+                                <input type="text" class="form-control" value="Belum terhubung ke kabupaten" readonly>
+                                {% endif %}
+                            </div>
+                        </div>
+                    </div>
+
+                    <div id="wizardInfoBox" class="alert alert-info mt-3 mb-0">
+                        Isi filter lalu klik <strong>Cek Ringkasan</strong> untuk lanjut ke tahap review.
+                    </div>
+                    <div id="wizardErrorBox" class="alert alert-danger mt-3 d-none mb-0"></div>
+
+                    <div id="wizardSummaryCard" class="wizard-summary-card mt-3 d-none">
+                        <div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-2">
+                            <div class="fw-semibold">Ringkasan Sebelum Export</div>
+                            <span class="badge text-bg-light border">Tahap 2 • Review</span>
+                        </div>
+                        <div id="wizardSummaryGrid" class="wizard-summary-grid"></div>
+
+                        <div class="form-check mt-3 d-none" id="wizardFinalConfirmWrap">
+                            <input class="form-check-input" type="checkbox" id="wizardFinalConfirm">
+                            <label class="form-check-label" for="wizardFinalConfirm">
+                                Saya sudah membuka preview dan memverifikasi data sudah benar.
+                            </label>
+                        </div>
+                    </div>
+                </form>
+            </div>
+            <div class="modal-footer justify-content-between flex-wrap gap-2">
+                <div class="small text-muted" id="wizardFooterHint">Belum siap generate final.</div>
+                <div class="d-flex gap-2">
+                    <button type="button" class="btn btn-outline-primary" id="btnPrepareExport">
+                        <i class="bi bi-clipboard-data me-1"></i>Cek Ringkasan
+                    </button>
+                    <a href="#" class="btn btn-outline-secondary disabled" id="btnPreviewExport" target="_blank" aria-disabled="true">
+                        <i class="bi bi-window me-1"></i>Buka Preview
+                    </a>
+                    <a href="#" class="btn btn-success disabled" id="btnGenerateExport" aria-disabled="true">
+                        <i class="bi bi-download me-1"></i>Generate PDF Final
+                    </a>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
 <style>
     .sk-tabs {
         gap: 6px; padding: 0 4px; margin: 0; list-style: none;
@@ -277,10 +416,125 @@
         background-color: #1a2332; border-color: #1a2332;
     }
 
+    .wizard-mode-card {
+        border: 1px solid #d7dde4;
+        border-radius: 8px;
+        padding: 8px 12px;
+        background: #f8fafc;
+    }
+    .wizard-modal {
+        border: none;
+        border-radius: 14px;
+        overflow: hidden;
+    }
+    .wizard-steps {
+        display: grid;
+        grid-template-columns: repeat(3, 1fr);
+        gap: 10px;
+        border-bottom: 1px solid #eef1f4;
+    }
+    .wizard-step {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        padding: 10px;
+        border: 1px solid #e6ebf1;
+        border-radius: 10px;
+        background: #f8fafd;
+        transition: all .2s ease;
+    }
+    .wizard-step-num {
+        width: 24px;
+        height: 24px;
+        border-radius: 999px;
+        border: 1px solid #c9d2dc;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        font-size: .8rem;
+        font-weight: 700;
+        color: #475569;
+        background: #fff;
+        flex: 0 0 auto;
+    }
+    .wizard-step-title {
+        font-weight: 700;
+        font-size: .9rem;
+        color: #1f2937;
+        line-height: 1.1;
+    }
+    .wizard-step-desc {
+        font-size: .74rem;
+        color: #64748b;
+    }
+    .wizard-step.is-active {
+        border-color: #86a6ff;
+        background: #eef3ff;
+    }
+    .wizard-step.is-active .wizard-step-num {
+        border-color: #4f77ff;
+        color: #1d4ed8;
+    }
+    .wizard-step.is-done {
+        border-color: #8ad3b5;
+        background: #eefcf4;
+    }
+    .wizard-step.is-done .wizard-step-num {
+        border-color: #10b981;
+        color: #047857;
+        background: #dcfce7;
+    }
+    .wizard-panel {
+        border: 1px solid #e8edf2;
+        border-radius: 12px;
+        padding: 14px;
+        background: #fff;
+    }
+    .wizard-mode-card .form-check-input {
+        margin-top: 0.25rem;
+    }
+    .wizard-summary-card {
+        border: 1px solid #d9e2ec;
+        border-radius: 12px;
+        padding: 14px;
+        background: #f8fbff;
+    }
+    .wizard-summary-grid {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 10px;
+    }
+    .wizard-summary-item {
+        border: 1px solid #e5ecf3;
+        border-radius: 10px;
+        background: #fff;
+        padding: 10px 12px;
+    }
+    .wizard-summary-label {
+        display: block;
+        font-size: .75rem;
+        color: #64748b;
+        margin-bottom: 2px;
+    }
+    .wizard-summary-value {
+        font-weight: 700;
+        color: #0f172a;
+    }
+
+    /* Fix modal z-index to appear above sidebar (sidebar z-index: 3000) */
+    #stockExportWizardModal {
+        z-index: 3050 !important;
+    }
+    .modal-backdrop {
+        z-index: 3040 !important;
+    }
+
     @media (max-width: 576px) {
         .sk-tabs .nav-link { min-width: auto; width: 100%; font-size: .85em; padding: 8px 12px; }
         #stockTable thead th { font-size: .7em; padding: 8px 6px; }
         #stockTable tbody td { padding: 6px; font-size: .82em; }
+        .wizard-steps { grid-template-columns: 1fr; }
+        .wizard-summary-grid { grid-template-columns: 1fr; }
     }
 </style>
 
@@ -291,5 +545,249 @@ function updatePerPage(val) {
     params.set('page', '1');
     window.location.search = params.toString();
 }
+
+document.addEventListener('DOMContentLoaded', function() {
+    const form = document.getElementById('stockExportWizardForm');
+    if (!form) {
+        return;
+    }
+
+    const modalEl = document.getElementById('stockExportWizardModal');
+    const modeAll = document.getElementById('wizardModeAll');
+    const modeSingle = document.getElementById('wizardModeSingle');
+    const jenisWrap = document.getElementById('wizardJenisWrap');
+    const jenisSelect = document.getElementById('wizardJenisSelect');
+    const infoBox = document.getElementById('wizardInfoBox');
+    const errorBox = document.getElementById('wizardErrorBox');
+    const summaryCard = document.getElementById('wizardSummaryCard');
+    const summaryGrid = document.getElementById('wizardSummaryGrid');
+    const finalConfirmWrap = document.getElementById('wizardFinalConfirmWrap');
+    const finalConfirm = document.getElementById('wizardFinalConfirm');
+    const footerHint = document.getElementById('wizardFooterHint');
+    const prepareBtn = document.getElementById('btnPrepareExport');
+    const previewBtn = document.getElementById('btnPreviewExport');
+    const generateBtn = document.getElementById('btnGenerateExport');
+    const stepEls = Array.from(document.querySelectorAll('#wizardSteps .wizard-step'));
+
+    let summaryReady = false;
+    let previewOpened = false;
+    let preparedPreviewUrl = '#';
+    let preparedExportUrl = '#';
+
+    function setActionButtonDisabled(el, disabled) {
+        if (disabled) {
+            el.classList.add('disabled');
+            el.setAttribute('aria-disabled', 'true');
+            el.setAttribute('href', '#');
+            el.setAttribute('tabindex', '-1');
+            return;
+        }
+        el.classList.remove('disabled');
+        el.removeAttribute('aria-disabled');
+        el.removeAttribute('tabindex');
+    }
+
+    function setStep(activeStep) {
+        stepEls.forEach(function(el) {
+            const step = Number(el.dataset.step || '1');
+            el.classList.remove('is-active', 'is-done');
+            if (step < activeStep) {
+                el.classList.add('is-done');
+            } else if (step === activeStep) {
+                el.classList.add('is-active');
+            }
+        });
+    }
+
+    function showInfo(message) {
+        infoBox.textContent = message;
+        infoBox.classList.remove('d-none');
+    }
+
+    function hideError() {
+        errorBox.classList.add('d-none');
+        errorBox.textContent = '';
+    }
+
+    function resetFlow(withInfoMessage) {
+        summaryReady = false;
+        previewOpened = false;
+        preparedPreviewUrl = '#';
+        preparedExportUrl = '#';
+        finalConfirm.checked = false;
+        finalConfirmWrap.classList.add('d-none');
+        hideError();
+        summaryCard.classList.add('d-none');
+        summaryGrid.innerHTML = '';
+        setActionButtonDisabled(previewBtn, true);
+        setActionButtonDisabled(generateBtn, true);
+        footerHint.textContent = 'Belum siap generate final.';
+        setStep(1);
+        if (withInfoMessage) {
+            showInfo('Isi filter lalu klik Cek Ringkasan untuk lanjut ke tahap review.');
+        }
+    }
+
+    function syncModeState() {
+        const singleMode = modeSingle && modeSingle.checked;
+        if (singleMode) {
+            jenisWrap.classList.remove('d-none');
+            jenisSelect.setAttribute('required', 'required');
+        } else {
+            jenisWrap.classList.add('d-none');
+            jenisSelect.removeAttribute('required');
+        }
+    }
+
+    function resetAfterFilterChange() {
+        if (summaryReady || previewOpened) {
+            resetFlow(false);
+            showInfo('Filter berubah. Silakan klik Cek Ringkasan lagi.');
+        }
+    }
+
+    function updateGenerateState() {
+        const canGenerate = summaryReady && previewOpened && finalConfirm.checked;
+        if (canGenerate) {
+            generateBtn.setAttribute('href', preparedExportUrl);
+            setActionButtonDisabled(generateBtn, false);
+            setStep(3);
+            footerHint.textContent = 'Siap generate dokumen final.';
+        } else {
+            setActionButtonDisabled(generateBtn, true);
+            setStep(summaryReady ? 2 : 1);
+            if (summaryReady && !previewOpened) {
+                footerHint.textContent = 'Buka preview terlebih dahulu sebelum finalisasi.';
+            } else if (summaryReady && previewOpened && !finalConfirm.checked) {
+                footerHint.textContent = 'Centang konfirmasi agar Generate Final aktif.';
+            }
+        }
+    }
+
+    function renderSummary(summary) {
+        const rows = [
+            ['Mode Export', summary.mode],
+            ['Jenis Pupuk', summary.jenis],
+            ['Jenis Stok', summary.stock],
+            ['Periode', summary.periode],
+            ['Kabupaten', summary.kabupaten],
+            ['Jumlah Jenis', String(summary.group_count)],
+            ['Jumlah Transaksi', String(summary.transaction_count)],
+            ['Total Masuk', `${summary.total_in} Ton`],
+            ['Total Keluar', `${summary.total_out} Ton`],
+            ['Saldo Netto', `${summary.total_net} Ton`]
+        ];
+
+        summaryGrid.innerHTML = '';
+        rows.forEach(function(row) {
+            const item = document.createElement('div');
+            item.className = 'wizard-summary-item';
+            item.innerHTML = `<span class="wizard-summary-label">${row[0]}</span><span class="wizard-summary-value">${row[1]}</span>`;
+            summaryGrid.appendChild(item);
+        });
+        summaryCard.classList.remove('d-none');
+        finalConfirmWrap.classList.remove('d-none');
+    }
+
+    function bindResetOnInputChange() {
+        const inputs = form.querySelectorAll('input, select');
+        inputs.forEach(function(el) {
+            if (el.name === 'csrfmiddlewaretoken') {
+                return;
+            }
+            el.addEventListener('change', resetAfterFilterChange);
+        });
+    }
+
+    if (modeAll) {
+        modeAll.addEventListener('change', function() {
+            syncModeState();
+            resetAfterFilterChange();
+        });
+    }
+    if (modeSingle) {
+        modeSingle.addEventListener('change', function() {
+            syncModeState();
+            resetAfterFilterChange();
+        });
+    }
+
+    previewBtn.addEventListener('click', function(event) {
+        if (previewBtn.classList.contains('disabled')) {
+            event.preventDefault();
+            return;
+        }
+        previewOpened = true;
+        showInfo('Preview dibuka di tab baru. Pastikan data sudah benar lalu centang konfirmasi.');
+        updateGenerateState();
+    });
+
+    finalConfirm.addEventListener('change', function() {
+        updateGenerateState();
+    });
+
+    prepareBtn.addEventListener('click', async function() {
+        hideError();
+
+        if (!form.checkValidity()) {
+            form.reportValidity();
+            return;
+        }
+
+        const formData = new FormData(form);
+        const csrf = formData.get('csrfmiddlewaretoken');
+        const oldText = prepareBtn.innerHTML;
+
+        prepareBtn.disabled = true;
+        prepareBtn.innerHTML = '<span class="spinner-border spinner-border-sm me-1" role="status" aria-hidden="true"></span>Memproses...';
+
+        try {
+            const response = await fetch(form.dataset.prepareUrl, {
+                method: 'POST',
+                headers: {
+                    'X-CSRFToken': csrf,
+                    'X-Requested-With': 'XMLHttpRequest'
+                },
+                body: formData
+            });
+
+            const payload = await response.json();
+            if (!response.ok || !payload.ok) {
+                throw new Error(payload.message || 'Gagal menyiapkan ringkasan export.');
+            }
+
+            summaryReady = true;
+            previewOpened = false;
+            finalConfirm.checked = false;
+            preparedPreviewUrl = payload.preview_url;
+            preparedExportUrl = payload.export_url;
+
+            renderSummary(payload.summary);
+            previewBtn.setAttribute('href', preparedPreviewUrl);
+            setActionButtonDisabled(previewBtn, false);
+            showInfo('Ringkasan siap. Lanjutkan ke Buka Preview untuk verifikasi tampilan dokumen.');
+            footerHint.textContent = 'Tahap review aktif. Preview wajib sebelum finalisasi.';
+            setStep(2);
+            updateGenerateState();
+        } catch (err) {
+            errorBox.textContent = err.message || 'Terjadi kesalahan saat menyiapkan data export.';
+            errorBox.classList.remove('d-none');
+        } finally {
+            prepareBtn.disabled = false;
+            prepareBtn.innerHTML = oldText;
+        }
+    });
+
+    if (modalEl) {
+        modalEl.addEventListener('show.bs.modal', function() {
+            syncModeState();
+            resetFlow(true);
+        });
+    }
+
+    bindResetOnInputChange();
+    syncModeState();
+    resetFlow(true);
+});
 </script>
 {% endblock %}

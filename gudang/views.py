@@ -1,13 +1,15 @@
 import json
 import re
 from decimal import Decimal
+from urllib.parse import urlencode
 from django.shortcuts import render, redirect, get_object_or_404
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required, user_passes_test
 from django.db import transaction, IntegrityError
 from django.db.models import Sum, Prefetch
 from django.utils import timezone
-from django.http import HttpResponse
+from django.http import HttpResponse, JsonResponse
+from django.urls import reverse
 from django.template.loader import render_to_string
 from django.core.paginator import Paginator, EmptyPage, PageNotAnInteger
 from xhtml2pdf import pisa
@@ -631,11 +633,19 @@ def stock_card_list(request):
     cards = []
     saldo_akhir = Decimal('0')
 
-    jenis_code = request.GET.get('jenis', 'NPK')
+    jenis_code = (request.GET.get('jenis') or '').strip()
     stock_filter = request.GET.get('stock', 'PHYSICAL')
     per_page = request.GET.get('per_page', '25')
     page_number = request.GET.get('page', '1')
     search_q = request.GET.get('q', '').strip()
+    kab_scope = get_scope_kabupaten(request)
+    kab_options = Kabupaten.objects.filter(is_active=True).order_by('name') if request.user.is_superuser else Kabupaten.objects.none()
+    jenis_list = JenisPupuk.objects.filter(is_active=True).order_by('name')
+
+    # Hindari default hard-coded agar data tetap tampil walau code jenis berbeda per instalasi.
+    if not jenis_code:
+        first_jenis = jenis_list.first()
+        jenis_code = first_jenis.code if first_jenis else ''
 
     try:
         per_page = int(per_page)
@@ -645,7 +655,10 @@ def stock_card_list(request):
         per_page = 25
 
     # 2. JENIS PUPUK
-    jenis_pupuk = JenisPupuk.objects.filter(code__iexact=jenis_code).first()
+    jenis_pupuk = jenis_list.filter(code__iexact=jenis_code).first()
+    if not jenis_pupuk:
+        jenis_pupuk = jenis_list.first()
+        jenis_code = jenis_pupuk.code if jenis_pupuk else ''
 
     total_count = 0
     page_obj = None
@@ -702,7 +715,9 @@ def stock_card_list(request):
         'stock_selected': stock_filter,
         'search_q': search_q,
         'now': timezone.now(),
-        'jenis_list': JenisPupuk.objects.filter(is_active=True).order_by('name'),
+        'jenis_list': jenis_list,
+        'kab_options': kab_options,
+        'selected_kabupaten': kab_scope.id if kab_scope else None,
     })
 
 
@@ -806,20 +821,57 @@ def _enrich_stock_cards(cards):
             if so:
                 card.extra_so_number = so.so_number
 
+def _resolve_export_kabupaten(request, params):
+    if request.user.is_superuser:
+        kab_id = params.get('kabupaten')
+        if not kab_id:
+            return None
+        try:
+            return Kabupaten.objects.filter(pk=int(kab_id), is_active=True).first()
+        except (TypeError, ValueError):
+            return None
+    return get_scope_kabupaten(request)
 
-@login_required
-def stock_card_export_physical(request):
-    """Export PDF stok per bulan (fisik atau virtual)."""
-    stock_type = request.GET.get('stock', 'PHYSICAL')
+
+def _build_stock_card_export_data(request, params):
+    now = timezone.now()
+
+    stock_type = (params.get('stock') or 'PHYSICAL').upper()
     if stock_type not in ('PHYSICAL', 'VIRTUAL'):
         stock_type = 'PHYSICAL'
 
     try:
-        year = int(request.GET.get('year', timezone.now().year))
-        month = int(request.GET.get('month', timezone.now().month))
+        year = int(params.get('year', now.year))
     except (TypeError, ValueError):
-        year = timezone.now().year
-        month = timezone.now().month
+        year = now.year
+
+    try:
+        month = int(params.get('month', now.month))
+    except (TypeError, ValueError):
+        month = now.month
+
+    if month < 1 or month > 12:
+        month = now.month
+
+    mode = (params.get('mode') or 'ALL').upper()
+    if mode not in ('ALL', 'SINGLE'):
+        mode = 'ALL'
+
+    jenis_selected = None
+    jenis_code = (params.get('jenis') or '').strip()
+    if mode == 'SINGLE':
+        if not jenis_code:
+            return None, "Pilih jenis pupuk untuk mode Satu Jenis."
+        jenis_selected = JenisPupuk.objects.filter(code__iexact=jenis_code, is_active=True).first()
+        if not jenis_selected:
+            return None, "Jenis pupuk tidak ditemukan atau tidak aktif."
+        jenis_code = jenis_selected.code
+
+    kab = _resolve_export_kabupaten(request, params)
+    if request.user.is_superuser and not kab:
+        return None, "Untuk export PDF, pilih kabupaten terlebih dahulu."
+    if not request.user.is_superuser and not kab:
+        return None, "Akun Anda belum memiliki kabupaten. Hubungi admin."
 
     start_date = timezone.datetime(year, month, 1).date()
     if month == 12:
@@ -830,50 +882,196 @@ def stock_card_export_physical(request):
     qs = StockCard.objects.filter(
         stock_type=stock_type,
         date__gte=start_date,
-        date__lt=end_date
-    ).select_related('jenis_pupuk').order_by('date', 'created_at')
+        date__lt=end_date,
+    )
+    if jenis_selected:
+        qs = qs.filter(jenis_pupuk=jenis_selected)
+    qs = qs.select_related('jenis_pupuk').order_by('jenis_pupuk__name', 'date', 'created_at', 'id')
 
     running = {}
-    rows = []
+    groups = []
+    group_map = {}
     total_in = Decimal('0')
     total_out = Decimal('0')
+    transaction_count = 0
 
     for card in qs:
+        transaction_count += 1
         key = card.jenis_pupuk_id
-        if key not in running:
+        if key not in group_map:
             running[key] = Decimal('0')
-        running[key] += (card.qty_in or Decimal('0')) - (card.qty_out or Decimal('0'))
-        total_in += card.qty_in or Decimal('0')
-        total_out += card.qty_out or Decimal('0')
-        rows.append({
+            group_map[key] = {
+                'jenis_name': card.jenis_pupuk.name,
+                'jenis_code': card.jenis_pupuk.code,
+                'rows': [],
+                'total_in': Decimal('0'),
+                'total_out': Decimal('0'),
+                'total_net': Decimal('0'),
+            }
+            groups.append(group_map[key])
+
+        qty_in = card.qty_in or Decimal('0')
+        qty_out = card.qty_out or Decimal('0')
+        running[key] += qty_in - qty_out
+        total_in += qty_in
+        total_out += qty_out
+
+        group = group_map[key]
+        group['total_in'] += qty_in
+        group['total_out'] += qty_out
+        group['rows'].append({
             'date': card.date,
             'jenis': card.jenis_pupuk.name,
             'desc': card.description,
             'ref': card.reference_number,
-            'in': card.qty_in,
-            'out': card.qty_out,
+            'in': qty_in,
+            'out': qty_out,
             'balance': running[key],
         })
 
-    company = get_company_profile()  # Stock card export uses default profile
-    if not company:
-        messages.warning(request, "Profil perusahaan belum diatur. Silakan isi di menu Pengaturan.")
-    export_date = timezone.now().date()
-    context = {
-        'company': company,
-        'rows': rows,
+    for group in groups:
+        group['total_net'] = group['total_in'] - group['total_out']
+
+    company = get_company_profile(kab)
+    logo_url = None
+    if company and getattr(company, 'logo', None):
+        try:
+            logo_url = request.build_absolute_uri(company.logo.url)
+        except Exception:
+            logo_url = None
+
+    query_params = {
+        'stock': stock_type,
+        'month': month,
+        'year': year,
+        'mode': mode,
+    }
+    if mode == 'SINGLE' and jenis_code:
+        query_params['jenis'] = jenis_code
+    if request.user.is_superuser and kab:
+        query_params['kabupaten'] = kab.id
+
+    data = {
         'year': year,
         'month': month,
-        'export_date': export_date,
+        'stock_type': stock_type,
+        'stock_label': 'FISIK' if stock_type == 'PHYSICAL' else 'VIRTUAL',
+        'mode': mode,
+        'mode_label': 'Semua Jenis' if mode == 'ALL' else 'Satu Jenis',
+        'jenis_selected_code': jenis_code if mode == 'SINGLE' else '',
+        'jenis_selected_label': f"{jenis_selected.name} ({jenis_selected.code})" if jenis_selected else 'Semua Jenis',
+        'kabupaten_id': kab.id if kab else None,
+        'kabupaten_name': kab.name if kab else '-',
+        'groups': groups,
+        'group_count': len(groups),
+        'transaction_count': transaction_count,
         'total_in': total_in,
         'total_out': total_out,
         'total_net': total_in - total_out,
+        'company': company,
+        'logo_url': logo_url,
+        'export_date': now.date(),
+        'query_params': query_params,
+    }
+    return data, None
+
+
+@login_required
+def stock_card_export_prepare(request):
+    if request.method != 'POST':
+        return JsonResponse({'ok': False, 'message': 'Metode tidak didukung.'}, status=405)
+
+    data, error = _build_stock_card_export_data(request, request.POST)
+    if error:
+        return JsonResponse({'ok': False, 'message': error}, status=400)
+
+    if data['transaction_count'] == 0:
+        return JsonResponse(
+            {'ok': False, 'message': 'Tidak ada data untuk filter yang dipilih.'},
+            status=400,
+        )
+
+    query_string = urlencode(data['query_params'])
+    return JsonResponse({
+        'ok': True,
+        'summary': {
+            'mode': data['mode_label'],
+            'jenis': data['jenis_selected_label'],
+            'stock': data['stock_label'],
+            'periode': f"{data['month']:02d}/{data['year']}",
+            'kabupaten': data['kabupaten_name'],
+            'group_count': data['group_count'],
+            'transaction_count': data['transaction_count'],
+            'total_in': f"{data['total_in']:.2f}",
+            'total_out': f"{data['total_out']:.2f}",
+            'total_net': f"{data['total_net']:.2f}",
+        },
+        'preview_url': f"{reverse('stock_card_export_preview')}?{query_string}",
+        'export_url': f"{reverse('stock_card_export_physical')}?{query_string}",
+    })
+
+
+@login_required
+def stock_card_export_preview(request):
+    data, error = _build_stock_card_export_data(request, request.GET)
+    if error:
+        messages.error(request, error)
+        return redirect('stock_card_list')
+
+    if not data['company']:
+        messages.warning(request, "Profil perusahaan belum diatur. Silakan isi di menu Pengaturan.")
+
+    context = {
+        'company': data['company'],
+        'logo_url': data['logo_url'],
+        'groups': data['groups'],
+        'year': data['year'],
+        'month': data['month'],
+        'stock_label': data['stock_label'],
+        'kabupaten_name': data['kabupaten_name'],
+        'export_date': data['export_date'],
+        'total_in': data['total_in'],
+        'total_out': data['total_out'],
+        'total_net': data['total_net'],
+        'mode_label': data['mode_label'],
+        'jenis_selected_label': data['jenis_selected_label'],
+        'transaction_count': data['transaction_count'],
+        'group_count': data['group_count'],
+        'export_url': f"{reverse('stock_card_export_physical')}?{urlencode(data['query_params'])}",
+    }
+    return render(request, 'gudang/stock_card_export_preview.html', context)
+
+
+@login_required
+def stock_card_export_physical(request):
+    """Export PDF stok per bulan (fisik atau virtual) dengan grouping per jenis pupuk."""
+    data, error = _build_stock_card_export_data(request, request.GET)
+    if error:
+        messages.error(request, error)
+        return redirect('stock_card_list')
+
+    if not data['company']:
+        messages.warning(request, "Profil perusahaan belum diatur. Silakan isi di menu Pengaturan.")
+
+    context = {
+        'company': data['company'],
+        'logo_url': data['logo_url'],
+        'groups': data['groups'],
+        'year': data['year'],
+        'month': data['month'],
+        'stock_label': data['stock_label'],
+        'kabupaten_name': data['kabupaten_name'],
+        'export_date': data['export_date'],
+        'total_in': data['total_in'],
+        'total_out': data['total_out'],
+        'total_net': data['total_net'],
     }
 
     html = render_to_string('gudang/stock_card_export_pdf.html', context)
     response = HttpResponse(content_type='application/pdf')
-    type_label_str = 'fisik' if stock_type == 'PHYSICAL' else 'virtual'
-    filename = f"stok_{type_label_str}_{year}-{month:02d}.pdf"
+    type_label_str = 'fisik' if data['stock_type'] == 'PHYSICAL' else 'virtual'
+    jenis_suffix = f"_{data['jenis_selected_code'].lower()}" if data['mode'] == 'SINGLE' and data['jenis_selected_code'] else ''
+    filename = f"stok_{type_label_str}_{data['year']}-{data['month']:02d}{jenis_suffix}.pdf"
     response['Content-Disposition'] = f'attachment; filename="{filename}"'
 
     pisa_status = pisa.CreatePDF(html, dest=response)

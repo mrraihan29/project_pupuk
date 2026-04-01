@@ -2,6 +2,10 @@
 {% load humanize %}
 {% load keuangan_filters %}
 
+{% block title %}Dashboard{% endblock %}
+
+{% block page_title %}Dashboard{% endblock %}
+
 {% block content %}
 {% if user.is_superuser %}
 <form method="get" class="mb-3 d-flex align-items-center gap-2">

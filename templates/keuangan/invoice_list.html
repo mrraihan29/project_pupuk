@@ -2,6 +2,10 @@
 {% load humanize %}
 {% load keuangan_filters %}
 
+{% block title %}Daftar Tagihan (Piutang){% endblock %}
+
+{% block page_title %}Daftar Tagihan (Piutang){% endblock %}
+
 {% block content %}
 {% if user.is_superuser %}
 <form method="get" class="mb-3 d-flex align-items-center gap-2">
@@ -70,6 +74,11 @@
                         <a href="{% url 'print_invoice' inv.id %}" class="btn btn-sm btn-outline-secondary" title="Cetak" target="_blank">
                             <i class="bi bi-printer"></i>
                         </a>
+                        {% if inv.latest_payment_with_proof %}
+                        <a href="{{ inv.latest_payment_with_proof.proof.url }}" class="btn btn-sm btn-outline-info" title="Lihat Bukti Pembayaran" target="_blank">
+                            <i class="bi bi-eye"></i> Lihat Bukti
+                        </a>
+                        {% endif %}
                         {% if inv.status != 'PAID' %}
                         <a href="{% url 'payment_create' inv.id %}" class="btn btn-sm btn-primary">
                             <i class="bi bi-cash-stack me-1"></i>Bayar
@@ -114,6 +123,11 @@
                                         {% endif %}
                                     </td>
                                     <td class="text-center">
+                                        {% if pay.proof %}
+                                        <a href="{{ pay.proof.url }}" class="btn btn-sm btn-outline-info" title="Lihat Bukti" target="_blank">
+                                            <i class="bi bi-eye"></i>
+                                        </a>
+                                        {% endif %}
                                         {% if user.is_superuser and pay.status != 'VOID' %}
                                         <a href="{% url 'payment_edit' pay.id %}" class="btn btn-sm btn-outline-primary" title="Edit">
                                             <i class="bi bi-pencil"></i>

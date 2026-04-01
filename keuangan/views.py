@@ -3,7 +3,7 @@ from django.contrib import messages
 from django.contrib.auth.decorators import login_required, user_passes_test
 from django.views.decorators.http import require_http_methods
 from django.db import transaction
-from django.db.models import Sum
+from django.db.models import Sum, Prefetch
 from django.http import JsonResponse
 from datetime import date
 from django.utils import timezone
@@ -25,7 +25,10 @@ from core.decorators import owner_required
 def invoice_list(request):
     kab = get_scope_kabupaten(request)
     kab_options = Kabupaten.objects.all().order_by('name') if request.user.is_superuser else Kabupaten.objects.none()
-    invoices = Invoice.objects.select_related('distribution__kios__kecamatan__kabupaten').prefetch_related('payments').order_by('status', 'due_date')
+    payments_qs = Payment.objects.order_by('-date', '-created_at')
+    invoices = Invoice.objects.select_related('distribution__kios__kecamatan__kabupaten').prefetch_related(
+        Prefetch('payments', queryset=payments_qs)
+    ).order_by('status', 'due_date')
     if kab:
         invoices = invoices.filter(distribution__kios__kecamatan__kabupaten=kab)
 
@@ -35,6 +38,10 @@ def invoice_list(request):
     )
 
     sisa_piutang = (agg['total_amount'] or 0) - (agg['total_paid'] or 0)
+
+    invoices = list(invoices)
+    for inv in invoices:
+        inv.latest_payment_with_proof = next((pay for pay in inv.payments.all() if pay.proof), None)
 
     return render(request, 'keuangan/invoice_list.html', {
         'invoices': invoices,

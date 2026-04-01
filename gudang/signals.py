@@ -144,8 +144,8 @@ def update_stock_from_transfer(sender, instance, created, **kwargs):
                 'stock_type': 'VIRTUAL',
                 'transaction_type': 'OUT_TRF',
                 'description': f"Pengisian Stok Fisik (SO: {instance.source_so.so_number})",
-                'qty_in': instance.tonnage,
-                'qty_out': 0,
+                'qty_in': 0,
+                'qty_out': instance.tonnage,
             }
         )
 
