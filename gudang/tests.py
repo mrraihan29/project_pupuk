@@ -13,8 +13,6 @@ from decimal import Decimal
 from datetime import date
 
 from django.test import TestCase
-from django.urls import reverse
-from django.contrib.auth import get_user_model
 from django.db import transaction
 from django.db.models import Sum
 
@@ -516,23 +514,13 @@ class TestEndToEndFlow(_BaseTestMixin, TestCase):
         """Distribusi dari gudang fisik → hanya potong stok fisik."""
         # Transfer dulu ke gudang fisik
         from gudang.models import WarehouseTransfer
-        transfer = WarehouseTransfer.objects.create(
+        WarehouseTransfer.objects.create(
             source_so=self.so, date=date(2026, 1, 10),
             tonnage=Decimal('20'), reference_code='SJ-PABRIK-001',
         )
 
         phys_before = self._physical_balance(self.npk)
         self.assertEqual(phys_before, Decimal('20'), "Stok fisik harus 20 setelah transfer")
-
-        # Virtual harus berkurang (baik dari method bisnis maupun ledger)
-        virtual_method_before = self.so.get_virtual_balance()
-        virtual_ledger_before = self._virtual_balance(self.npk)
-        self.assertEqual(virtual_method_before, Decimal('80'), "Sisa virtual SO harus 100-20=80")
-        self.assertEqual(virtual_ledger_before, Decimal('80'), "Ledger virtual harus ikut turun menjadi 80")
-
-        trf_virtual_card = StockCard.objects.get(reference_number=f"TRF-{transfer.id}-V")
-        self.assertEqual(trf_virtual_card.qty_in, Decimal('0'), "Transfer virtual OUT tidak boleh tercatat sebagai qty_in")
-        self.assertEqual(trf_virtual_card.qty_out, Decimal('20'), "Transfer virtual OUT harus tercatat sebagai qty_out")
 
         # Distribusi dari fisik
         with transaction.atomic():
@@ -557,138 +545,3 @@ class TestEndToEndFlow(_BaseTestMixin, TestCase):
         self.alloc_npk.refresh_from_db()
         self.assertEqual(self.alloc_npk.quota_remaining, Decimal('42'),
                          "Kuota harus 50-8=42")
-
-        virtual_ledger_after = self._virtual_balance(self.npk)
-        self.assertEqual(virtual_ledger_after, Decimal('80'),
-                 "Distribusi dari stok fisik tidak boleh mengubah saldo virtual")
-
-
-class TestStockCardExportWizardPrepare(TestCase):
-    def setUp(self):
-        User = get_user_model()
-        self.user = User.objects.create_superuser(
-            username='wizard_admin',
-            email='wizard_admin@example.com',
-            password='secret12345',
-        )
-        self.client.force_login(self.user)
-
-        self.kab = Kabupaten.objects.create(name='Kendal', code='KDL')
-        self.npk = JenisPupuk.objects.create(name='NPK Wizard', code='NPKW')
-        self.urea = JenisPupuk.objects.create(name='Urea Wizard', code='UREW')
-
-        StockCard.objects.create(
-            date=date(2026, 4, 3),
-            jenis_pupuk=self.npk,
-            stock_type='PHYSICAL',
-            transaction_type='IN_TRF',
-            reference_number='TRF-100-P',
-            description='Masuk NPK',
-            qty_in=Decimal('10.00'),
-            qty_out=Decimal('0.00'),
-        )
-        StockCard.objects.create(
-            date=date(2026, 4, 4),
-            jenis_pupuk=self.urea,
-            stock_type='PHYSICAL',
-            transaction_type='OUT_DIST_P',
-            reference_number='SJ-100-1-P-OUT',
-            description='Keluar UREA',
-            qty_in=Decimal('0.00'),
-            qty_out=Decimal('2.00'),
-        )
-
-    def test_prepare_requires_kabupaten_for_superuser(self):
-        response = self.client.post(reverse('stock_card_export_prepare'), {
-            'mode': 'ALL',
-            'stock': 'PHYSICAL',
-            'month': '4',
-            'year': '2026',
-        })
-        self.assertEqual(response.status_code, 400)
-        payload = response.json()
-        self.assertFalse(payload['ok'])
-        self.assertIn('kabupaten', payload['message'].lower())
-
-    def test_prepare_single_mode_requires_jenis(self):
-        response = self.client.post(reverse('stock_card_export_prepare'), {
-            'mode': 'SINGLE',
-            'stock': 'PHYSICAL',
-            'month': '4',
-            'year': '2026',
-            'kabupaten': str(self.kab.id),
-        })
-        self.assertEqual(response.status_code, 400)
-        payload = response.json()
-        self.assertFalse(payload['ok'])
-        self.assertIn('jenis', payload['message'].lower())
-
-    def test_prepare_returns_summary_and_links(self):
-        response = self.client.post(reverse('stock_card_export_prepare'), {
-            'mode': 'SINGLE',
-            'jenis': 'NPKW',
-            'stock': 'PHYSICAL',
-            'month': '4',
-            'year': '2026',
-            'kabupaten': str(self.kab.id),
-        })
-        self.assertEqual(response.status_code, 200)
-        payload = response.json()
-
-        self.assertTrue(payload['ok'])
-        self.assertIn('preview_url', payload)
-        self.assertIn('export_url', payload)
-        self.assertEqual(payload['summary']['group_count'], 1)
-        self.assertEqual(payload['summary']['transaction_count'], 1)
-        self.assertIn('mode=SINGLE', payload['export_url'])
-        self.assertIn('jenis=NPKW', payload['export_url'])
-
-    def test_preview_renders_for_single_mode(self):
-        response = self.client.get(reverse('stock_card_export_preview'), {
-            'mode': 'SINGLE',
-            'jenis': 'NPKW',
-            'stock': 'PHYSICAL',
-            'month': '4',
-            'year': '2026',
-            'kabupaten': str(self.kab.id),
-        })
-        self.assertEqual(response.status_code, 200)
-        self.assertContains(response, 'Preview Export Kartu Stok')
-        self.assertContains(response, 'NPK Wizard')
-
-
-class TestStockCardListJenisFallback(TestCase):
-    def setUp(self):
-        User = get_user_model()
-        self.user = User.objects.create_superuser(
-            username='list_admin',
-            email='list_admin@example.com',
-            password='secret12345',
-        )
-        self.client.force_login(self.user)
-
-        self.jenis = JenisPupuk.objects.create(name='Produk A', code='1111')
-        StockCard.objects.create(
-            date=date(2026, 4, 1),
-            jenis_pupuk=self.jenis,
-            stock_type='PHYSICAL',
-            transaction_type='IN_TRF',
-            reference_number='TRF-200-P',
-            description='Masuk Produk A',
-            qty_in=Decimal('5.00'),
-            qty_out=Decimal('0.00'),
-        )
-
-    def test_default_without_jenis_uses_first_active_jenis(self):
-        response = self.client.get(reverse('stock_card_list'))
-        self.assertEqual(response.status_code, 200)
-        self.assertEqual(response.context['jenis_selected'], '1111')
-        self.assertEqual(len(response.context['cards']), 1)
-        self.assertContains(response, 'Masuk Produk A')
-
-    def test_invalid_jenis_falls_back_to_first_active_jenis(self):
-        response = self.client.get(reverse('stock_card_list'), {'jenis': 'NPK'})
-        self.assertEqual(response.status_code, 200)
-        self.assertEqual(response.context['jenis_selected'], '1111')
-        self.assertEqual(len(response.context['cards']), 1)
-        self.assertContains(response, 'Masuk Produk A')

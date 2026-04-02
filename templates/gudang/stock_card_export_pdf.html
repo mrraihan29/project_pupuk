@@ -4,183 +4,82 @@
     <meta charset="UTF-8">
     <title>Export Stok Fisik</title>
     <style>
-        @page { size: A4; margin: 16mm 14mm 14mm 14mm; }
-        body { font-family: Helvetica, Arial, sans-serif; font-size: 10.5px; color: #1f2937; margin: 0; }
-        .container { width: 100%; }
-
-        .header-table { width: 100%; border-collapse: collapse; border-top: 2px solid #111827; border-bottom: 2px solid #111827; margin-bottom: 10px; }
-        .header-table td { border: none; vertical-align: middle; padding: 10px 8px; }
-
-        .logo-cell { width: 122px; text-align: center; }
-        .logo-img { width: 108px; height: 54px; }
-
-        .company-cell { padding-left: 6px; }
-        .company { font-size: 19px; font-weight: 700; color: #047857; letter-spacing: .3px; text-transform: uppercase; line-height: 1.2; }
-        .company-info { margin-top: 4px; font-size: 10px; color: #4b5563; line-height: 1.4; }
-
-        .doc-title { text-align: center; font-size: 18px; font-weight: 700; margin: 6px 0 2px; letter-spacing: .3px; color: #0f172a; }
-        .doc-subtitle { text-align: center; font-size: 9.5px; color: #6b7280; margin-bottom: 8px; }
-
-        .meta-table { width: 62%; border-collapse: collapse; margin: 0 auto 12px auto; }
-        .meta-table td { border: none; padding: 2px 4px; font-size: 9.6px; color: #374151; }
-        .meta-label { color: #6b7280; width: 38%; text-align: right; padding-right: 6px; }
-        .meta-sep { width: 2%; color: #6b7280; text-align: center; }
-        .meta-value { width: 60%; font-weight: 600; }
-
-        .section-label { margin-top: 12px; margin-bottom: 5px; font-size: 11px; font-weight: 700; color: #111827; }
-
-        table { width: 100%; border-collapse: collapse; margin-top: 4px; }
-        th, td { border: 1px solid #d1d5db; padding: 5px 7px; }
-        th { background: #f3f4f6; text-align: center; font-weight: 700; color: #111827; font-size: 10px; }
-        td { vertical-align: top; line-height: 1.35; }
-
-        .col-date { width: 17%; }
-        .col-desc { width: 36%; }
-        .col-ref { width: 15%; }
-        .col-num { width: 10.5%; }
-
+        body { font-family: Arial, sans-serif; font-size: 12px; color: #222; }
+        .container { width: 100%; padding: 16px 20px; }
+        .header { border-bottom: 2px solid #111; padding-bottom: 10px; margin-bottom: 16px; }
+        .company { font-size: 18px; font-weight: bold; color: #198754; }
+        .company-info { font-size: 10px; color: #555; }
+        .title { text-align: center; font-size: 16px; font-weight: bold; margin: 10px 0 4px; }
+        .subtitle { text-align: center; font-size: 11px; color: #666; margin-bottom: 14px; }
+        table { width: 100%; border-collapse: collapse; margin-top: 8px; }
+        th, td { border: 1px solid #ddd; padding: 6px; }
+        th { background: #f1f4f7; text-align: center; }
+        td { vertical-align: top; }
         .text-right { text-align: right; }
         .text-center { text-align: center; }
-        .summary { margin-top: 7px; width: 100%; }
+        .summary { margin-top: 12px; width: 100%; }
         .summary td { border: none; padding: 4px 0; }
-
-        .group-summary-wrap { width: 46%; margin-left: auto; margin-top: 6px; padding-top: 2px; }
-        .group-summary td { font-size: 10px; }
-        .group-summary .label { width: 66%; text-align: right; padding-right: 12px; color: #374151; }
-        .group-summary .value { width: 34%; text-align: right; font-weight: 700; }
-
-        .grand-summary-wrap { width: 46%; margin-left: auto; margin-top: 10px; padding: 4px 0 0 0; border-top: 2px solid #111827; }
-        .grand-summary td { font-size: 10.5px; }
-        .grand-summary .label { color: #111827; text-align: right; padding-right: 12px; }
-        .grand-summary .value { width: 34%; text-align: right; font-weight: 700; }
-        .grand-summary .net { font-size: 11px; font-weight: 700; }
-        .grand-summary .net-row td { border-bottom: 3px double #111827; padding-bottom: 6px; }
-
-        .footer { margin-top: 10px; width: 100%; border-collapse: collapse; }
-        .footer td { border: none; font-size: 8.6px; color: #9ca3af; font-style: italic; }
-        .footer .left { text-align: left; }
-        .footer .right { text-align: right; }
-        .muted { color: #6b7280; }
+        .muted { color: #666; }
     </style>
 </head>
 <body>
     <div class="container">
-        <table class="header-table">
-            <tr>
-                <td class="logo-cell">
-                    {% if logo_url %}
-                    <img src="{{ logo_url }}" alt="Logo" class="logo-img">
-                    {% endif %}
-                </td>
-                <td class="company-cell">
-                    <div class="company">{{ company.name|default:"NAMA PERUSAHAAN" }}</div>
-                    <div class="company-info">
-                        {{ company.address|default:"Alamat perusahaan belum diisi" }}<br>
-                        Telp: {{ company.phone|default:"-" }}{% if company.email %} | Email: {{ company.email }}{% endif %}
-                    </div>
-                </td>
-            </tr>
-        </table>
-
-        <div class="doc-title">LAPORAN KARTU STOK {{ stock_label }}</div>
-        <div class="doc-subtitle">Dokumen Monitoring Mutasi Stok</div>
-
-        <table class="meta-table">
-            <tr>
-                <td class="meta-label">Periode</td>
-                <td class="meta-sep">:</td>
-                <td class="meta-value">{{ month }}/{{ year }}</td>
-            </tr>
-            <tr>
-                <td class="meta-label">Kabupaten</td>
-                <td class="meta-sep">:</td>
-                <td class="meta-value">{{ kabupaten_name }}</td>
-            </tr>
-            <tr>
-                <td class="meta-label">Tanggal Export</td>
-                <td class="meta-sep">:</td>
-                <td class="meta-value">{{ export_date|date:"d M Y" }}</td>
-            </tr>
-        </table>
-
-        {% if groups %}
-            {% for group in groups %}
-            <div class="section-label">Jenis Pupuk: {{ group.jenis_name }} ({{ group.jenis_code }})</div>
-            <table>
-                <thead>
-                    <tr>
-                        <th class="col-date">Tanggal</th>
-                        <th class="col-desc">Keterangan</th>
-                        <th class="col-ref">Ref</th>
-                        <th class="col-num">Masuk (Ton)</th>
-                        <th class="col-num">Keluar (Ton)</th>
-                        <th class="col-num">Saldo (Ton)</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    {% for row in group.rows %}
-                    <tr>
-                        <td class="text-center">{{ row.date|date:"d M Y" }}</td>
-                        <td>{{ row.desc }}</td>
-                        <td class="text-center">{{ row.ref }}</td>
-                        <td class="text-right">{{ row.in|floatformat:2 }}</td>
-                        <td class="text-right">{{ row.out|floatformat:2 }}</td>
-                        <td class="text-right">{{ row.balance|floatformat:2 }}</td>
-                    </tr>
-                    {% endfor %}
-                </tbody>
-            </table>
-
-            {% if groups|length > 1 %}
-            <div class="group-summary-wrap">
-                <table class="summary group-summary">
-                    <tr>
-                        <td class="label">Subtotal Masuk {{ group.jenis_code }}</td>
-                        <td class="value">{{ group.total_in|floatformat:2 }}</td>
-                    </tr>
-                    <tr>
-                        <td class="label">Subtotal Keluar {{ group.jenis_code }}</td>
-                        <td class="value">{{ group.total_out|floatformat:2 }}</td>
-                    </tr>
-                    <tr>
-                        <td class="label"><strong>Netto {{ group.jenis_code }}</strong></td>
-                        <td class="value"><strong>{{ group.total_net|floatformat:2 }}</strong></td>
-                    </tr>
-                </table>
+        <div class="header">
+            <div class="company">{{ company.name|default:"NAMA PERUSAHAAN" }}</div>
+            <div class="company-info">
+                {{ company.address|default:"" }}<br>
+                Telp: {{ company.phone|default:"-" }}
             </div>
-            {% endif %}
-            {% endfor %}
-        {% else %}
-            <table>
-                <tbody>
-                    <tr>
-                        <td class="text-center muted">Tidak ada data mutasi pada periode ini.</td>
-                    </tr>
-                </tbody>
-            </table>
-        {% endif %}
-
-        <div class="grand-summary-wrap">
-            <table class="summary grand-summary">
-                <tr>
-                    <td class="label">Total Masuk</td>
-                    <td class="value">{{ total_in|floatformat:2 }}</td>
-                </tr>
-                <tr>
-                    <td class="label">Total Keluar</td>
-                    <td class="value">{{ total_out|floatformat:2 }}</td>
-                </tr>
-                <tr class="net-row">
-                    <td class="label net">Netto (Masuk - Keluar)</td>
-                    <td class="value net">{{ total_net|floatformat:2 }}</td>
-                </tr>
-            </table>
         </div>
 
-        <table class="footer">
+        <div class="title">EXPORT KARTU STOK FISIK</div>
+        <div class="subtitle">
+            Periode: {{ month }}/{{ year }} &nbsp;|&nbsp; Tanggal Export: {{ export_date|date:"d M Y" }}
+        </div>
+
+        <table>
+            <thead>
+                <tr>
+                    <th>Tanggal</th>
+                    <th>Jenis Pupuk</th>
+                    <th>Keterangan</th>
+                    <th>Ref</th>
+                    <th>Masuk</th>
+                    <th>Keluar</th>
+                    <th>Saldo</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for row in rows %}
+                <tr>
+                    <td class="text-center">{{ row.date|date:"d M Y" }}</td>
+                    <td>{{ row.jenis }}</td>
+                    <td>{{ row.desc }}</td>
+                    <td class="text-center">{{ row.ref }}</td>
+                    <td class="text-right">{{ row.in|floatformat:2 }}</td>
+                    <td class="text-right">{{ row.out|floatformat:2 }}</td>
+                    <td class="text-right">{{ row.balance|floatformat:2 }}</td>
+                </tr>
+                {% empty %}
+                <tr>
+                    <td colspan="7" class="text-center muted">Tidak ada data pada periode ini.</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+
+        <table class="summary">
             <tr>
-                <td class="left">Dokumen dihasilkan otomatis oleh sistem SIM-DP.</td>
-                <td class="right">Halaman <pdf:pagenumber> dari <pdf:pagecount></td>
+                <td class="text-right" style="width:80%;"><strong>Total Masuk</strong></td>
+                <td class="text-right"><strong>{{ total_in|floatformat:2 }}</strong></td>
+            </tr>
+            <tr>
+                <td class="text-right"><strong>Total Keluar</strong></td>
+                <td class="text-right"><strong>{{ total_out|floatformat:2 }}</strong></td>
+            </tr>
+            <tr>
+                <td class="text-right"><strong>Netto (Masuk - Keluar)</strong></td>
+                <td class="text-right"><strong>{{ total_net|floatformat:2 }}</strong></td>
             </tr>
         </table>
     </div>

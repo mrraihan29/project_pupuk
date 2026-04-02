@@ -28,8 +28,6 @@ urlpatterns = [
     # 4. MONITORING STOK (LEDGER)
     # ==========================
     path('stock-card/', views.stock_card_list, name='stock_card_list'),
-    path('stock-card/export/prepare/', views.stock_card_export_prepare, name='stock_card_export_prepare'),
-    path('stock-card/export/preview/', views.stock_card_export_preview, name='stock_card_export_preview'),
     path('stock-card/export/', views.stock_card_export_physical, name='stock_card_export_physical'),
     path('opname/', views.stock_opname, name='stock_opname'),
 
