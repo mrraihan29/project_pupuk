@@ -3,7 +3,7 @@ from django.contrib import messages
 from django.contrib.auth.decorators import login_required, user_passes_test
 from django.views.decorators.http import require_http_methods
 from django.db import transaction
-from django.db.models import Sum, Prefetch
+from django.db.models import Sum, Prefetch, F
 from django.http import JsonResponse
 from datetime import date
 from django.utils import timezone
@@ -11,7 +11,7 @@ from decimal import Decimal
 # Import Models & Forms
 from .models import Invoice, Payment, BiayaOperasional
 from .forms import PaymentForm, BiayaOperasionalForm, InvoiceEditForm
-from core.models import Armada, CompanyProfile, Kabupaten
+from core.models import Armada, CompanyProfile, Kabupaten, Kios
 from core.utils import get_scope_kabupaten, scope_by_kabupaten, get_company_profile
 from core.utils import get_price_for
 
@@ -26,11 +26,52 @@ def invoice_list(request):
     kab = get_scope_kabupaten(request)
     kab_options = Kabupaten.objects.all().order_by('name') if request.user.is_superuser else Kabupaten.objects.none()
     payments_qs = Payment.objects.order_by('-date', '-created_at')
+
+    # Parameter filter & sort
+    q_kios = request.GET.get('kios', '').strip()
+    sort = request.GET.get('sort', '')
+    order = request.GET.get('order', 'asc')
+
+    # Ambil daftar kios untuk dropdown (filter dlu by kabupaten jika ada)
+    kios_options = Kios.objects.filter(is_active=True).order_by('name')
+    if kab:
+        kios_options = kios_options.filter(kecamatan__kabupaten=kab)
+
     invoices = Invoice.objects.select_related('distribution__kios__kecamatan__kabupaten').prefetch_related(
         Prefetch('payments', queryset=payments_qs)
-    ).order_by('status', 'due_date')
+    ).annotate(
+        remaining_balance_annotated=F('total_amount') - F('total_paid')
+    )
+
     if kab:
         invoices = invoices.filter(distribution__kios__kecamatan__kabupaten=kab)
+        
+    if q_kios:
+        # Jika q_kios berupa ID (dari dropdown)
+        if q_kios.isdigit():
+            invoices = invoices.filter(distribution__kios_id=q_kios)
+        else:
+            invoices = invoices.filter(distribution__kios__name__icontains=q_kios)
+
+    # Dictionary mapping parameter ke field ORM
+    sort_mapping = {
+        'no_invoice': 'inv_number',
+        'kios': 'distribution__kios__name',
+        'jatuh_tempo': 'due_date',
+        'total_tagihan': 'total_amount',
+        'sudah_bayar': 'total_paid',
+        'kekurangan': 'remaining_balance_annotated',
+        'status': 'status',
+    }
+
+    if sort in sort_mapping:
+        sort_field = sort_mapping[sort]
+        if order == 'desc':
+            sort_field = '-' + sort_field
+        invoices = invoices.order_by(sort_field)
+    else:
+        # Default order
+        invoices = invoices.order_by('status', 'due_date')
 
     agg = invoices.filter(status__in=['UNPAID', 'PARTIAL']).aggregate(
         total_amount=Sum('total_amount'),
@@ -49,6 +90,10 @@ def invoice_list(request):
         'today': date.today(),
         'kab_options': kab_options,
         'selected_kabupaten': kab.id if kab else None,
+        'kios_options': kios_options,
+        'q_kios': q_kios,
+        'sort_by': sort,
+        'order': order,
     })
 
 @login_required

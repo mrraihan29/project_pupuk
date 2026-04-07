@@ -7,18 +7,33 @@
 {% block page_title %}Daftar Tagihan (Piutang){% endblock %}
 
 {% block content %}
-{% if user.is_superuser %}
-<form method="get" class="mb-3 d-flex align-items-center gap-2">
+<form method="get" class="mb-3 d-flex flex-wrap align-items-center gap-2">
+    {% if user.is_superuser %}
     <label class="fw-bold text-muted mb-0">Kabupaten</label>
-    <select name="kabupaten" class="form-select w-auto">
-        <option value="">Semua</option>
+    <select name="kabupaten" class="form-select w-auto" onchange="this.form.submit()">
+        <option value="">Semua Kabupaten</option>
         {% for kab in kab_options %}
             <option value="{{ kab.id }}" {% if selected_kabupaten == kab.id %}selected{% endif %}>{{ kab.name }}</option>
         {% endfor %}
     </select>
-    <button type="submit" class="btn btn-outline-primary">Terapkan</button>
+    {% elif selected_kabupaten %}
+    <input type="hidden" name="kabupaten" value="{{ selected_kabupaten }}">
+    {% endif %}
+    
+    <label class="fw-bold text-muted mb-0 ms-md-2">Kios</label>
+    <select name="kios" class="form-select w-auto" style="min-width: 200px;">
+        <option value="">-- Semua Kios --</option>
+        {% for k in kios_options %}
+            <option value="{{ k.id }}" {% if q_kios == k.id|stringformat:"i" %}selected{% endif %}>{{ k.name }}</option>
+        {% endfor %}
+    </select>
+    
+    <!-- Hidden input untuk mempertahankan sort saat melakukan filter/pencarian -->
+    {% if sort_by %}<input type="hidden" name="sort" value="{{ sort_by }}">{% endif %}
+    {% if order %}<input type="hidden" name="order" value="{{ order }}">{% endif %}
+    
+    <button type="submit" class="btn btn-outline-primary"><i class="bi bi-search me-1"></i>Terapkan</button>
 </form>
-{% endif %}
 <div class="card shadow-sm border-0">
     <div class="card-header bg-white py-3 d-flex justify-content-between align-items-center">
         <h5 class="mb-0 fw-bold text-primary"><i class="bi bi-receipt me-2"></i>Daftar Tagihan (Piutang)</h5>
@@ -31,12 +46,41 @@
         <table class="table table-hover align-middle mb-0 table-sim">
             <thead>
                 <tr>
-                    <th>NO. INVOICE</th>
-                    <th>KIOS</th>
-                    <th>JATUH TEMPO</th>
-                    <th class="text-end">TOTAL TAGIHAN</th>
-                    <th class="text-end">SUDAH BAYAR</th>
-                    <th class="text-center">STATUS</th>
+                    <th>
+                        <a href="?kabupaten={{ selected_kabupaten|default:'' }}&kios={{ q_kios|urlencode }}&sort=no_invoice&order={% if sort_by == 'no_invoice' and order == 'asc' %}desc{% else %}asc{% endif %}" class="text-white text-decoration-none">
+                            NO. INVOICE {% if sort_by == 'no_invoice' %}<i class="bi bi-chevron-{% if order == 'asc' %}up{% else %}down{% endif %}"></i>{% endif %}
+                        </a>
+                    </th>
+                    <th>
+                        <a href="?kabupaten={{ selected_kabupaten|default:'' }}&kios={{ q_kios|urlencode }}&sort=kios&order={% if sort_by == 'kios' and order == 'asc' %}desc{% else %}asc{% endif %}" class="text-white text-decoration-none">
+                            KIOS {% if sort_by == 'kios' %}<i class="bi bi-chevron-{% if order == 'asc' %}up{% else %}down{% endif %}"></i>{% endif %}
+                        </a>
+                    </th>
+                    <th>
+                        <a href="?kabupaten={{ selected_kabupaten|default:'' }}&kios={{ q_kios|urlencode }}&sort=jatuh_tempo&order={% if sort_by == 'jatuh_tempo' and order == 'asc' %}desc{% else %}asc{% endif %}" class="text-white text-decoration-none">
+                            JATUH TEMPO {% if sort_by == 'jatuh_tempo' %}<i class="bi bi-chevron-{% if order == 'asc' %}up{% else %}down{% endif %}"></i>{% endif %}
+                        </a>
+                    </th>
+                    <th class="text-end">
+                        <a href="?kabupaten={{ selected_kabupaten|default:'' }}&kios={{ q_kios|urlencode }}&sort=total_tagihan&order={% if sort_by == 'total_tagihan' and order == 'asc' %}desc{% else %}asc{% endif %}" class="text-white text-decoration-none">
+                            TOTAL TAGIHAN {% if sort_by == 'total_tagihan' %}<i class="bi bi-chevron-{% if order == 'asc' %}up{% else %}down{% endif %}"></i>{% endif %}
+                        </a>
+                    </th>
+                    <th class="text-end">
+                        <a href="?kabupaten={{ selected_kabupaten|default:'' }}&kios={{ q_kios|urlencode }}&sort=sudah_bayar&order={% if sort_by == 'sudah_bayar' and order == 'asc' %}desc{% else %}asc{% endif %}" class="text-white text-decoration-none">
+                            SUDAH BAYAR {% if sort_by == 'sudah_bayar' %}<i class="bi bi-chevron-{% if order == 'asc' %}up{% else %}down{% endif %}"></i>{% endif %}
+                        </a>
+                    </th>
+                    <th class="text-end">
+                        <a href="?kabupaten={{ selected_kabupaten|default:'' }}&kios={{ q_kios|urlencode }}&sort=kekurangan&order={% if sort_by == 'kekurangan' and order == 'asc' %}desc{% else %}asc{% endif %}" class="text-white text-decoration-none">
+                            KEKURANGAN {% if sort_by == 'kekurangan' %}<i class="bi bi-chevron-{% if order == 'asc' %}up{% else %}down{% endif %}"></i>{% endif %}
+                        </a>
+                    </th>
+                    <th class="text-center">
+                        <a href="?kabupaten={{ selected_kabupaten|default:'' }}&kios={{ q_kios|urlencode }}&sort=status&order={% if sort_by == 'status' and order == 'asc' %}desc{% else %}asc{% endif %}" class="text-white text-decoration-none">
+                            STATUS {% if sort_by == 'status' %}<i class="bi bi-chevron-{% if order == 'asc' %}up{% else %}down{% endif %}"></i>{% endif %}
+                        </a>
+                    </th>
                     <th class="text-center">AKSI</th>
                 </tr>
             </thead>
@@ -56,6 +100,7 @@
                     </td>
                     <td class="text-end fw-bold">Rp {{ inv.total_amount|rupiah }}</td>
                     <td class="text-end text-success">Rp {{ inv.total_paid|rupiah }}</td>
+                    <td class="text-end text-danger fw-bold">Rp {{ inv.remaining_balance|rupiah }}</td>
                     <td class="text-center">
                         {% if inv.status == 'PAID' %}
                             <span class="badge bg-success">LUNAS</span>
@@ -95,7 +140,7 @@
                 </tr>
                 {% if inv.payments.all %}
                 <tr class="collapse" id="pay-{{ inv.id }}">
-                    <td colspan="7" class="bg-light p-2">
+                    <td colspan="8" class="bg-light p-2">
                         <small class="fw-bold text-muted d-block mb-1">Riwayat Pembayaran</small>
                         <table class="table table-sm table-bordered mb-0 bg-white">
                             <thead class="table-light">
@@ -152,7 +197,7 @@
                 </tr>
                 {% endif %}
                 {% empty %}
-                <tr><td colspan="7" class="text-center py-4">Belum ada data tagihan.</td></tr>
+                <tr><td colspan="8" class="text-center py-4">Belum ada data tagihan.</td></tr>
                 {% endfor %}
             </tbody>
         </table>
