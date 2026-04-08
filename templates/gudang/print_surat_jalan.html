@@ -99,7 +99,7 @@
                     <td>{{ forloop.counter }}</td>
                     <td style="text-align: left; padding-left: 20px;">
                         <strong>PUPUK {{ item.jenis_pupuk.name }}</strong> ({{ item.jenis_pupuk.code }})
-                        {% if item.source_type == 'VIRTUAL' and item.source_so %}
+                        {% if item.source_so %}
                             <br><small style="color: #666;">SO: {{ item.source_so.so_number }}</small>
                         {% endif %}
                     </td>

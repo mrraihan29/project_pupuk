@@ -727,11 +727,14 @@
             const sourceHint = row.querySelector('.source-hint');
 
             const toggleSO = () => {
+                const soLabel = soWrap.querySelector('label.form-label');
                 if (sourceTypeSel.value === 'VIRTUAL') {
                     soWrap.style.display = 'block';
+                    if (soLabel) soLabel.textContent = 'Nomor SO (jika sumber Pabrik)';
                 } else {
-                    soWrap.style.display = 'none';
-                    if (soSelect) soSelect.value = '';
+                    // PHYSICAL: tetap tampilkan SO tapi opsional sebagai referensi
+                    soWrap.style.display = 'block';
+                    if (soLabel) soLabel.textContent = 'Nomor SO (Opsional - sebagai referensi)';
                 }
             };
             sourceTypeSel.addEventListener('change', toggleSO);

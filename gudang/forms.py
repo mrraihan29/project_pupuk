@@ -108,8 +108,9 @@ class DistributionItemForm(forms.ModelForm):
             self.add_error('source_so', 'Pilih SO jika sumber stok Pabrik.')
         if stype == 'VIRTUAL' and so and jenis and so.jenis_pupuk_id != jenis.id:
             self.add_error('jenis_pupuk', f'Jenis pupuk harus {so.jenis_pupuk.name} (sesuai SO {so.so_number}).')
-        if stype == 'PHYSICAL':
-            data['source_so'] = None
+        # PHYSICAL: source_so opsional (boleh diisi sebagai referensi tanpa mempengaruhi saldo virtual SO)
+        if stype == 'PHYSICAL' and so and jenis and so.jenis_pupuk_id != jenis.id:
+            self.add_error('jenis_pupuk', f'Jenis pupuk harus {so.jenis_pupuk.name} (sesuai SO {so.so_number}).')
         if ton is not None and ton <= 0:
             self.add_error('tonnage', 'Tonase harus lebih dari 0')
         if order_item:
