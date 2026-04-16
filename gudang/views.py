@@ -666,7 +666,10 @@ def stock_card_list(request):
         cards.reverse()  # terbaru di atas
 
         # 4. ENRICH: parse ref → lookup SO, Kios, Kecamatan
-        _enrich_stock_cards(cards)
+        # Optimization: only enrich the full list if search is active.
+        # Otherwise, we wait and enrich only the paginated slice later.
+        if search_q:
+            _enrich_stock_cards(cards)
 
         # 5. SEARCH FILTER (client-side text match on enriched data)
         if search_q:
@@ -691,6 +694,10 @@ def stock_card_list(request):
             page_obj = paginator.page(paginator.num_pages)
 
         cards = list(page_obj)
+
+        # Optimization: if not already enriched by search, enrich the current page only
+        if not search_q:
+            _enrich_stock_cards(cards)
 
     return render(request, 'gudang/stock_card_list.html', {
         'cards': cards,
@@ -765,6 +772,9 @@ def _enrich_stock_cards(cards):
         ):
             dist_map[dist.id] = dist
 
+    def _safe_name(obj):
+        return getattr(obj, 'name', '') if obj else ''
+
     # Annotate each card
     for card in cards:
         card.extra_so_number = ''
@@ -779,8 +789,11 @@ def _enrich_stock_cards(cards):
             if item:
                 if item.source_so:
                     card.extra_so_number = item.source_so.so_number
-                card.extra_kios = item.distribution.kios.name
-                card.extra_kecamatan = item.distribution.kios.kecamatan.name
+                dist = getattr(item, 'distribution', None)
+                kios = getattr(dist, 'kios', None)
+                kec = getattr(kios, 'kecamatan', None)
+                card.extra_kios = _safe_name(kios)
+                card.extra_kecamatan = _safe_name(kec)
             continue
 
         m = ref_pattern_sj_legacy.match(ref)
@@ -789,8 +802,10 @@ def _enrich_stock_cards(cards):
             if dist:
                 if dist.source_so:
                     card.extra_so_number = dist.source_so.so_number
-                card.extra_kios = dist.kios.name
-                card.extra_kecamatan = dist.kios.kecamatan.name
+                kios = getattr(dist, 'kios', None)
+                kec = getattr(kios, 'kecamatan', None)
+                card.extra_kios = _safe_name(kios)
+                card.extra_kecamatan = _safe_name(kec)
             continue
 
         m = ref_pattern_trf.match(ref)
