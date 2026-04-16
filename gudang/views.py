@@ -363,7 +363,7 @@ def distribution_list(request):
 @login_required
 def distribution_create(request):
     kab = get_scope_kabupaten(request)
-    so_qs = SalesOrder.objects.filter(is_closed=False)
+    so_qs = SalesOrder.objects.all().order_by('-date')
     if kab:
         so_qs = so_qs.filter(allocations__kecamatan__kabupaten=kab).distinct()
 
@@ -509,7 +509,7 @@ def distribution_edit(request, pk):
 
     # SO queryset: open SOs + SOs already referenced by this distribution's items
     used_so_ids = list(dist.items.filter(source_so__isnull=False).values_list('source_so_id', flat=True))
-    so_qs = SalesOrder.objects.filter(is_closed=False)
+    so_qs = SalesOrder.objects.all().order_by('-date')
     if used_so_ids:
         so_qs = so_qs | SalesOrder.objects.filter(pk__in=used_so_ids)
     so_qs = so_qs.distinct()

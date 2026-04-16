@@ -91,7 +91,7 @@ class DistributionItemForm(forms.ModelForm):
         self.kios_value = kwargs.pop('kios', None)
         super().__init__(*args, **kwargs)
         self.fields['jenis_pupuk'].queryset = JenisPupuk.objects.filter(is_active=True).order_by('name')
-        self.fields['source_so'].queryset = SalesOrder.objects.filter(is_closed=False)
+        self.fields['source_so'].queryset = SalesOrder.objects.all().order_by('-date')
         self.fields['order_item'].queryset = OrderNoteItem.objects.filter(order__is_deleted=False, order__status=OrderNote.STATUS_OPEN)
         # Filter order_item by kios jika tersedia
         if self.kios_value:
