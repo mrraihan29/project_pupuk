@@ -666,7 +666,14 @@ def stock_card_list(request):
             # FIX: Tambah null guard (or Decimal('0')) agar tidak crash jika
             #      qty_in/qty_out NULL di database — konsisten dengan PDF export.
             for card in raw_cards:
-                saldo_akhir += (card.qty_in or Decimal('0')) - (card.qty_out or Decimal('0'))
+                # FIX: Normalize None → Decimal('0') pada OBJECT itu sendiri.
+                # Tanpa ini, template {% if card.qty_in > 0 %} akan crash
+                # (TypeError: '>' not supported between NoneType and int).
+                if card.qty_in is None:
+                    card.qty_in = Decimal('0')
+                if card.qty_out is None:
+                    card.qty_out = Decimal('0')
+                saldo_akhir += card.qty_in - card.qty_out
                 card.current_balance = saldo_akhir
                 cards.append(card)
 
