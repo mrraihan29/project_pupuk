@@ -202,7 +202,7 @@
                         </a>
                     </li>
                     <li class="page-item {% if not page_obj.has_previous %}disabled{% endif %}">
-                        <a class="page-link" href="?stock={{ stock_selected }}&jenis={{ jenis_selected }}&per_page={{ per_page }}&q={{ search_q }}&page={{ page_obj.previous_page_number|default:1 }}" title="Sebelumnya">
+                        <a class="page-link" href="?stock={{ stock_selected }}&jenis={{ jenis_selected }}&per_page={{ per_page }}&q={{ search_q }}&page={% if page_obj.has_previous %}{{ page_obj.previous_page_number }}{% else %}1{% endif %}" title="Sebelumnya">
                             <i class="bi bi-chevron-left"></i>
                         </a>
                     </li>
@@ -224,7 +224,7 @@
                     {% endfor %}
 
                     <li class="page-item {% if not page_obj.has_next %}disabled{% endif %}">
-                        <a class="page-link" href="?stock={{ stock_selected }}&jenis={{ jenis_selected }}&per_page={{ per_page }}&q={{ search_q }}&page={{ page_obj.next_page_number|default:page_obj.paginator.num_pages }}" title="Berikutnya">
+                        <a class="page-link" href="?stock={{ stock_selected }}&jenis={{ jenis_selected }}&per_page={{ per_page }}&q={{ search_q }}&page={% if page_obj.has_next %}{{ page_obj.next_page_number }}{% else %}{{ page_obj.paginator.num_pages }}{% endif %}" title="Berikutnya">
                             <i class="bi bi-chevron-right"></i>
                         </a>
                     </li>
