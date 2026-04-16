@@ -1,4 +1,5 @@
 import json
+import logging
 import re
 from decimal import Decimal
 from django.shortcuts import render, redirect, get_object_or_404
@@ -627,6 +628,8 @@ def stock_card_list(request):
     Kartu Stok (Ledger) dengan Running Balance, enriched data, dan
     server-side pagination enterprise-grade.
     """
+    logger = logging.getLogger(__name__)
+
     # 1. SETUP & PARAMETER
     cards = []
     saldo_akhir = Decimal('0')
@@ -649,55 +652,68 @@ def stock_card_list(request):
 
     total_count = 0
     page_obj = None
+    error_msg = None
 
     if jenis_pupuk:
-        # 3. QUERY & RUNNING BALANCE (harus hitung seluruh dataset dulu)
-        raw_cards = StockCard.objects.filter(
-            jenis_pupuk=jenis_pupuk,
-            stock_type=stock_filter
-        ).order_by('date', 'created_at')
-
-        # Hitung running balance untuk semua data
-        for card in raw_cards:
-            saldo_akhir += (card.qty_in or Decimal('0')) - (card.qty_out or Decimal('0'))
-            card.current_balance = saldo_akhir
-            cards.append(card)
-
-        cards.reverse()  # terbaru di atas
-
-        # 4. ENRICH: parse ref → lookup SO, Kios, Kecamatan
-        # Optimization: only enrich the full list if search is active.
-        # Otherwise, we wait and enrich only the paginated slice later.
-        if search_q:
-            _enrich_stock_cards(cards)
-
-        # 5. SEARCH FILTER (client-side text match on enriched data)
-        if search_q:
-            q_lower = search_q.lower()
-            cards = [c for c in cards if (
-                q_lower in (c.extra_so_number or '').lower()
-                or q_lower in (c.extra_kios or '').lower()
-                or q_lower in (c.extra_kecamatan or '').lower()
-                or q_lower in (c.description or '').lower()
-                or q_lower in (c.reference_number or '').lower()
-            )]
-
-        total_count = len(cards)
-
-        # 6. PAGINATION
-        paginator = Paginator(cards, per_page)
         try:
-            page_obj = paginator.page(page_number)
-        except PageNotAnInteger:
-            page_obj = paginator.page(1)
-        except EmptyPage:
-            page_obj = paginator.page(paginator.num_pages)
+            # 3. QUERY & RUNNING BALANCE (harus hitung seluruh dataset dulu)
+            raw_cards = StockCard.objects.filter(
+                jenis_pupuk=jenis_pupuk,
+                stock_type=stock_filter
+            ).order_by('date', 'created_at')
 
-        cards = list(page_obj)
+            # Hitung running balance untuk semua data
+            # FIX: Tambah null guard (or Decimal('0')) agar tidak crash jika
+            #      qty_in/qty_out NULL di database — konsisten dengan PDF export.
+            for card in raw_cards:
+                saldo_akhir += (card.qty_in or Decimal('0')) - (card.qty_out or Decimal('0'))
+                card.current_balance = saldo_akhir
+                cards.append(card)
 
-        # Optimization: if not already enriched by search, enrich the current page only
-        if not search_q:
+            cards.reverse()  # terbaru di atas
+
+            # 4. ENRICH: parse ref → lookup SO, Kios, Kecamatan
             _enrich_stock_cards(cards)
+
+            # 5. SEARCH FILTER (client-side text match on enriched data)
+            if search_q:
+                q_lower = search_q.lower()
+                cards = [c for c in cards if (
+                    q_lower in (c.extra_so_number or '').lower()
+                    or q_lower in (c.extra_kios or '').lower()
+                    or q_lower in (c.extra_kecamatan or '').lower()
+                    or q_lower in (c.description or '').lower()
+                    or q_lower in (c.reference_number or '').lower()
+                )]
+
+            total_count = len(cards)
+
+            # 6. PAGINATION
+            paginator = Paginator(cards, per_page)
+            try:
+                page_obj = paginator.page(page_number)
+            except PageNotAnInteger:
+                page_obj = paginator.page(1)
+            except EmptyPage:
+                page_obj = paginator.page(paginator.num_pages)
+
+            cards = list(page_obj)
+
+        except Exception as exc:
+            logger.error(
+                "Gagal memuat Kartu Stok jenis=%s stock=%s: %s",
+                jenis_code, stock_filter, exc, exc_info=True
+            )
+            error_msg = (
+                f"Terjadi kesalahan saat memuat data Kartu Stok {jenis_code}: {exc}. "
+                f"Silakan hubungi administrator."
+            )
+            cards = []
+            page_obj = None
+            total_count = 0
+
+    if error_msg:
+        messages.error(request, error_msg)
 
     return render(request, 'gudang/stock_card_list.html', {
         'cards': cards,
@@ -717,7 +733,10 @@ def _enrich_stock_cards(cards):
     """
     Batch-enrich StockCard list with SO number, Kios name & Kecamatan name.
     Parses reference_number to resolve related objects in minimal queries.
+    Defensive: individual card errors are logged and skipped, not propagated.
     """
+    logger = logging.getLogger(__name__)
+
     # Collect IDs by type
     so_ids = set()
     trf_ids = set()
@@ -772,54 +791,56 @@ def _enrich_stock_cards(cards):
         ):
             dist_map[dist.id] = dist
 
-    def _safe_name(obj):
-        return getattr(obj, 'name', '') if obj else ''
-
-    # Annotate each card
+    # Annotate each card — wrapped in try/except per card
     for card in cards:
         card.extra_so_number = ''
         card.extra_kios = ''
         card.extra_kecamatan = ''
 
-        ref = card.reference_number or ''
+        try:
+            ref = card.reference_number or ''
 
-        m = ref_pattern_sj_item.match(ref)
-        if m:
-            item = item_map.get(int(m.group(2)))
-            if item:
-                if item.source_so:
-                    card.extra_so_number = item.source_so.so_number
-                dist = getattr(item, 'distribution', None)
-                kios = getattr(dist, 'kios', None)
-                kec = getattr(kios, 'kecamatan', None)
-                card.extra_kios = _safe_name(kios)
-                card.extra_kecamatan = _safe_name(kec)
-            continue
+            m = ref_pattern_sj_item.match(ref)
+            if m:
+                item = item_map.get(int(m.group(2)))
+                if item:
+                    if item.source_so:
+                        card.extra_so_number = item.source_so.so_number
+                    if item.distribution and item.distribution.kios:
+                        card.extra_kios = item.distribution.kios.name
+                        if item.distribution.kios.kecamatan:
+                            card.extra_kecamatan = item.distribution.kios.kecamatan.name
+                continue
 
-        m = ref_pattern_sj_legacy.match(ref)
-        if m:
-            dist = dist_map.get(int(m.group(1)))
-            if dist:
-                if dist.source_so:
-                    card.extra_so_number = dist.source_so.so_number
-                kios = getattr(dist, 'kios', None)
-                kec = getattr(kios, 'kecamatan', None)
-                card.extra_kios = _safe_name(kios)
-                card.extra_kecamatan = _safe_name(kec)
-            continue
+            m = ref_pattern_sj_legacy.match(ref)
+            if m:
+                dist = dist_map.get(int(m.group(1)))
+                if dist:
+                    if dist.source_so:
+                        card.extra_so_number = dist.source_so.so_number
+                    if dist.kios:
+                        card.extra_kios = dist.kios.name
+                        if dist.kios.kecamatan:
+                            card.extra_kecamatan = dist.kios.kecamatan.name
+                continue
 
-        m = ref_pattern_trf.match(ref)
-        if m:
-            trf = trf_map.get(int(m.group(1)))
-            if trf and trf.source_so:
-                card.extra_so_number = trf.source_so.so_number
-            continue
+            m = ref_pattern_trf.match(ref)
+            if m:
+                trf = trf_map.get(int(m.group(1)))
+                if trf and trf.source_so:
+                    card.extra_so_number = trf.source_so.so_number
+                continue
 
-        m = ref_pattern_so.match(ref)
-        if m:
-            so = so_map.get(int(m.group(1)))
-            if so:
-                card.extra_so_number = so.so_number
+            m = ref_pattern_so.match(ref)
+            if m:
+                so = so_map.get(int(m.group(1)))
+                if so:
+                    card.extra_so_number = so.so_number
+        except Exception as exc:
+            logger.warning(
+                "Gagal enrich StockCard ref=%s id=%s: %s",
+                card.reference_number, card.pk, exc
+            )
 
 
 @login_required
