@@ -659,7 +659,7 @@ def stock_card_list(request):
 
         # Hitung running balance untuk semua data
         for card in raw_cards:
-            saldo_akhir += card.qty_in - card.qty_out
+            saldo_akhir += (card.qty_in or Decimal('0')) - (card.qty_out or Decimal('0'))
             card.current_balance = saldo_akhir
             cards.append(card)
 
@@ -723,7 +723,7 @@ def _enrich_stock_cards(cards):
     ref_pattern_so = re.compile(r'^SO-(\d+)$')
 
     for card in cards:
-        ref = card.reference_number
+        ref = card.reference_number or ''
         m = ref_pattern_sj_item.match(ref)
         if m:
             dist_item_ids.add(int(m.group(2)))
@@ -771,7 +771,7 @@ def _enrich_stock_cards(cards):
         card.extra_kios = ''
         card.extra_kecamatan = ''
 
-        ref = card.reference_number
+        ref = card.reference_number or ''
 
         m = ref_pattern_sj_item.match(ref)
         if m:
