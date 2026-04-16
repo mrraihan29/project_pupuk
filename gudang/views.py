@@ -628,112 +628,123 @@ def stock_card_list(request):
     Kartu Stok (Ledger) dengan Running Balance, enriched data, dan
     server-side pagination enterprise-grade.
     """
-    logger = logging.getLogger(__name__)
-
-    # 1. SETUP & PARAMETER
-    cards = []
-    saldo_akhir = Decimal('0')
-
-    jenis_code = request.GET.get('jenis', 'NPK')
-    stock_filter = request.GET.get('stock', 'PHYSICAL')
-    per_page = request.GET.get('per_page', '25')
-    page_number = request.GET.get('page', '1')
-    search_q = request.GET.get('q', '').strip()
+    import traceback as tb_module
 
     try:
-        per_page = int(per_page)
-        if per_page not in (10, 25, 50, 100):
-            per_page = 25
-    except (ValueError, TypeError):
-        per_page = 25
+        logger = logging.getLogger(__name__)
 
-    # 2. JENIS PUPUK
-    jenis_pupuk = JenisPupuk.objects.filter(code__iexact=jenis_code).first()
+        # 1. SETUP & PARAMETER
+        cards = []
+        saldo_akhir = Decimal('0')
 
-    total_count = 0
-    page_obj = None
-    error_msg = None
+        jenis_code = request.GET.get('jenis', 'NPK')
+        stock_filter = request.GET.get('stock', 'PHYSICAL')
+        per_page = request.GET.get('per_page', '25')
+        page_number = request.GET.get('page', '1')
+        search_q = request.GET.get('q', '').strip()
 
-    if jenis_pupuk:
         try:
-            # 3. QUERY & RUNNING BALANCE (harus hitung seluruh dataset dulu)
-            raw_cards = StockCard.objects.filter(
-                jenis_pupuk=jenis_pupuk,
-                stock_type=stock_filter
-            ).order_by('date', 'created_at')
+            per_page = int(per_page)
+            if per_page not in (10, 25, 50, 100):
+                per_page = 25
+        except (ValueError, TypeError):
+            per_page = 25
 
-            # Hitung running balance untuk semua data
-            # FIX: Tambah null guard (or Decimal('0')) agar tidak crash jika
-            #      qty_in/qty_out NULL di database — konsisten dengan PDF export.
-            for card in raw_cards:
-                # FIX: Normalize None → Decimal('0') pada OBJECT itu sendiri.
-                # Tanpa ini, template {% if card.qty_in > 0 %} akan crash
-                # (TypeError: '>' not supported between NoneType and int).
-                if card.qty_in is None:
-                    card.qty_in = Decimal('0')
-                if card.qty_out is None:
-                    card.qty_out = Decimal('0')
-                saldo_akhir += card.qty_in - card.qty_out
-                card.current_balance = saldo_akhir
-                cards.append(card)
+        # 2. JENIS PUPUK
+        jenis_pupuk = JenisPupuk.objects.filter(code__iexact=jenis_code).first()
 
-            cards.reverse()  # terbaru di atas
+        total_count = 0
+        page_obj = None
+        error_msg = None
 
-            # 4. ENRICH: parse ref → lookup SO, Kios, Kecamatan
-            _enrich_stock_cards(cards)
-
-            # 5. SEARCH FILTER (client-side text match on enriched data)
-            if search_q:
-                q_lower = search_q.lower()
-                cards = [c for c in cards if (
-                    q_lower in (c.extra_so_number or '').lower()
-                    or q_lower in (c.extra_kios or '').lower()
-                    or q_lower in (c.extra_kecamatan or '').lower()
-                    or q_lower in (c.description or '').lower()
-                    or q_lower in (c.reference_number or '').lower()
-                )]
-
-            total_count = len(cards)
-
-            # 6. PAGINATION
-            paginator = Paginator(cards, per_page)
+        if jenis_pupuk:
             try:
-                page_obj = paginator.page(page_number)
-            except PageNotAnInteger:
-                page_obj = paginator.page(1)
-            except EmptyPage:
-                page_obj = paginator.page(paginator.num_pages)
+                # 3. QUERY & RUNNING BALANCE (harus hitung seluruh dataset dulu)
+                raw_cards = StockCard.objects.filter(
+                    jenis_pupuk=jenis_pupuk,
+                    stock_type=stock_filter
+                ).order_by('date', 'created_at')
 
-            cards = list(page_obj)
+                # Hitung running balance untuk semua data
+                for card in raw_cards:
+                    # Normalize None → Decimal('0') pada OBJECT itu sendiri.
+                    if card.qty_in is None:
+                        card.qty_in = Decimal('0')
+                    if card.qty_out is None:
+                        card.qty_out = Decimal('0')
+                    saldo_akhir += card.qty_in - card.qty_out
+                    card.current_balance = saldo_akhir
+                    cards.append(card)
 
-        except Exception as exc:
-            logger.error(
-                "Gagal memuat Kartu Stok jenis=%s stock=%s: %s",
-                jenis_code, stock_filter, exc, exc_info=True
-            )
-            error_msg = (
-                f"Terjadi kesalahan saat memuat data Kartu Stok {jenis_code}: {exc}. "
-                f"Silakan hubungi administrator."
-            )
-            cards = []
-            page_obj = None
-            total_count = 0
+                cards.reverse()  # terbaru di atas
 
-    if error_msg:
-        messages.error(request, error_msg)
+                # 4. ENRICH: parse ref → lookup SO, Kios, Kecamatan
+                _enrich_stock_cards(cards)
 
-    return render(request, 'gudang/stock_card_list.html', {
-        'cards': cards,
-        'page_obj': page_obj,
-        'total_count': total_count,
-        'per_page': per_page,
-        'jenis_selected': jenis_code,
-        'saldo_akhir': saldo_akhir,
-        'stock_selected': stock_filter,
-        'search_q': search_q,
-        'now': timezone.now(),
-        'jenis_list': JenisPupuk.objects.filter(is_active=True).order_by('name'),
-    })
+                # 5. SEARCH FILTER (client-side text match on enriched data)
+                if search_q:
+                    q_lower = search_q.lower()
+                    cards = [c for c in cards if (
+                        q_lower in (c.extra_so_number or '').lower()
+                        or q_lower in (c.extra_kios or '').lower()
+                        or q_lower in (c.extra_kecamatan or '').lower()
+                        or q_lower in (c.description or '').lower()
+                        or q_lower in (c.reference_number or '').lower()
+                    )]
+
+                total_count = len(cards)
+
+                # 6. PAGINATION
+                paginator = Paginator(cards, per_page)
+                try:
+                    page_obj = paginator.page(page_number)
+                except PageNotAnInteger:
+                    page_obj = paginator.page(1)
+                except EmptyPage:
+                    page_obj = paginator.page(paginator.num_pages)
+
+                cards = list(page_obj)
+
+            except Exception as exc:
+                logger.error(
+                    "Gagal memuat Kartu Stok jenis=%s stock=%s: %s",
+                    jenis_code, stock_filter, exc, exc_info=True
+                )
+                error_msg = (
+                    f"Terjadi kesalahan saat memuat data Kartu Stok {jenis_code}: {exc}. "
+                    f"Silakan hubungi administrator."
+                )
+                cards = []
+                page_obj = None
+                total_count = 0
+
+        if error_msg:
+            messages.error(request, error_msg)
+
+        return render(request, 'gudang/stock_card_list.html', {
+            'cards': cards,
+            'page_obj': page_obj,
+            'total_count': total_count,
+            'per_page': per_page,
+            'jenis_selected': jenis_code,
+            'saldo_akhir': saldo_akhir,
+            'stock_selected': stock_filter,
+            'search_q': search_q,
+            'now': timezone.now(),
+            'jenis_list': JenisPupuk.objects.filter(is_active=True).order_by('name'),
+        })
+
+    except Exception as exc:
+        # TEMPORARY DEBUG: Tampilkan traceback langsung di browser.
+        # HAPUS setelah bug ditemukan dan diperbaiki!
+        from django.http import HttpResponse
+        error_tb = tb_module.format_exc()
+        logger.error("FATAL stock_card_list: %s", error_tb)
+        return HttpResponse(
+            f"<pre>STOCK CARD DEBUG TRACEBACK:\n\n{error_tb}</pre>",
+            status=500,
+            content_type="text/html"
+        )
 
 
 def _enrich_stock_cards(cards):
