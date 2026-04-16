@@ -696,8 +696,12 @@
 
                 // Update label dengan sisa stok
                 const balance = parseFloat(soInfo.balance);
-                const balanceStr = balance.toLocaleString('id-ID', {minimumFractionDigits: 2, maximumFractionDigits: 2});
-                opt.textContent = `${SO_ORIGINAL_LABELS[opt.value]}  —  Sisa: ${balanceStr} Ton`;
+                if (sourceType === 'PHYSICAL') {
+                    opt.textContent = `${SO_ORIGINAL_LABELS[opt.value]}`;
+                } else {
+                    const balanceStr = balance.toLocaleString('id-ID', {minimumFractionDigits: 2, maximumFractionDigits: 2});
+                    opt.textContent = `${SO_ORIGINAL_LABELS[opt.value]}  —  Sisa: ${balanceStr} Ton`;
+                }
 
                 // Filter: Harus sesuai jenis pupuk dan cek ketersediaan saldo untuk virtual
                 let showOpt = true;
