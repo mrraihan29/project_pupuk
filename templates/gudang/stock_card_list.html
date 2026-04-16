@@ -155,12 +155,12 @@
                             {% endif %}
                         </td>
                         <td class="text-end">
-                            {% if card.qty_in > 0 %}
+                            {% if card.qty_in|default:0 > 0 %}
                             <span class="text-success fw-bold">+{{ card.qty_in|floatformat:2 }}</span>
                             {% else %}—{% endif %}
                         </td>
                         <td class="text-end">
-                            {% if card.qty_out > 0 %}
+                            {% if card.qty_out|default:0 > 0 %}
                             <span class="text-danger fw-bold">−{{ card.qty_out|floatformat:2 }}</span>
                             {% else %}—{% endif %}
                         </td>
