@@ -62,6 +62,21 @@ class SalesOrder(models.Model):
 
         return self.total_tonnage - transferred - distributed
 
+    def get_physical_balance(self):
+        """
+        Menghitung Sisa Stok Fisik di Gudang PUD untuk SO ini.
+        Rumus: Total Masuk ke Gudang (WarehouseTransfer) - Total Keluar dari Gudang (DistributionItem PHYSICAL)
+        """
+        # 1. Total masuk ke gudang fisik (Physical In)
+        total_in = self.transfers.aggregate(total=Sum('tonnage'))['total'] or Decimal('0')
+        # 2. Total keluar dari gudang fisik (Physical Out)
+        total_out = DistributionItem.objects.filter(
+            source_type='PHYSICAL',
+            source_so=self
+        ).aggregate(total=Sum('tonnage'))['total'] or Decimal('0')
+
+        return total_in - total_out
+
     def save(self, *args, **kwargs):
         # Auto Close jika balance 0 (Logic sederhana)
         # Note: Idealnya ini dijalankan via Signal agar lebih reaktif

@@ -695,20 +695,28 @@
                 }
 
                 // Update label dengan sisa stok
-                const balance = parseFloat(soInfo.balance);
+                const vBalance = parseFloat(soInfo.virtual_balance);
+                const pBalance = parseFloat(soInfo.physical_balance);
+
                 if (sourceType === 'PHYSICAL') {
-                    opt.textContent = `${SO_ORIGINAL_LABELS[opt.value]}`;
+                    const balStr = pBalance.toLocaleString('id-ID', {minimumFractionDigits: 2, maximumFractionDigits: 2});
+                    opt.textContent = `${SO_ORIGINAL_LABELS[opt.value]}  —  Sisa Gudang: ${balStr} Ton`;
+                } else if (sourceType === 'VIRTUAL') {
+                    const balStr = vBalance.toLocaleString('id-ID', {minimumFractionDigits: 2, maximumFractionDigits: 2});
+                    opt.textContent = `${SO_ORIGINAL_LABELS[opt.value]}  —  Sisa Pabrik: ${balStr} Ton`;
                 } else {
-                    const balanceStr = balance.toLocaleString('id-ID', {minimumFractionDigits: 2, maximumFractionDigits: 2});
-                    opt.textContent = `${SO_ORIGINAL_LABELS[opt.value]}  —  Sisa: ${balanceStr} Ton`;
+                    opt.textContent = SO_ORIGINAL_LABELS[opt.value];
                 }
 
-                // Filter: Harus sesuai jenis pupuk dan cek ketersediaan saldo untuk virtual
+                // Filter: Harus sesuai jenis pupuk dan cek ketersediaan saldo
                 let showOpt = true;
                 if (jenisId && soInfo.jenis_id !== String(jenisId)) {
                     showOpt = false;
                 }
-                if (sourceType === 'VIRTUAL' && balance <= 0) {
+                if (sourceType === 'VIRTUAL' && vBalance <= 0) {
+                    showOpt = false;
+                }
+                if (sourceType === 'PHYSICAL' && pBalance <= 0) {
                     showOpt = false;
                 }
 
@@ -750,11 +758,11 @@
                 const soLabel = soWrap.querySelector('label.form-label');
                 if (sourceTypeSel.value === 'VIRTUAL') {
                     soWrap.style.display = 'block';
-                    if (soLabel) soLabel.textContent = 'Nomor SO (jika sumber Pabrik)';
+                    if (soLabel) soLabel.textContent = 'Nomor SO (Jatah Pabrik)';
                 } else {
-                    // PHYSICAL: tetap tampilkan SO tapi opsional sebagai referensi
+                    // PHYSICAL: kini wajib berdasar arsitektur baru
                     soWrap.style.display = 'block';
-                    if (soLabel) soLabel.textContent = 'Nomor SO (Opsional - sebagai referensi)';
+                    if (soLabel) soLabel.textContent = 'Nomor SO (Jatah Gudang Fisik)';
                 }
                 applySOFilter(); // Re-filter SO if source type changes
             };

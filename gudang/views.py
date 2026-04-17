@@ -279,13 +279,11 @@ def validate_distribution_items(kios, dist_date, items_clean, existing_items=Non
                 if so_id not in so_balance:
                     so_balance[so_id] = old_item.source_so.get_virtual_balance()
                 so_balance[so_id] += old_item.tonnage
-            elif old_item.source_type == 'PHYSICAL':
-                key = old_item.jenis_pupuk_id
-                if key not in physical_balance:
-                    agg = StockCard.objects.filter(jenis_pupuk_id=key, stock_type='PHYSICAL').aggregate(
-                        total_in=Sum('qty_in'), total_out=Sum('qty_out'))
-                    physical_balance[key] = (agg['total_in'] or Decimal('0')) - (agg['total_out'] or Decimal('0'))
-                physical_balance[key] += old_item.tonnage
+            elif old_item.source_type == 'PHYSICAL' and old_item.source_so:
+                so_id = old_item.source_so_id
+                if so_id not in physical_balance:
+                    physical_balance[so_id] = old_item.source_so.get_physical_balance()
+                physical_balance[so_id] += old_item.tonnage
 
             # Quota: only add back if same kios and year
             if old_kios == kios and old_year == dist_date.year:
@@ -319,17 +317,19 @@ def validate_distribution_items(kios, dist_date, items_clean, existing_items=Non
             so_balance[so.id] -= ton
             if so_balance[so.id] < 0:
                 raise ValidationError(f"Stok virtual SO {so.so_number} tidak cukup (sisa {so_balance[so.id] + ton:,.2f} Ton).")
-        else:
-            key = jenis.id
-            if key not in physical_balance:
-                agg = StockCard.objects.filter(jenis_pupuk=jenis, stock_type='PHYSICAL').aggregate(
-                    total_in=Sum('qty_in'),
-                    total_out=Sum('qty_out'),
+        else:  # PHYSICAL
+            if not so:
+                raise ValidationError("Pilih Nomor SO untuk distribusi stok fisik gudang.")
+            if so.jenis_pupuk_id != jenis.id:
+                raise ValidationError(
+                    f"Jenis pupuk {jenis.name} tidak cocok dengan SO {so.so_number} "
+                    f"(jenis: {so.jenis_pupuk.name})."
                 )
-                physical_balance[key] = (agg['total_in'] or Decimal('0')) - (agg['total_out'] or Decimal('0'))
-            physical_balance[key] -= ton
-            if physical_balance[key] < 0:
-                raise ValidationError(f"Stok fisik {jenis.code} tidak cukup (sisa {physical_balance[key] + ton:,.2f} Ton).")
+            if so.id not in physical_balance:
+                physical_balance[so.id] = so.get_physical_balance()
+            physical_balance[so.id] -= ton
+            if physical_balance[so.id] < 0:
+                raise ValidationError(f"Stok fisik SO {so.so_number} tidak cukup (sisa {physical_balance[so.id] + ton:,.2f} Ton).")
 
         qkey = (jenis.id, dist_date.year)
         if qkey not in quota_balance:
@@ -489,7 +489,8 @@ def distribution_create(request):
     for so in so_qs.select_related('jenis_pupuk'):
         so_data_map[str(so.id)] = {
             'jenis_id': str(so.jenis_pupuk_id),
-            'balance': str(so.get_virtual_balance()),
+            'virtual_balance': str(so.get_virtual_balance()),
+            'physical_balance': str(so.get_physical_balance()),
         }
 
     return render(request, 'gudang/distribution_form.html', {
@@ -608,7 +609,8 @@ def distribution_edit(request, pk):
     for so in so_qs.select_related('jenis_pupuk'):
         so_data_map[str(so.id)] = {
             'jenis_id': str(so.jenis_pupuk_id),
-            'balance': str(so.get_virtual_balance()),
+            'virtual_balance': str(so.get_virtual_balance()),
+            'physical_balance': str(so.get_physical_balance()),
         }
 
     return render(request, 'gudang/distribution_form.html', {
