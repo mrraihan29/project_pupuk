@@ -156,6 +156,73 @@ def so_edit(request, pk):
         'edit_mode': True,
     })
 
+
+@login_required
+def so_tracker(request, pk):
+    """
+    Pop-up / Modal partial view untuk melacak perjalanan stok SO.
+    """
+    so = get_object_or_404(SalesOrder.objects.select_related('jenis_pupuk'), pk=pk)
+    
+    # Ambil Riwayat
+    history = []
+    
+    # 1. Start: Penebusan
+    history.append({
+        'date': so.date,
+        'activity': 'Penebusan (SO Awal)',
+        'ref': so.so_number,
+        'route': "Pabrik",
+        'mutation': so.total_tonnage,
+        'type': 'START',
+        'sort_key': so.date.strftime('%Y%m%d') + '00'
+    })
+    
+    # 2. Transfer (Pabrik ke Gudang)
+    transfers = so.transfers.all()
+    for trf in transfers:
+        history.append({
+            'date': trf.date,
+            'activity': 'Tarik ke Gudang',
+            'ref': trf.reference_code or f"TRF-{trf.id}",
+            'route': "Pabrik \u2192 Gudang",
+            'mutation': trf.tonnage,
+            'type': 'TRANSFER',
+            'sort_key': trf.date.strftime('%Y%m%d') + '10'
+        })
+        
+    # 3. Distribusi (Surat Jalan)
+    dist_items = so.distribution_items.select_related('distribution__kios').all()
+    for item in dist_items:
+        dist = item.distribution
+        if item.source_type == 'VIRTUAL':
+            activity = f"Kirim ke {dist.kios.name} (Bypass)"
+            route = "Pabrik \u2192 Kios"
+        else:
+            activity = f"Kirim ke {dist.kios.name}"
+            route = "Gudang \u2192 Kios"
+            
+        history.append({
+            'date': dist.date,
+            'activity': activity,
+            'ref': dist.no_surat_jalan,
+            'route': route,
+            'mutation': item.tonnage,
+            'type': 'DISTRIBUTION',
+            'sort_key': dist.date.strftime('%Y%m%d') + '20'
+        })
+        
+    # Sort history by sort_key
+    history.sort(key=lambda x: x['sort_key'])
+    
+    context = {
+        'so': so,
+        'history': history,
+        'virtual_balance': so.get_virtual_balance(),
+        'physical_balance': so.get_physical_balance(),
+    }
+    return render(request, 'gudang/partials/so_tracker_modal_body.html', context)
+
 # ==========================================
 # 2. MODUL TRANSFER (TARIK KE GUDANG)
 # ==========================================

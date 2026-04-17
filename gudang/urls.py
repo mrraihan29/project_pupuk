@@ -8,6 +8,7 @@ urlpatterns = [
     path('so/', views.so_list, name='so_list'),
     path('so/create/', views.so_create, name='so_create'),
     path('so/<int:pk>/edit/', views.so_edit, name='so_edit'),
+    path('so/<int:pk>/tracker/', views.so_tracker, name='so_tracker'),
 
     # ==========================
     # 2. TRANSFER (TARIK STOK KE GUDANG)

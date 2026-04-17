@@ -1,0 +1,91 @@
+<div class="so-tracker-container">
+    <!-- Header: Detail SO -->
+    <div class="d-flex justify-content-between align-items-center mb-3">
+        <div>
+            <h6 class="text-muted mb-0">Pelacakan Perjalanan Stok</h6>
+            <h4 class="fw-bold mb-0 text-primary">{{ so.so_number }}</h4>
+        </div>
+        <div class="text-end">
+            <span class="badge bg-light text-dark border">{{ so.jenis_pupuk.name }}</span>
+            <div class="small text-muted">Tanggal Penebusan: {{ so.date|date:"d M Y" }}</div>
+        </div>
+    </div>
+
+    <hr class="my-3 opacity-10">
+
+    <!-- Summary Header Cards -->
+    <div class="row g-3 mb-4 text-center">
+        <div class="col-md-4">
+            <div class="card bg-light border-0 h-100">
+                <div class="card-body p-3">
+                    <p class="text-muted small mb-1 fw-bold" style="font-size: 0.7rem; letter-spacing: 0.5px;">TOTAL SO (AWAL)</p>
+                    <h5 class="mb-0 fw-bold text-dark">{{ so.total_tonnage|floatformat:2 }} <span class="small font-weight-normal font-size-xs">Ton</span></h5>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-4">
+            <div class="card border-0 shadow-sm h-100" style="background-color: #e3f2fd;">
+                <div class="card-body p-3">
+                    <p class="text-primary small mb-1 fw-bold" style="font-size: 0.7rem; letter-spacing: 0.5px;">SISA DI PABRIK (VIRTUAL)</p>
+                    <h5 class="mb-0 fw-bold text-primary">{{ virtual_balance|floatformat:2 }} <span class="small font-weight-normal font-size-xs">Ton</span></h5>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-4">
+            <div class="card border-0 shadow-sm h-100" style="background-color: #f1f8e9;">
+                <div class="card-body p-3">
+                    <p class="text-success small mb-1 fw-bold" style="font-size: 0.7rem; letter-spacing: 0.5px;">SISA DI GUDANG (FISIK)</p>
+                    <h5 class="mb-0 fw-bold text-success">{{ physical_balance|floatformat:2 }} <span class="small font-weight-normal font-size-xs">Ton</span></h5>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Timeline Table -->
+    <div class="table-responsive">
+        <table class="table table-hover align-middle" style="font-size: 0.9rem;">
+            <thead class="bg-light">
+                <tr>
+                    <th class="border-0">Tanggal</th>
+                    <th class="border-0">Kegiatan</th>
+                    <th class="border-0">Rujukan</th>
+                    <th class="border-0">Rute</th>
+                    <th class="border-0 text-end">Tonase</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for log in history %}
+                <tr>
+                    <td class="text-muted" style="white-space: nowrap;">{{ log.date|date:"d M Y" }}</td>
+                    <td>
+                        {% if log.type == 'START' %}
+                            <i class="bi bi-plus-circle-fill text-primary me-1"></i>
+                        {% elif log.type == 'TRANSFER' %}
+                            <i class="bi bi-arrow-down-right-circle-fill text-warning me-1"></i>
+                        {% else %}
+                            <i class="bi bi-truck text-info me-1"></i>
+                        {% endif %}
+                        {{ log.activity }}
+                    </td>
+                    <td><code class="text-dark bg-light px-1 rounded" style="font-size: 0.75rem;">{{ log.ref }}</code></td>
+                    <td><small class="text-muted">{{ log.route }}</small></td>
+                    <td class="text-end fw-bold">
+                        {% if log.type == 'START' %}
+                            <span class="text-dark">+{{ log.mutation|floatformat:2 }}</span>
+                        {% else %}
+                            <span class="text-danger">-{{ log.mutation|floatformat:2 }}</span>
+                        {% endif %}
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+
+    {% if not history %}
+    <div class="text-center py-4 text-muted">
+        <i class="bi bi-info-circle d-block mb-2 font-size-lg"></i>
+        Belum ada aktivitas tercatat untuk SO ini.
+    </div>
+    {% endif %}
+</div>
