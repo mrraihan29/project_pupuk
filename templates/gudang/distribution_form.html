@@ -713,11 +713,19 @@
                 if (jenisId && soInfo.jenis_id !== String(jenisId)) {
                     showOpt = false;
                 }
+                
+                // Cek Saldo: Sembunyikan jika <= 0
                 if (sourceType === 'VIRTUAL' && vBalance <= 0) {
                     showOpt = false;
                 }
                 if (sourceType === 'PHYSICAL' && pBalance <= 0) {
                     showOpt = false;
+                }
+
+                // PENGECUALIAN: Jika SO ini adalah yang sedang terpilih di baris ini, 
+                // dan jenis pupuknya cocok, JANGAN pernah disembunyikan meskipun stok 0.
+                if (opt.value === currentVal && (!jenisId || soInfo.jenis_id === String(jenisId))) {
+                    showOpt = true;
                 }
 
                 if (showOpt) {
@@ -728,7 +736,7 @@
                 }
             });
 
-            // Reset pilihan jika SO terpilih tidak cocok
+            // Reset pilihan jika SO terpilih tidak cocok sama sekali (misal beda jenis)
             if (currentVal && !currentStillValid) {
                 soSelect.value = '';
             }

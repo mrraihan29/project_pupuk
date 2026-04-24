@@ -587,6 +587,18 @@ def distribution_edit(request, pk):
     # Snapshot existing items for edit-mode validation offset
     existing_items = list(dist.items.select_related('jenis_pupuk', 'source_so').all())
 
+    # 1. Hitung "reserved" tonnage dari distribusi yang sedang diedit ini
+    # agar sisa saldo di dropdown JS mencerminkan kondisi jika item ini belum ada.
+    reserved_v = {}
+    reserved_p = {}
+    for item in existing_items:
+        if item.source_so_id:
+            sid = str(item.source_so_id)
+            if item.source_type == 'VIRTUAL':
+                reserved_v[sid] = reserved_v.get(sid, Decimal('0')) + item.tonnage
+            else:
+                reserved_p[sid] = reserved_p.get(sid, Decimal('0')) + item.tonnage
+
     if request.method == 'POST':
         form = DistributionForm(request.POST, instance=dist)
         kios_selected = form.data.get('kios') or None
@@ -674,10 +686,15 @@ def distribution_edit(request, pk):
     # SO data map for JS
     so_data_map = {}
     for so in so_qs.select_related('jenis_pupuk'):
-        so_data_map[str(so.id)] = {
+        sid = str(so.id)
+        # Sisa Realtime + Tonnage yang sedang "dipakai" oleh Surat Jalan ini
+        v_bal = so.get_virtual_balance() + reserved_v.get(sid, Decimal('0'))
+        p_bal = so.get_physical_balance() + reserved_p.get(sid, Decimal('0'))
+        
+        so_data_map[sid] = {
             'jenis_id': str(so.jenis_pupuk_id),
-            'virtual_balance': str(so.get_virtual_balance()),
-            'physical_balance': str(so.get_physical_balance()),
+            'virtual_balance': str(v_bal),
+            'physical_balance': str(p_bal),
         }
 
     return render(request, 'gudang/distribution_form.html', {

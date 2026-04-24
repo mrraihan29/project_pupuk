@@ -3,9 +3,7 @@ from django.utils import timezone
 from django.conf import settings
 from decimal import Decimal
 
-# ==========================================
 # 1. MASTER COMPANY PROFILE (Singleton)
-# ==========================================
 class CompanyProfile(models.Model):
     name = models.CharField("Nama Perusahaan", max_length=100, default="CV. BERKAH TANI")
     address = models.TextField("Alamat Kantor", default="Jl. Raya Salatiga - Semarang KM 5")
@@ -34,9 +32,7 @@ class CompanyProfile(models.Model):
         verbose_name = "Profil Perusahaan"
         verbose_name_plural = "Profil Perusahaan"
 
-# ==========================================
 # 2. MASTER WILAYAH (KABUPATEN & KECAMATAN)
-# ==========================================
 class Kabupaten(models.Model):
     name = models.CharField("Nama Kabupaten", max_length=100, unique=True)
     code = models.CharField("Kode", max_length=10, blank=True, null=True)
@@ -65,9 +61,7 @@ class Kecamatan(models.Model):
         verbose_name_plural = "Master Kecamatan"
         ordering = ['name']
 
-# ==========================================
 # 3. MASTER JENIS PUPUK
-# ==========================================
 class JenisPupuk(models.Model):
     name = models.CharField("Nama Pupuk", max_length=50, unique=True) # NPK, UREA
     code = models.CharField("Kode Singkatan", max_length=10, unique=True) 
@@ -79,9 +73,7 @@ class JenisPupuk(models.Model):
     class Meta:
         verbose_name_plural = "Master Jenis Pupuk"
 
-# ==========================================
 # 4. MASTER DATA KIOS
-# ==========================================
 class Kios(models.Model):
     name = models.CharField("Nama Kios", max_length=100)
     pic_name = models.CharField("Nama Penanggung Jawab", max_length=100)
@@ -101,9 +93,7 @@ class Kios(models.Model):
         verbose_name_plural = "Data Kios"
 
 
-# ==========================================
 # 4b. USER PROFILE (Kabupaten Assignment)
-# ==========================================
 class UserProfile(models.Model):
     user = models.OneToOneField(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name='profile')
     kabupaten = models.ForeignKey(Kabupaten, on_delete=models.PROTECT, null=True, blank=True, related_name='users')
@@ -115,9 +105,7 @@ class UserProfile(models.Model):
         verbose_name = "User Profile"
         verbose_name_plural = "User Profiles"
 
-# ==========================================
 # 5. ALLOCATION (KUOTA KIOS)
-# ==========================================
 class KiosAllocation(models.Model):
     """
     Menyimpan kuota pupuk per tahun per kios.
@@ -148,9 +136,7 @@ class KiosAllocation(models.Model):
             ),
         ]
 
-# ==========================================
 # 6. MASTER ARMADA
-# ==========================================
 class Armada(models.Model):
     plate_number = models.CharField("Plat Nomor", max_length=15, unique=True)
     vehicle_type = models.CharField("Jenis Kendaraan", max_length=50) # Engkel, Fuso
@@ -164,9 +150,7 @@ class Armada(models.Model):
     class Meta:
         verbose_name_plural = "Data Armada"
 
-# ==========================================
 # 7. MASTER HARGA
-# ==========================================
 class FertilizerPrice(models.Model):
     jenis_pupuk = models.ForeignKey(JenisPupuk, on_delete=models.CASCADE, verbose_name="Jenis Pupuk")
     kabupaten = models.ForeignKey(Kabupaten, on_delete=models.PROTECT, related_name='fertilizer_prices')
